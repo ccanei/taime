@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { createSupabaseService, createSupabaseServer } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
+import { createSupabaseServer } from '@/lib/supabase-server'
 import { getTranslations, detectLocale } from '@/lib/i18n'
 import { formatPeriod, scoreColor } from '@/lib/types'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'
@@ -12,67 +13,62 @@ import HomeSearch from '@/components/HomeSearch'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface LandingTrend {
-  taime_score:            number
-  rank:                   number
-  title_pt_br:            string
-  title_en:               string
-  taime_framework_pt_br:  TaimeFramework | null
-  taime_framework_en:     TaimeFramework | null
-  then_now_next_pt_br:    ThenNowNext | null
-  then_now_next_en:       ThenNowNext | null
-}
-
 interface LandingReport {
   id: string
   period: string
+  period_label: string | null
+  period_type:  string | null
   title_pt_br: string
   title_en: string
   executive_summary_pt_br: string
   executive_summary_en: string
   published_at: string
-  report_trends: LandingTrend[] | null
 }
 
 interface TopTrend {
+  id: string
   report_id: string
+  rank: number
   title_pt_br: string
   title_en: string
   taime_score: number
   taime_framework_pt_br: TaimeFramework | null
-  taime_framework_en: TaimeFramework | null
+  taime_framework_en:    TaimeFramework | null
+  then_now_next_pt_br:   ThenNowNext | null
+  then_now_next_en:      ThenNowNext | null
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!,
+  )
+}
+
 async function getLatestReports(): Promise<LandingReport[]> {
-  const supabase = createSupabaseService()
-  const { data } = await supabase
+  const { data, error } = await adminClient()
     .from('reports')
-    .select('id, period, title_pt_br, title_en, executive_summary_pt_br, executive_summary_en, published_at, report_trends(taime_score, rank, title_pt_br, title_en, taime_framework_pt_br, taime_framework_en, then_now_next_pt_br, then_now_next_en)')
+    .select('id, period, period_label, period_type, title_pt_br, title_en, executive_summary_pt_br, executive_summary_en, published_at')
     .eq('status', 'published')
-    .order('published_at', { ascending: false })
+    .order('period', { ascending: false })
     .limit(3)
+  if (error) console.error('getLatestReports:', error)
   return (data as LandingReport[]) ?? []
 }
 
 async function getTopTrends(): Promise<TopTrend[]> {
-  const supabase = createSupabaseService()
-  const { data } = await supabase
+  const { data, error } = await adminClient()
     .from('report_trends')
-    .select('report_id, title_pt_br, title_en, taime_score, taime_framework_pt_br, taime_framework_en')
+    .select('id, report_id, rank, title_pt_br, title_en, taime_score, taime_framework_pt_br, taime_framework_en, then_now_next_pt_br, then_now_next_en')
     .order('taime_score', { ascending: false })
     .limit(3)
+  if (error) console.error('getTopTrends:', error)
   return (data as TopTrend[]) ?? []
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function avgScore(trends: { taime_score: number }[]): number {
-  if (!trends?.length) return 0
-  return Math.round(trends.reduce((s, t) => s + t.taime_score, 0) / trends.length)
-}
-
 
 function firstWords(text: string | null | undefined, n: number): string {
   if (!text) return ''
@@ -123,10 +119,9 @@ export default async function LandingPage() {
   const [reports, topTrends] = await Promise.all([getLatestReports(), getTopTrends()])
   const report      = reports[0] ?? null
   const isEn        = locale === 'en'
-  const trends      = report?.report_trends ?? []
 
-  // Mockup data: first trend sorted by rank
-  const firstTrend    = [...trends].sort((a, b) => a.rank - b.rank)[0] ?? null
+  // Mockup data: top trend by score (rank 1 da query)
+  const firstTrend    = topTrends[0] ?? null
   const fwMockup      = isEn ? firstTrend?.taime_framework_en   : firstTrend?.taime_framework_pt_br
   const tnnMockup     = isEn ? firstTrend?.then_now_next_en     : firstTrend?.then_now_next_pt_br
   const mockupScore   = firstTrend?.taime_score ?? 87
@@ -362,7 +357,6 @@ export default async function LandingPage() {
                 const rTitle   = isEn ? (r.title_en ?? r.title_pt_br) : r.title_pt_br
                 const rSummary = isEn ? (r.executive_summary_en ?? r.executive_summary_pt_br) : r.executive_summary_pt_br
                 const rPreview = rSummary.length > 160 ? rSummary.slice(0, 160).trimEnd() + '...' : rSummary
-                const rAvg     = r.report_trends?.length ? avgScore(r.report_trends) : null
                 const rHref    = isLoggedIn ? `/reports/${r.id}` : '/login'
                 return (
                   <div key={r.id} className="rounded-2xl border border-zinc-200 bg-white overflow-hidden flex flex-col">
@@ -370,17 +364,9 @@ export default async function LandingPage() {
                       <p className="text-xs font-bold text-white/30 tracking-widest mb-2 uppercase">
                         {formatPeriod(r.period, isEn ? 'en' : 'pt-BR')}
                       </p>
-                      <div className="flex items-start justify-between gap-3">
-                        <h3 className="text-sm font-bold text-white leading-snug flex-1 line-clamp-3">
-                          {rTitle}
-                        </h3>
-                        {rAvg !== null && (
-                          <div className="shrink-0 text-center">
-                            <div className={`text-2xl font-bold tabular-nums ${scoreColor(rAvg)}`}>{rAvg}</div>
-                            <div className="text-[9px] text-white/40 font-medium">SCORE</div>
-                          </div>
-                        )}
-                      </div>
+                      <h3 className="text-sm font-bold text-white leading-snug line-clamp-3">
+                        {rTitle}
+                      </h3>
                     </div>
                     <div className="px-6 py-5 flex flex-col gap-4 flex-1">
                       {rPreview && (

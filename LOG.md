@@ -2,6 +2,29 @@
 
 ---
 
+## [2026-05-26] — Fix PGRST125: queries simplificadas em app/page.tsx
+
+### Status
+- [x] PGRST125 corrigido: join `report_trends(...)` removido de `getLatestReports()`
+- [x] Debug visual (`_debug: true`) removido
+- [x] Label singular/plural da seção de relatórios mantido correto
+- [x] Build: 0 erros TypeScript, 19 páginas + Proxy (Middleware) ✓
+
+### Causa do PGRST125
+O erro "Invalid path in request URL" era causado pelo join inline `report_trends(...)` na query REST do Supabase. Queries com join via PostgREST exigem relação FK explícita — sem FK configurada, a query falha.
+
+### Mudanças em app/page.tsx
+- Import: `createSupabaseService` removido, `createClient` de `@supabase/supabase-js` adicionado
+- `adminClient()`: helper local com `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_KEY`
+- `getLatestReports()`: select sem join — `id, period, period_label, period_type, title_pt_br, title_en, executive_summary_pt_br, executive_summary_en, published_at`
+- `getTopTrends()`: select expandido — `id, report_id, rank, title_pt_br, title_en, taime_score, taime_framework_pt_br, taime_framework_en, then_now_next_pt_br, then_now_next_en`
+- Interfaces: `LandingTrend` removida, `LandingReport` sem `report_trends`, `TopTrend` expandida
+- Mockup: `firstTrend` agora vem de `topTrends[0]` (antes vinha de `report.report_trends[0]`)
+- `avgScore()` removida (não mais usada — score médio não aparece nos cards de relatório)
+- Bloco debug visual `_debug` removido, todos os `console.log('[DEBUG]')` removidos
+
+---
+
 ## [2026-05-26] — Diagnóstico: home page sem relatórios na Vercel
 
 ### Status
