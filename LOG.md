@@ -2,6 +2,24 @@
 
 ---
 
+## [2026-05-26] — Refazer emails da waitlist conforme spec final
+
+### Status
+- [x] `app/api/waitlist/route.ts` refeito para bater 100% com o spec novo
+- [x] Email do usuário: removida `<img>` do logo, fonte do "TAIME" agora 22px, saudação `You are on the list, [FIRST_NAME].` (sem apóstrofes), corpo `You will receive... We will be in touch...`
+- [x] Email do admin: labels em PT (Nome/Email/Empresa/Cargo/Interesse/**Data**), campo Data com timestamp `pt-BR` (timezone `America/Sao_Paulo`), botão `Ver waitlist completa →`
+- [x] Padrão de envio: `await Promise.all([sendEmail(...), sendEmail(...)])` — falhas individuais silenciadas dentro de `sendEmail` via `.catch`, então `Promise.all` nunca rejeita
+- [x] `escapeHtml` mantido em todos os campos do user (defesa XSS)
+- [x] `npm run build`: 0 erros, 0 warnings ✓
+
+### Diferenças vs. iteração anterior
+- Logo `<img>` removida (apenas texto "TAIME")
+- Saudação sem contrações (`You are`, `You will`, `We will`) — mais formal
+- Email admin em PT em vez de EN, com campo Data adicional
+- `await Promise.all` em vez de fire-and-forget (cadastro só responde após tentativa de envio dos 2 emails)
+
+---
+
 ## [2026-05-26] — Resend: emails da waitlist + setup SMTP do magic link
 
 ### Status
