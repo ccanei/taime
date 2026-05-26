@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-05-26] — Debug: logs em pontos estratégicos da rota waitlist
+
+### Status
+- [x] `app/api/waitlist/route.ts` instrumentado com 5 logs:
+  - `console.log('waitlist called')` — início do POST
+  - `console.log('RESEND_API_KEY set:', !!process.env.RESEND_API_KEY)` — verifica env var (sem expor valor)
+  - `console.log('inserted:', email)` — após sucesso da inserção no banco
+  - `console.log('sending emails...')` — antes do `Promise.all` do Resend
+  - `console.log('emails sent')` — após o `Promise.all` resolver
+- [x] `console.error('Resend error:', e)` dentro de `sendEmail.catch(...)` mantido (já existia)
+- [x] `npm run build`: 0 erros, 0 warnings ✓
+
+### Como usar
+Após deploy na Vercel, abrir Functions logs → `/api/waitlist`. Cada cadastro produz a sequência:
+```
+waitlist called
+RESEND_API_KEY set: true|false
+inserted: <email>
+sending emails...
+emails sent
+```
+Se faltar algum step, fica claro onde parou. Se aparecer `Resend error: ...`, o problema é no envio (chave inválida, domínio não verificado, rate limit, etc).
+
+---
+
 ## [2026-05-26] — Refazer emails da waitlist conforme spec final
 
 ### Status

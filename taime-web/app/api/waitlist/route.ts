@@ -92,6 +92,9 @@ const sendEmail = async (to: string, subject: string, html: string): Promise<voi
 }
 
 export async function POST(req: Request) {
+  console.log('waitlist called')
+  console.log('RESEND_API_KEY set:', !!process.env.RESEND_API_KEY)
+
   const { name, email, company, role, interest } = await req.json()
 
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -127,12 +130,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
     }
 
+    console.log('inserted:', email)
+
     // Envio paralelo. Falhas individuais são silenciadas dentro de sendEmail
     // via .catch, então este Promise.all nunca rejeita — não bloqueia cadastro.
+    console.log('sending emails...')
     await Promise.all([
       sendEmail(email, "You're on the TAIME waitlist", userEmailHtml(name)),
       sendEmail(ADMIN_EMAIL, 'New TAIME waitlist signup', adminEmailHtml({ name, email, company, role, interest })),
     ])
+    console.log('emails sent')
 
     return NextResponse.json({ success: true })
   } catch (e) {
