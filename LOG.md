@@ -2,6 +2,51 @@
 
 ---
 
+## [2026-05-26] — Diagnóstico: home page sem relatórios na Vercel
+
+### Status
+- [x] Código já estava correto: `getLatestReports()` e `getTopTrends()` usam `createSupabaseService()` com `SUPABASE_SERVICE_KEY`
+- [x] Build: 0 erros TypeScript, 19 páginas + Proxy (Middleware) ✓
+
+### Diagnóstico real
+- `app/page.tsx` linhas 49 e 60: ambas as funções já usam `createSupabaseService()` — bypassa RLS
+- `lib/supabase-server.ts` linha 31: `createSupabaseService()` usa `process.env.SUPABASE_SERVICE_KEY!`
+- O código está correto localmente
+
+### Causa provável do problema na Vercel
+`SUPABASE_SERVICE_KEY` não é `NEXT_PUBLIC_` — precisa ser adicionada manualmente nas **Environment Variables** do projeto Vercel:
+1. Vercel Dashboard → Project → Settings → Environment Variables
+2. Adicionar: `SUPABASE_SERVICE_KEY` = `<service_role key do Supabase>`
+3. Re-deploy após adicionar
+
+Variáveis necessárias na Vercel (todas sem `NEXT_PUBLIC_` precisam de config manual):
+- `SUPABASE_SERVICE_KEY`
+- `ANTHROPIC_API_KEY`
+- `SERPER_API_KEY`
+- `RESEND_API_KEY`
+- `CRON_SECRET`
+
+---
+
+## [2026-05-26] — Verificação: proxy.ts e .gitignore
+
+### Status
+- [x] PROBLEMA 1 — `proxy.ts` é o nome correto para Next.js 16.2.6 (não `middleware.ts`)
+- [x] PROBLEMA 2 — `taime-web/.gitignore` contém apenas `.vercel` — correto, sem exclusões problemáticas
+- [x] Build: 0 erros TypeScript, 0 warnings de deprecação, 19 páginas + Proxy (Middleware) ✓
+
+### Diagnóstico
+- Next.js 16.2.6 mudou a convenção: `middleware.ts` está **deprecated**, o arquivo correto é `proxy.ts`
+- A warning `"middleware" file convention is deprecated. Please use "proxy" instead.` aparece se o arquivo se chamar `middleware.ts`
+- O arquivo `proxy.ts` com `export async function proxy()` já estava correto desde a sessão anterior
+- `taime-web/.gitignore` OK: apenas `.vercel` excluído (configuração local do Vercel CLI, não deve ser commitada)
+
+### Arquivos verificados
+- `taime-web/proxy.ts` — mantido com função `proxy` (convenção Next.js 16)
+- `taime-web/.gitignore` — apenas `.vercel` (correto)
+
+---
+
 ## [2026-05-25] — Next.js 16.2.6: upgrade + correções de compatibilidade
 
 ### Status
