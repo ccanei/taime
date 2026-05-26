@@ -2,6 +2,32 @@
 
 ---
 
+## [2026-05-25] — Next.js 16.2.6: upgrade + correções de compatibilidade
+
+### Status
+- [x] Next.js atualizado de 14.2.x para 16.2.6
+- [x] `cookies()` agora async — `await` adicionado em todos os usos
+- [x] `createSupabaseServer()` agora async — todos os callers atualizados
+- [x] `middleware.ts` renomeado para `proxy.ts` (nova convenção Next.js 16)
+- [x] `next.config.mjs`: `turbopack.root` configurado para silenciar aviso de workspace
+- [x] Build: 0 erros TypeScript, 19 páginas + Proxy (Middleware) ✓
+
+### Arquivos modificados
+- `lib/supabase-server.ts`: `createSupabaseServer()` → `async`, `await cookies()`
+- `app/api/admin/approve/route.ts`: `await cookies()`
+- `app/auth/callback/route.ts`: `await cookies()`
+- `app/page.tsx`: `await cookies()`, `await createSupabaseServer()`
+- `app/dashboard/page.tsx`: `await cookies()`, `await createSupabaseServer()`
+- `app/dashboard/advisor/page.tsx`: `await createSupabaseServer()`
+- `app/admin/waitlist/page.tsx`: `await createSupabaseServer()`
+- `app/api/advisor/chat/route.ts`: `await createSupabaseServer()`
+- `app/reports/[id]/page.tsx`: `await createSupabaseServer()`
+- `app/sobre/page.tsx`: `SobrePage` e `generateMetadata` agora async, `await cookies()`
+- `middleware.ts` → `proxy.ts`, função renomeada de `middleware` para `proxy`
+- `next.config.mjs`: adicionado `turbopack.root` com `fileURLToPath(import.meta.url)`
+
+---
+
 ## [2026-05-25] — Radar TAIME: nova posição, 4 cards aleatórios, cards simplificados
 
 ### Status

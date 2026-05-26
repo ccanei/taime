@@ -30,7 +30,7 @@ async function getReport(id: string): Promise<{ report: Report; trends: ReportTr
 }
 
 export default async function ReportPage({ params }: Props) {
-  const supabase = createSupabaseServer()
+  const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

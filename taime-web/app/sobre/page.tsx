@@ -5,7 +5,7 @@ import Footer from '@/components/Footer'
 import { getTranslations, detectLocale } from '@/lib/i18n'
 
 export async function generateMetadata() {
-  const locale = detectLocale(cookies().get('taime-locale')?.value)
+  const locale = detectLocale((await cookies()).get('taime-locale')?.value)
   const t = getTranslations(locale)
   return {
     title: t.sobre.badge,
@@ -13,8 +13,8 @@ export async function generateMetadata() {
   }
 }
 
-export default function SobrePage() {
-  const locale = detectLocale(cookies().get('taime-locale')?.value)
+export default async function SobrePage() {
+  const locale = detectLocale((await cookies()).get('taime-locale')?.value)
   const t = getTranslations(locale)
   const s = t.sobre
 

@@ -15,7 +15,7 @@ async function getWaitlist(): Promise<WaitlistRecord[]> {
 }
 
 export default async function AdminWaitlistPage() {
-  const supabase = createSupabaseServer()
+  const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   if (!await isAdmin(user.email ?? '')) redirect('/')

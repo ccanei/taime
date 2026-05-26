@@ -87,7 +87,7 @@ COMMUNICATION STYLE:
 
 export async function POST(req: NextRequest) {
   // Auth
-  const supabase = createSupabaseServer()
+  const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

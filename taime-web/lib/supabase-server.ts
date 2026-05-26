@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 // Cliente autenticado — respeita RLS com sessão do usuário
-export function createSupabaseServer() {
-  const cookieStore = cookies()
+export async function createSupabaseServer() {
+  const cookieStore = await cookies()
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

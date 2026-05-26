@@ -7,7 +7,7 @@ import AdvisorView from './AdvisorView'
 export const metadata = { title: 'Executive Advisor · TAIME' }
 
 export default async function AdvisorPage() {
-  const supabase = createSupabaseServer()
+  const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 

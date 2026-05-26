@@ -19,3 +19,4 @@ batch-periods.json
 # Sistema
 .DS_Store
 *.log
+.vercel

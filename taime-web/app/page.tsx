@@ -107,13 +107,13 @@ function scoreRingCls(score: number): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function LandingPage() {
-  const locale = detectLocale(cookies().get('taime-locale')?.value)
+  const locale = detectLocale((await cookies()).get('taime-locale')?.value)
   const t = getTranslations(locale)
   const h = t.home
 
   let isLoggedIn = false
   try {
-    const supabase = createSupabaseServer()
+    const supabase = await createSupabaseServer()
     const { data: { user } } = await supabase.auth.getUser()
     isLoggedIn = !!user
   } catch {

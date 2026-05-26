@@ -51,11 +51,11 @@ const ADVISOR_LAUNCH = new Date('2026-05-21')
 const showNewBadge   = (new Date().getTime() - ADVISOR_LAUNCH.getTime()) < 30 * 24 * 60 * 60 * 1000
 
 export default async function DashboardPage() {
-  const supabase = createSupabaseServer()
+  const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const localeCookie = cookies().get('taime-locale')?.value
+  const localeCookie = (await cookies()).get('taime-locale')?.value
   const locale = localeCookie === 'en' ? 'en' : 'pt'
   const isEn = locale === 'en'
 
