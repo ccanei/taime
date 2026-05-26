@@ -1,0 +1,22 @@
+{
+  "name": "taime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TAIME — Strategic intelligence platform for SMEs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "collect": "npx ts-node collect-signals.ts",
+    "analyze": "npx ts-node analyze-signals.ts",
+    "report": "npx ts-node generate-report.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
+}

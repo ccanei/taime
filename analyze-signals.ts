@@ -1,0 +1,286 @@
+#!/usr/bin/env npx ts-node
+import 'dotenv/config';
+/**
+ * TAIME — Signal Analyzer
+ * Agrupa sinais do período em 3-5 clusters temáticos via Claude Sonnet 4.6
+ *
+ * BUG FIX: UUIDs nunca são enviados ao LLM.
+ * O LLM trabalha com índices numéricos ("001", "042").
+ * O mapeamento índice → UUID é resolvido localmente após a resposta.
+ *
+ * Usage:  npx ts-node analyze-signals.ts
+ * Env:    ANTHROPIC_API_KEY  SUPABASE_URL  SUPABASE_SERVICE_KEY
+ *         PERIOD (opcional — default: primeiro dia do mês atual)
+ */
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface SignalWithSource {
+  id: string;
+  title: string;
+  content: string;
+  metadata: { snippet?: string; published_date?: string; query_used?: string };
+  sources: { name: string; category: string } | null;
+}
+
+interface ClusterOutput {
+  name: string;
+  description: string;
+  signal_ids: string[]; // índices "001".."NNN" — mapeados para UUIDs antes de salvar
+  llm_reasoning: string;
+}
+
+interface LLMResponse {
+  clusters: ClusterOutput[];
+}
+
+interface AnthropicUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+const cfg = {
+  anthropicKey:        process.env.ANTHROPIC_API_KEY ?? '',
+  supabaseUrl:         (process.env.SUPABASE_URL ?? '').replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
+  supabaseKey:         process.env.SUPABASE_SERVICE_KEY ?? '',
+  model:               'claude-sonnet-4-6',
+  maxTokens:           4096,
+  contentPreviewChars: 400,
+};
+
+const now = new Date();
+const PERIOD = process.env.PERIOD
+  ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+// ─── Supabase REST ────────────────────────────────────────────────────────────
+
+function dbHeaders(represent = false) {
+  return {
+    apikey:         cfg.supabaseKey,
+    Authorization:  `Bearer ${cfg.supabaseKey}`,
+    'Content-Type': 'application/json',
+    Prefer:         represent ? 'return=representation' : 'return=minimal',
+  };
+}
+
+async function dbGet<T>(path: string): Promise<T[]> {
+  const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${path}`, { headers: dbHeaders(true) });
+  if (!res.ok) throw new Error(`DB GET /${path}: ${await res.text()}`);
+  return res.json() as Promise<T[]>;
+}
+
+async function dbPost(table: string, row: unknown): Promise<void> {
+  const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${table}`, {
+    method: 'POST', headers: dbHeaders(), body: JSON.stringify(row),
+  });
+  if (!res.ok) throw new Error(`DB POST ${table}: ${await res.text()}`);
+}
+
+// ─── Index map — UUID isolation ───────────────────────────────────────────────
+
+// Mapeia índice "001" → UUID real. O LLM nunca vê os UUIDs.
+type IndexMap = Map<string, string>;
+
+function buildIndexMap(signals: SignalWithSource[]): IndexMap {
+  const map = new Map<string, string>();
+  signals.forEach((s, i) => map.set(String(i + 1).padStart(3, '0'), s.id));
+  return map;
+}
+
+// Converte índices retornados pelo LLM de volta para UUIDs reais.
+// Índices inválidos ou não reconhecidos são descartados silenciosamente.
+function resolveToUUIDs(indices: string[], indexMap: IndexMap): string[] {
+  const resolved: string[] = [];
+  for (const token of indices) {
+    // Normaliza: aceita "1", "01", "001"
+    const key = String(parseInt(token, 10)).padStart(3, '0');
+    const uuid = indexMap.get(key);
+    if (uuid) resolved.push(uuid);
+  }
+  return [...new Set(resolved)]; // remove duplicatas
+}
+
+// ─── Prompt ───────────────────────────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are a senior strategic technology intelligence analyst at TAIME, \
+a platform that democratizes Gartner-level insights for SMEs.
+
+Analyze technology signals from tier-1 sources and identify 3–5 dominant thematic clusters.
+
+A "cluster" is a group of signals sharing a common strategic theme with direct implications \
+for SME business operations, technology investment, or competitive positioning.
+
+Rules:
+- Identify EXACTLY 3 to 5 clusters (never fewer, never more)
+- Each cluster references signals using their 3-digit INDEX (e.g., "001", "042", "117")
+  — NEVER invent or modify indices — only use indices that appear in the signal list
+- A signal belongs to its PRIMARY cluster only — no duplicates across clusters
+- Cluster names: concise, action-oriented (4–8 words)
+- Descriptions: 2–3 sentences on business relevance and urgency
+- Reasoning: explain why this cluster is dominant THIS period specifically
+
+Return VALID JSON ONLY — no markdown, no text outside the JSON.
+
+Schema:
+{
+  "clusters": [
+    {
+      "name": "concise cluster name",
+      "description": "2-3 sentences on business relevance for SMEs",
+      "signal_ids": ["001", "007", "042"],
+      "llm_reasoning": "why this cluster is strategically dominant this period"
+    }
+  ]
+}`;
+
+// UUIDs ocultados — LLM vê apenas o índice numérico
+function formatSignalsForLLM(signals: SignalWithSource[]): string {
+  return signals.map((s, i) => {
+    const idx     = String(i + 1).padStart(3, '0');
+    const source  = s.sources?.name ?? 'Unknown Source';
+    const preview = (s.content || s.metadata?.snippet || '').slice(0, cfg.contentPreviewChars);
+    return (
+      `[${idx}]\n` +
+      `Source: ${source}\n` +
+      `Title: ${s.title}\n` +
+      `Context: ${preview || '(no preview available)'}`
+    );
+  }).join('\n\n---\n\n');
+}
+
+// ─── Anthropic API ────────────────────────────────────────────────────────────
+
+async function callClaude(signalsText: string, signalCount: number): Promise<LLMResponse> {
+  const userPrompt =
+    `Analyze ${signalCount} technology signals for period ${PERIOD}.\n` +
+    `Use the 3-digit index (e.g., "001") in signal_ids — never invent new indices.\n\n` +
+    `SIGNALS:\n\n${signalsText}\n\n` +
+    `Return valid JSON only.`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         cfg.anthropicKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta':    'prompt-caching-2024-07-31',
+    },
+    body: JSON.stringify({
+      model:      cfg.model,
+      max_tokens: cfg.maxTokens,
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
+
+  const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage };
+  const u    = data.usage;
+  console.log(
+    `  Tokens: ${u.input_tokens}in / ${u.output_tokens}out` +
+    (u.cache_creation_input_tokens ? ` / ${u.cache_creation_input_tokens} cache-written` : '') +
+    (u.cache_read_input_tokens     ? ` / ${u.cache_read_input_tokens} cache-read`        : ''),
+  );
+
+  const text      = data.content.find(b => b.type === 'text')?.text ?? '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`LLM não retornou JSON válido:\n${text.slice(0, 400)}`);
+
+  try {
+    return JSON.parse(jsonMatch[0]) as LLMResponse;
+  } catch (e) {
+    throw new Error(`Falha ao parsear JSON: ${e}\n${jsonMatch[0].slice(0, 400)}`);
+  }
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  const missing = ['ANTHROPIC_API_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY'].filter(k => !process.env[k]);
+  if (missing.length) {
+    console.error(`\n✗ Variáveis faltando: ${missing.join(', ')}\n`); process.exit(1);
+  }
+
+  console.log('\n╔══════════════════════════════════╗');
+  console.log('║   TAIME — Signal Analyzer        ║');
+  console.log('╚══════════════════════════════════╝');
+  console.log(`Período:  ${PERIOD}`);
+  console.log(`Modelo:   ${cfg.model}\n`);
+
+  // Idempotência
+  const existing = await dbGet<{ id: string }>(`signal_clusters?period=eq.${PERIOD}&select=id`);
+  if (existing.length > 0) {
+    console.log(`⚠ Já existem ${existing.length} cluster(s) para ${PERIOD}.`);
+    console.log('  Delete-os antes de re-executar.\n');
+    process.exit(0);
+  }
+
+  // Carrega sinais
+  process.stdout.write('Carregando sinais... ');
+  const signals = await dbGet<SignalWithSource>(
+    `signals?period=eq.${PERIOD}&select=id,title,content,metadata,sources(name,category)`,
+  );
+  console.log(`${signals.length} encontrado(s).`);
+
+  if (signals.length < 5) {
+    console.error(`\n✗ Sinais insuficientes (${signals.length}). Execute collect-signals.ts.\n`);
+    process.exit(1);
+  }
+
+  // Constrói mapeamento índice → UUID (LLM nunca verá os UUIDs)
+  const indexMap   = buildIndexMap(signals);
+  const signalsText = formatSignalsForLLM(signals);
+
+  console.log(`Enviando ${signals.length} sinais para ${cfg.model} (IDs ocultados)...`);
+  const llmResult = await callClaude(signalsText, signals.length);
+
+  const clusters = llmResult.clusters ?? [];
+  if (clusters.length < 3 || clusters.length > 5) {
+    throw new Error(`LLM retornou ${clusters.length} cluster(s) — esperado 3-5.`);
+  }
+
+  // Resolve índices → UUIDs e descarta inválidos
+  let totalInvalid = 0;
+  for (const cluster of clusters) {
+    const before = cluster.signal_ids.length;
+    cluster.signal_ids = resolveToUUIDs(cluster.signal_ids, indexMap);
+    const removed = before - cluster.signal_ids.length;
+    if (removed > 0) {
+      console.warn(`  ⚠ "${cluster.name}": ${removed} índice(s) inválido(s) descartado(s)`);
+      totalInvalid += removed;
+    }
+  }
+
+  if (totalInvalid === 0) {
+    console.log('  ✓ Todos os índices resolvidos para UUIDs válidos.');
+  }
+
+  // Persiste clusters
+  console.log(`\nSalvando ${clusters.length} cluster(s)...`);
+  for (const cluster of clusters) {
+    await dbPost('signal_clusters', {
+      period:        PERIOD,
+      name:          cluster.name,
+      description:   cluster.description,
+      signal_ids:    cluster.signal_ids,
+      llm_reasoning: cluster.llm_reasoning,
+    });
+    console.log(`  ✓ "${cluster.name}" — ${cluster.signal_ids.length} sinais`);
+  }
+
+  const covered   = new Set(clusters.flatMap(c => c.signal_ids));
+  const uncovered = signals.length - covered.size;
+
+  console.log('\n' + '─'.repeat(50));
+  console.log(`✓ Clusters:        ${clusters.length}`);
+  console.log(`✓ Sinais cobertos: ${covered.size} / ${signals.length}`);
+  if (uncovered > 0) console.log(`~ Sem cluster:     ${uncovered} (ruído descartado)`);
+  console.log(`\nPróximo: npx ts-node generate-report.ts\n`);
+}
+
+main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });

@@ -1,0 +1,17 @@
+# Dependências
+node_modules/
+taime-web/node_modules/
+taime-web/.next/
+
+# Variáveis de ambiente — NUNCA subir
+.env
+.env.local
+taime-web/.env.local
+*.env
+
+# Arquivos de progresso do pipeline
+batch-progress.json
+
+# Logs e temporários
+*.log
+.DS_Store
