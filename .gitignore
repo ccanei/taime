@@ -1,17 +1,21 @@
 # Dependências
 node_modules/
 taime-web/node_modules/
-taime-web/.next/
 
-# Variáveis de ambiente — NUNCA subir
+# Variáveis de ambiente — NUNCA subir para o GitHub
 .env
 .env.local
 taime-web/.env.local
 *.env
 
-# Arquivos de progresso do pipeline
-batch-progress.json
+# Build
+taime-web/.next/
+taime-web/out/
 
-# Logs e temporários
-*.log
+# Logs e progresso do batch
+batch-progress.json
+batch-periods.json
+
+# Sistema
 .DS_Store
+*.log
