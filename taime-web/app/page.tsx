@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { getTranslations, detectLocale } from '@/lib/i18n'
 import { formatPeriod, scoreColor } from '@/lib/types'
@@ -40,32 +39,20 @@ interface TopTrend {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
-  )
-}
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
 async function getLatestReports(): Promise<LandingReport[]> {
-  const { data, error } = await adminClient()
-    .from('reports')
-    .select('id, period, period_label, period_type, title_pt_br, title_en, executive_summary_pt_br, executive_summary_en, published_at')
-    .eq('status', 'published')
-    .order('period', { ascending: false })
-    .limit(3)
-  if (error) console.error('getLatestReports:', error)
-  return (data as LandingReport[]) ?? []
+  try {
+    const res = await fetch(`${SITE_URL}/api/reports/latest`, { cache: 'no-store' })
+    return await res.json()
+  } catch { return [] }
 }
 
 async function getTopTrends(): Promise<TopTrend[]> {
-  const { data, error } = await adminClient()
-    .from('report_trends')
-    .select('id, report_id, rank, title_pt_br, title_en, taime_score, taime_framework_pt_br, taime_framework_en, then_now_next_pt_br, then_now_next_en')
-    .order('taime_score', { ascending: false })
-    .limit(3)
-  if (error) console.error('getTopTrends:', error)
-  return (data as TopTrend[]) ?? []
+  try {
+    const res = await fetch(`${SITE_URL}/api/trends/top`, { cache: 'no-store' })
+    return await res.json()
+  } catch { return [] }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

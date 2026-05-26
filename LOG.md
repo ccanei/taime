@@ -2,6 +2,30 @@
 
 ---
 
+## [2026-05-26] — Mover queries da home para API routes
+
+### Status
+- [x] `app/api/reports/latest/route.ts` criada — fetch direto ao Supabase com service key
+- [x] `app/api/trends/top/route.ts` criada — fetch direto ao Supabase com service key
+- [x] `app/page.tsx`: `adminClient()` + Supabase SDK removidos; `getLatestReports()` e `getTopTrends()` chamam as API routes via `fetch`
+- [x] `.env.local`: `NEXT_PUBLIC_SITE_URL=http://localhost:3000` adicionado
+- [x] `npm run build`: 0 erros TypeScript, 23 rotas (21 app + 2 novas API) ✓
+
+### Causa
+`SUPABASE_SERVICE_KEY` não estava acessível dentro do Server Component na Vercel (diferente do ambiente local). Padrão correto: service key só em API routes (`/api/*`) que são sempre server-side e têm acesso garantido às env vars no runtime da Vercel.
+
+### Ação necessária na Vercel
+Adicionar variável de ambiente no painel da Vercel:
+`NEXT_PUBLIC_SITE_URL=https://taime-web.vercel.app`
+
+### Mudanças
+- `app/api/reports/latest/route.ts`: nova rota, `force-dynamic`, fetch REST Supabase com service key
+- `app/api/trends/top/route.ts`: nova rota, `force-dynamic`, fetch REST Supabase com service key
+- `app/page.tsx`: import `createClient` removido; `adminClient()` removido; `getLatestReports/getTopTrends` agora fazem fetch para as API routes internas via `NEXT_PUBLIC_SITE_URL`
+- `taime-web/.env.local`: `NEXT_PUBLIC_SITE_URL=http://localhost:3000` adicionado
+
+---
+
 ## [2026-05-26] — Fix conflito de lockfiles: next.config.mjs + .gitignore
 
 ### Status
