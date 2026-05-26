@@ -27,7 +27,12 @@
       "Bash(curl -s http://localhost:3000/api/reports/latest)",
       "Bash(curl -sI http://localhost:3000/reports/6c73077f-f28c-43d9-acfd-b2ed5eff1b04)",
       "Bash(curl -sI http://localhost:3000/reports/qualquer-id)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "Bash(git fetch *)"
     ]
   }
 }

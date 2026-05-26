@@ -2,6 +2,27 @@
 
 ---
 
+## [2026-05-26] — Resend: emails da waitlist + setup SMTP do magic link
+
+### Status
+- [x] `app/api/waitlist/route.ts` envia 2 emails via Resend após inserir com sucesso:
+  - **Usuário** (`from: TAIME <noreply@taime.tech>`, subject `You're on the TAIME waitlist`): HTML escuro com logo `taime-icon.svg`, saudação personalizada (primeiro nome, fallback `there`), corpo bilíngue de boas-vindas e footer
+  - **Admin** (`claudineicanei1@gmail.com`, subject `New TAIME waitlist signup`): tabela com nome/email/empresa/cargo/interesse + botão direto para `/admin/waitlist`
+- [x] Envio em paralelo via `Promise.all([...]).catch(() => {})` — falhas no Resend NÃO bloqueiam o sucesso do cadastro (apenas `console.error`)
+- [x] `escapeHtml()` aplicado a todos os campos do usuário em ambos os emails (defesa XSS)
+- [x] Se `RESEND_API_KEY` ausente, `sendEmail` faz `console.error` e segue silencioso
+- [x] `taime-web/RESEND_SMTP_SETUP.md` criado com instruções passo-a-passo para configurar SMTP do Supabase com Resend + template do email de magic link
+- [x] `npm run build`: 0 erros, 0 warnings ✓
+
+### Por que SMTP customizado para magic link
+O email de magic link é enviado pelo próprio Supabase (não pela nossa API). Para customizar o visual (logo TAIME, fundo escuro, botão azul), precisa apontar o SMTP do Supabase para o Resend e substituir o template HTML no painel. A configuração é manual no painel do Supabase — daí o `.md`.
+
+### Variáveis necessárias
+- `RESEND_API_KEY` — já em `.env.local` (e na Vercel)
+- DNS do `taime.tech` precisa ter os registros do Resend validados para enviar de `noreply@taime.tech`
+
+---
+
 ## [2026-05-26] — Hardening Vercel: API routes robustas + waitlist via API + fallback SITE_URL
 
 ### Status
