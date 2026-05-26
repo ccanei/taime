@@ -39,11 +39,12 @@ interface TopTrend {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://taime-xi.vercel.app'
 
 async function getLatestReports(): Promise<LandingReport[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/reports/latest`, { cache: 'no-store' })
+    if (!res.ok) return []
     return await res.json()
   } catch { return [] }
 }
@@ -51,6 +52,7 @@ async function getLatestReports(): Promise<LandingReport[]> {
 async function getTopTrends(): Promise<TopTrend[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/trends/top`, { cache: 'no-store' })
+    if (!res.ok) return []
     return await res.json()
   } catch { return [] }
 }
@@ -308,20 +310,24 @@ export default async function LandingPage() {
       </section>
 
       {/* ── SEÇÃO 5: MEMÓRIA 25 ANOS ──────────────────────────────────── */}
-      <section className="bg-taime-900 py-24">
+      <section className="bg-taime-900 py-28">
         <div className="max-w-5xl mx-auto px-6">
-          <p className="text-xs font-bold tracking-widest text-white/30 mb-3 uppercase">{h.memBadge}</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 leading-snug">{h.memTitle}</h2>
+          <p className="text-xs font-bold tracking-widest text-white/30 mb-4 uppercase">{h.memBadge}</p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-5 leading-snug">{h.memTitle}</h2>
           <p className="text-white/60 text-lg leading-relaxed mb-12 max-w-2xl">{h.memBody}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
-            {h.memPeriods.map(({ period, freq, desc }) => (
-              <div key={period} className="border border-white/10 rounded-xl p-6">
-                <p className="text-2xl font-bold text-white mb-1 tabular-nums">{period}</p>
-                <p className="text-[10px] font-bold tracking-widest text-white/30 mb-3 uppercase">{freq}</p>
-                <p className="text-sm text-white/50 leading-relaxed">{desc}</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            {h.memCards.map(({ badge, title, subtitle, desc }) => (
+              <div key={title} className="bg-white/5 border border-white/10 rounded-2xl p-8 sm:p-10 flex flex-col gap-4">
+                <p className="text-[11px] font-bold tracking-widest text-taime-600 uppercase">{badge}</p>
+                <h3 className="text-3xl sm:text-4xl font-bold text-white leading-tight tabular-nums">{title}</h3>
+                <p className="text-base text-white/60 leading-snug">{subtitle}</p>
+                <div className="h-px bg-white/10 my-1" />
+                <p className="text-sm text-white/55 leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
+
           <Link href={isLoggedIn ? '/dashboard' : '/login'} className="inline-flex items-center gap-2 px-6 py-3 rounded-lg
                                          bg-white/10 text-white text-sm font-medium
                                          hover:bg-white/20 transition-colors border border-white/20">

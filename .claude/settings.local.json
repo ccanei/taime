@@ -21,7 +21,13 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(curl -s -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkY3lpbWx4amp6bG96bWZ2dWZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTM0MDMyNiwiZXhwIjoyMDk0OTE2MzI2fQ.2Sd6HJ1vyLXmVYdkez4Hs7QOk3FxpBoU9SscuvJ5-kM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkY3lpbWx4amp6bG96bWZ2dWZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTM0MDMyNiwiZXhwIjoyMDk0OTE2MzI2fQ.2Sd6HJ1vyLXmVYdkez4Hs7QOk3FxpBoU9SscuvJ5-kM' 'https://udcyimlxjjzlozmfvufb.supabase.co/rest/v1/reports?status=eq.published&select=id,period,period_label,period_type&order=period.asc')",
       "Bash(curl -s -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkY3lpbWx4amp6bG96bWZ2dWZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTM0MDMyNiwiZXhwIjoyMDk0OTE2MzI2fQ.2Sd6HJ1vyLXmVYdkez4Hs7QOk3FxpBoU9SscuvJ5-kM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkY3lpbWx4amp6bG96bWZ2dWZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTM0MDMyNiwiZXhwIjoyMDk0OTE2MzI2fQ.2Sd6HJ1vyLXmVYdkez4Hs7QOk3FxpBoU9SscuvJ5-kM' 'https://udcyimlxjjzlozmfvufb.supabase.co/rest/v1/report_trends?report_id=in.\\(690e74b0-03ff-4e11-b0be-64ccd1ae94ec,af760e7f-b82f-4312-a7e5-d3a0cbf72022\\)&select=report_id,rank,taime_score,then_now_next_pt_br&order=report_id.asc,rank.asc&limit=2')",
-      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Read(//tmp/**)",
+      "Bash(kill 7263)",
+      "Bash(curl -s http://localhost:3000/api/reports/latest)",
+      "Bash(curl -sI http://localhost:3000/reports/6c73077f-f28c-43d9-acfd-b2ed5eff1b04)",
+      "Bash(curl -sI http://localhost:3000/reports/qualquer-id)",
+      "Bash(git add *)"
     ]
   }
 }

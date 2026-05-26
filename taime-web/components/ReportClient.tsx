@@ -20,30 +20,69 @@ function ScoreGauge({ score }: { score: number }) {
 
 // ─── Score dimensions ─────────────────────────────────────────────────────────
 
-const DIMENSION_LABELS: Record<keyof ScoreDimensions, string> = {
-  market_maturity:      'Market Maturity',
-  competitive_pressure: 'Competitive Pressure',
-  strategic_impact:     'Strategic Impact',
-  execution_complexity: 'Execution Complexity',
-  competitive_lag_risk: 'Competitive Lag Risk',
+const DIMENSION_NAMES: Record<'pt-BR' | 'en', Record<keyof ScoreDimensions, string>> = {
+  'pt-BR': {
+    market_maturity:      'Maturidade de Mercado',
+    competitive_pressure: 'Pressão Competitiva',
+    strategic_impact:     'Impacto Estratégico',
+    execution_complexity: 'Complexidade de Execução',
+    competitive_lag_risk: 'Risco de Atraso Competitivo',
+  },
+  en: {
+    market_maturity:      'Market Maturity',
+    competitive_pressure: 'Competitive Pressure',
+    strategic_impact:     'Strategic Impact',
+    execution_complexity: 'Execution Complexity',
+    competitive_lag_risk: 'Competitive Lag Risk',
+  },
 }
 
-function ScoreDimensionsPanel({ dims }: { dims: ScoreDimensions }) {
+const DIMENSION_KEYS: Array<keyof ScoreDimensions> = [
+  'market_maturity',
+  'competitive_pressure',
+  'strategic_impact',
+  'execution_complexity',
+  'competitive_lag_risk',
+]
+
+function dimensionBarColor(score: number): string {
+  if (score >= 80) return 'bg-emerald-500'
+  if (score >= 60) return 'bg-amber-500'
+  return 'bg-orange-500'
+}
+
+function dimensionTextColor(score: number): string {
+  if (score >= 80) return 'text-emerald-700'
+  if (score >= 60) return 'text-amber-700'
+  return 'text-orange-700'
+}
+
+function ScoreDimensionsPanel({ dims, lang }: { dims: ScoreDimensions; lang: Lang }) {
+  const names = DIMENSION_NAMES[lang]
   return (
-    <div className="space-y-3">
-      {(Object.keys(DIMENSION_LABELS) as Array<keyof ScoreDimensions>).map(key => {
+    <div className="-mx-1 px-1 pb-1 flex gap-3 overflow-x-auto sm:grid sm:grid-cols-5 sm:gap-3 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
+      {DIMENSION_KEYS.map(key => {
         const { score, label } = dims[key]
         return (
-          <div key={key} className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500 w-44 shrink-0">{DIMENSION_LABELS[key]}</span>
-            <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+          <div
+            key={key}
+            className="rounded-xl border border-zinc-200 bg-white p-4 flex flex-col gap-2.5 shrink-0 w-44 sm:w-auto"
+          >
+            <p className="text-xs font-semibold text-zinc-800 leading-snug min-h-[2.5em]">
+              {names[key]}
+            </p>
+            <p className="text-[10px] font-medium tracking-wider text-zinc-400 uppercase leading-snug min-h-[1.5em]">
+              {label}
+            </p>
+            <div className="h-1.5 bg-zinc-100 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full score-bar ${score >= 85 ? 'bg-emerald-500' : score >= 70 ? 'bg-taime-600' : score >= 50 ? 'bg-amber-400' : 'bg-zinc-300'}`}
+                className={`h-full rounded-full score-bar ${dimensionBarColor(score)}`}
                 style={{ width: `${score}%` }}
               />
             </div>
-            <span className="text-xs font-semibold tabular-nums w-6 text-right text-zinc-700">{score}</span>
-            <span className="text-[10px] font-bold tracking-wide text-zinc-400 w-52 hidden lg:block">{label}</span>
+            <p className={`text-xl font-bold tabular-nums leading-none ${dimensionTextColor(score)}`}>
+              {score}
+            </p>
           </div>
         )
       })}
@@ -236,15 +275,19 @@ function TrendSection({ trend, lang, period }: { trend: ReportTrend; lang: Lang;
 
       <div className="px-8 py-6 space-y-8">
         {/* Score dimensions */}
-        <div>
-          <p className="section-label">Score Dimensions</p>
-          <ScoreDimensionsPanel dims={fw.score_dimensions} />
-          {rationale && (
-            <p className="mt-3 text-xs text-zinc-500 leading-relaxed italic border-l-2 border-zinc-200 pl-3">
-              {rationale}
+        {fw.score_dimensions && (
+          <div>
+            <p className="section-label">
+              {isPt ? 'Dimensões do Score' : 'Score Dimensions'}
             </p>
-          )}
-        </div>
+            <ScoreDimensionsPanel dims={fw.score_dimensions} lang={lang} />
+            {rationale && (
+              <p className="mt-3 text-xs text-zinc-500 leading-relaxed italic border-l-2 border-zinc-200 pl-3">
+                {rationale}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* THEN / NOW / NEXT */}
         <div>

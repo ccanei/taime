@@ -47,23 +47,30 @@ export default function LoginPage() {
     if (!name || !email || !interest) return
     setStatus('loading')
 
-    const supabase = createSupabaseBrowser()
-    const { error } = await supabase.from('waitlist').insert({
-      email:    email.trim().toLowerCase(),
-      name:     name.trim(),
-      company:  company.trim() || null,
-      role:     userRole.trim() || null,
-      interest,
-    })
+    try {
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:    name.trim(),
+          email:   email.trim().toLowerCase(),
+          company: company.trim() || null,
+          role:    userRole.trim() || null,
+          interest,
+        }),
+      })
 
-    if (error) {
-      const msg = error.code === '23505'
-        ? t.login.errDuplicate
-        : t.login.errGeneric
-      setErrorMsg(msg)
-      setStatus('error')
-    } else {
+      if (!res.ok) {
+        const msg = res.status === 409 ? t.login.errDuplicate : t.login.errGeneric
+        setErrorMsg(msg)
+        setStatus('error')
+        return
+      }
+
       setStatus('sent')
+    } catch {
+      setErrorMsg(t.login.errGeneric)
+      setStatus('error')
     }
   }
 

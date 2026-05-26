@@ -48,11 +48,20 @@ export const en: Translations = {
 
     memBadge:  'Unique differentiator',
     memTitle:  '25 years of strategic memory.',
-    memBody:   'TAIME covers 25 years of technology evolution with increasing granularity. No platform offers this depth of historical context with strategic interpretation.',
-    memPeriods: [
-      { period: '2000–2014', freq: 'Monthly reports',      desc: 'The structured information era: consolidation of internet, mobile, and cloud computing.' },
-      { period: '2015–2021', freq: 'Bi-weekly analysis',   desc: 'Digital acceleration and pandemic: platforms, automation, and forced digital transformation.' },
-      { period: '2022–now',  freq: 'Biweekly intelligence', desc: 'Continuous velocity and disruption: generative AI, agents, and workforce reorganization.' },
+    memBody:   'TAIME covers 25 years of technology evolution with increasing granularity. No platform offers this history with strategic interpretation.',
+    memCards: [
+      {
+        badge:    'Monthly reports',
+        title:    '2000 to 2014',
+        subtitle: 'The digital foundation era',
+        desc:     'Corporate internet, global ERP, virtualization, IT outsourcing, the birth of cloud computing and mobility. Each report documents the signals, decisions and adoption patterns that defined how organizations navigated the largest technology transformations of the early century. With TAIME Score, decision framework and THEN/NOW/NEXT temporal analysis for each identified trend.',
+      },
+      {
+        badge:    'Biweekly reports',
+        title:    '2015 to present',
+        subtitle: 'The acceleration era',
+        desc:     'SaaS, platforms, data as a strategic asset, automation, digital pandemic, generative and agentic AI. Every two weeks, TAIME documents the real state of the technology market with 5-dimension scoring, movement guidance and the historical context that transforms information into decision. The most granular strategic technology intelligence archive available.',
+      },
     ],
     memCta: 'Access the full archive →',
 

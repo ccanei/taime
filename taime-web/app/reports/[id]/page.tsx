@@ -4,7 +4,7 @@ import ReportClient from '@/components/ReportClient'
 import type { Report, ReportTrend } from '@/lib/types'
 
 interface Props {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 async function getReport(id: string): Promise<{ report: Report; trends: ReportTrend[] } | null> {
@@ -30,11 +30,13 @@ async function getReport(id: string): Promise<{ report: Report; trends: ReportTr
 }
 
 export default async function ReportPage({ params }: Props) {
+  const { id } = await params
+
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const data = await getReport(params.id)
+  const data = await getReport(id)
   if (!data) notFound()
 
   return <ReportClient report={data.report} trends={data.trends} />

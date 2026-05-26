@@ -45,12 +45,21 @@ export const pt = {
     ],
 
     memBadge:  'Diferencial único',
-    memTitle:  'Memória estratégica de 25 anos.',
+    memTitle:  '25 anos de memória estratégica.',
     memBody:   'O TAIME cobre 25 anos de evolução tecnológica com granularidade crescente. Nenhuma plataforma oferece esse histórico com interpretação estratégica.',
-    memPeriods: [
-      { period: '2000–2014', freq: 'Relatórios mensais',    desc: 'Era da informação estruturada: consolidação da internet, mobile e computação em nuvem.' },
-      { period: '2015–2021', freq: 'Análises quinzenais',   desc: 'Aceleração digital e pandemia: plataformas, automação e transformação digital forçada.' },
-      { period: '2022–hoje', freq: 'Inteligência quinzenal', desc: 'Velocidade e ruptura contínua: IA generativa, agentes e reorganização do trabalho.' },
+    memCards: [
+      {
+        badge:    'Relatórios mensais',
+        title:    '2000 a 2014',
+        subtitle: 'A era da fundação digital',
+        desc:     'Internet corporativa, ERP global, virtualização, outsourcing de TI, nascimento do cloud computing e mobilidade. Cada relatório documenta os sinais, as decisões e os padrões de adoção que definiram como organizações navegaram as maiores transformações tecnológicas do início do século. Com TAIME Score, framework decisório e análise temporal THEN/NOW/NEXT para cada tendência identificada.',
+      },
+      {
+        badge:    'Relatórios quinzenais',
+        title:    '2015 a hoje',
+        subtitle: 'A era da aceleração',
+        desc:     'SaaS, plataformas, dados como ativo estratégico, automação, pandemia digital, IA generativa e agêntica. A cada quinzena, o TAIME documenta o estado real do mercado tecnológico com scoring em 5 dimensões, orientação de movimento e o contexto histórico que transforma informação em decisão. O arquivo mais granular de inteligência estratégica em tecnologia disponível.',
+      },
     ],
     memCta: 'Acessar o histórico completo →',
 

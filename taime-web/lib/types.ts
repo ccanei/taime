@@ -20,7 +20,7 @@ export interface TaimeFramework {
   exit:   string
   // campos estendidos gerados pelo LLM
   executive_snapshot: string
-  score_dimensions:   ScoreDimensions
+  score_dimensions?:  ScoreDimensions
   confidence_basis:   string
   limitations:        string
 }

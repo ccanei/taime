@@ -2,6 +2,207 @@
 
 ---
 
+## [2026-05-26] — Hardening Vercel: API routes robustas + waitlist via API + fallback SITE_URL
+
+### Status
+- [x] `app/api/reports/latest/route.ts`: URL normalization (`replace /rest/v1` e `/$/`), env var validation, `if (!res.ok)` + `try/catch` retornando `[]` em qualquer falha
+- [x] `app/api/trends/top/route.ts`: mesmas correções
+- [x] `app/api/waitlist/route.ts` criada: POST com service key, trata 409 (duplicate), error handling completo
+- [x] `app/page.tsx`: fallback de `SITE_URL` mudado de `http://localhost:3000` → `https://taime-xi.vercel.app`; helpers agora verificam `if (!res.ok) return []`
+- [x] `app/login/page.tsx` `handleWaitlist`: inserção direta `supabase.from('waitlist').insert(...)` → `fetch('/api/waitlist', { POST })`. Trata 409 com `t.login.errDuplicate`, resto com `t.login.errGeneric`. `createSupabaseBrowser` mantido (ainda usado pelo magic link)
+- [x] `.env.local`: `NEXT_PUBLIC_SITE_URL=http://localhost:3000` já presente da entrega anterior — sem mudanças
+- [x] `npm run build`: 0 erros, 0 warnings, 24 rotas (nova `/api/waitlist` registrada) ✓
+
+### Por que isso resolve na Vercel
+- Inserir na `waitlist` direto do browser exige `INSERT` policy aberta (anon role) — frágil e dependente de RLS. Movendo para API route, usa service key no servidor, sem depender de RLS no client.
+- `SUPABASE_SERVICE_KEY` é server-only e não está disponível em Server Components na Vercel — daí o padrão de API route.
+- `SITE_URL` fallback agora aponta para a Vercel para o caso de a env var não estar configurada no painel; quando configurada (recomendado), ela ganha precedência.
+- URL normalization (`.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')`) tolera variações em como `NEXT_PUBLIC_SUPABASE_URL` é configurada (com ou sem trailing slash, com ou sem `/rest/v1`).
+
+### Ação necessária na Vercel
+Adicionar variável de ambiente no painel da Vercel:
+`NEXT_PUBLIC_SITE_URL=https://taime-xi.vercel.app`
+
+### Verificação: cliente browser
+`lib/supabase-browser.ts` já usa `createBrowserClient(NEXT_PUBLIC_SUPABASE_URL!, NEXT_PUBLIC_SUPABASE_ANON_KEY!)` — sem mudanças necessárias.
+
+---
+
+## [2026-05-26] — Fix next.config.mjs: trocar turbopack.root por outputFileTracingRoot
+
+### Status
+- [x] `taime-web/next.config.mjs` simplificado: removidos imports (`fileURLToPath`, `dirname`, `resolve`) e `turbopack.root`
+- [x] Adicionado `outputFileTracingRoot: process.cwd()` — aponta tracing root para o próprio diretório do app
+- [x] `npm run build`: 0 erros, 0 warnings (warning de mismatch entre `outputFileTracingRoot` e `turbopack.root` eliminado) ✓
+
+### Causa
+O warning anterior dizia que `outputFileTracingRoot` (inferido pelo Next como a raiz `claude-taime/`) e `turbopack.root` (que apontava para `..`) estavam coincidentemente apontando para o mesmo lugar, mas a inferência implícita do `outputFileTracingRoot` é frágil. Fixar ambos explicitamente para `process.cwd()` (que é o cwd quando `next build` roda — `taime-web/`) alinha o tracing à raiz correta do app sem depender de inferência.
+
+### Config final
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  outputFileTracingRoot: process.cwd(),
+}
+
+export default nextConfig
+```
+
+---
+
+## [2026-05-26] — Score Dimensions: refazer como grid de 5 cards bilíngue
+
+### Status
+- [x] `lib/types.ts`: `TaimeFramework.score_dimensions` agora opcional (`score_dimensions?: ScoreDimensions`)
+- [x] `components/ReportClient.tsx` `ScoreDimensionsPanel` reescrito:
+  - Layout: flex horizontal com scroll em mobile, `sm:grid sm:grid-cols-5` em desktop
+  - Nome da dimensão bilíngue (PT/EN) via `DIMENSION_NAMES` + `lang` prop
+  - Label CAPS abaixo do nome (`text-[10px] font-medium tracking-wider text-zinc-400 uppercase`)
+  - Barra de progresso colorida: `dimensionBarColor` (≥80 emerald, ≥60 amber, resto orange)
+  - Score grande em destaque (`text-xl font-bold tabular-nums`) com cor combinando (`dimensionTextColor`)
+  - Largura fixa em mobile (`w-44 shrink-0`) para permitir scroll horizontal
+- [x] `TrendSection`: guard `fw.score_dimensions && (...)` — não renderiza se ausente
+- [x] Section label traduzido: "Dimensões do Score" (PT) / "Score Dimensions" (EN)
+- [x] `npm run build`: 0 erros, 0 warnings ✓
+
+### Mapeamento dos nomes
+| chave | PT | EN |
+|---|---|---|
+| market_maturity | Maturidade de Mercado | Market Maturity |
+| competitive_pressure | Pressão Competitiva | Competitive Pressure |
+| strategic_impact | Impacto Estratégico | Strategic Impact |
+| execution_complexity | Complexidade de Execução | Execution Complexity |
+| competitive_lag_risk | Risco de Atraso Competitivo | Competitive Lag Risk |
+
+### Lógica de cor
+Diferente do `scoreColor` global (que usa ≥85/≥70/≥50). Para as dimensões usa a regra explícita:
+- score ≥ 80 → `bg-emerald-500` / `text-emerald-700`
+- score ≥ 60 → `bg-amber-500` / `text-amber-700`
+- resto → `bg-orange-500` / `text-orange-700`
+
+---
+
+## [2026-05-26] — Refazer cards "Memória 25 anos": 3 cards temáticos → 2 cards por era
+
+### Status
+- [x] `lib/i18n/pt.ts` + `lib/i18n/en.ts`: `memCards` reescrito (shape novo: `badge, title, subtitle, desc`), agora 2 itens
+- [x] `memImpact` removido dos dois i18n (violava as 3 regras: travessão, menção a quantidade de relatórios, menção a 47 fontes)
+- [x] `memNote` removido dos dois i18n (instrução explícita)
+- [x] `app/page.tsx` seção 5: grid `sm:grid-cols-3` → `md:grid-cols-2`, padding card `p-6` → `p-8 sm:p-10`
+- [x] Cards: badge (taime-600 uppercase), título grande (`text-3xl sm:text-4xl` branco bold), subtítulo (`text-base white/60`), linha divisória (`h-px bg-white/10`), texto (`text-sm white/55`)
+- [x] `<p>{h.memImpact}</p>` e `<p>{h.memNote}</p>` removidos da renderização
+- [x] `npm run build`: 0 erros, 0 warnings ✓
+
+### Conteúdo final (PT)
+- **2000 a 2014** · RELATÓRIOS MENSAIS · "A era da fundação digital"
+- **2015 a hoje** · RELATÓRIOS QUINZENAIS · "A era da aceleração"
+
+### Conteúdo final (EN)
+- **2000 to 2014** · MONTHLY REPORTS · "The digital foundation era"
+- **2015 to present** · BIWEEKLY REPORTS · "The acceleration era"
+
+### Regras respeitadas
+Nenhum travessão (`—`) nos textos. Nenhuma menção a quantidade de relatórios. Nenhuma menção ao número de fontes.
+
+---
+
+## [2026-05-26] — Refazer seção "25 anos de memória estratégica" com 3 cards temáticos
+
+### Status
+- [x] `lib/i18n/pt.ts`: `memTitle` reescrito; `memPeriods` removido; `memImpact`, `memCards` (3 itens), `memNote` adicionados
+- [x] `lib/i18n/en.ts`: mesmas adições (estrutura espelhada à pt — `Translations` é `typeof pt`)
+- [x] `app/page.tsx` seção 5: novo layout — badge + título + body + impact + 3 cards (grid 3/1) + nota + CTA
+- [x] Cards: `bg-white/5` + `border-white/10` (mais claro que `bg-taime-900`), número em `text-taime-600`, título branco bold, desc `white/55`
+- [x] `npm run build`: 0 erros, 0 warnings ✓
+
+### Conteúdo dos cards (PT)
+- **30+** — IA Agêntica em Operações
+- **15+** — Cibersegurança com IA
+- **15+** — Infraestrutura e Soberania
+
+### Conteúdo dos cards (EN)
+- **30+** — Agentic AI in Operations
+- **15+** — AI-Powered Cybersecurity
+- **15+** — Infrastructure and Sovereignty
+
+### Nota
+A página continua usando `getTranslations(locale)` (que já trata cookie `taime-locale`). Como `Translations = typeof pt`, qualquer mudança em pt.ts deve ser espelhada em en.ts ou TS quebra — ambos foram atualizados.
+
+---
+
+## [2026-05-26] — Remover cards da seção "Memória 25 anos" na home
+
+### Status
+- [x] `app/page.tsx` seção 5 (Memória 25 anos): grid de cards (`h.memPeriods.map(...)`) removido
+- [x] Mantidos: label `memBadge`, título `memTitle`, subtítulo `memBody`, botão CTA `memCta`
+- [x] Padding vertical da seção: `py-24` → `py-40` (respiro maior já que ficou só texto + CTA)
+- [x] Espaçamentos internos aumentados: label `mb-3 → mb-6`, título `mb-4 → mb-6`, subtítulo `mb-12 → mb-16`
+- [x] `npm run build`: 0 erros, 0 warnings, 23 rotas ✓
+
+### Nota
+`memPeriods` permanece definido em `lib/i18n/pt.ts` e `lib/i18n/en.ts` (não removido). Não é mais usado, mas mantê-lo é inócuo — se quiser limpar i18n no futuro, basta remover as chaves `memPeriods` dos dois arquivos.
+
+---
+
+## [2026-05-26] — Fix params como Promise no /reports/[id] (Next.js 16)
+
+### Status
+- [x] `app/reports/[id]/page.tsx`: `Props.params` tipado como `Promise<{ id: string }>`
+- [x] `ReportPage`: adicionado `const { id } = await params` antes de qualquer uso
+- [x] `getReport(params.id)` → `getReport(id)`
+- [x] Verificado: única rota dinâmica do app (`find app -type d -name "[*]"`) — nenhuma outra correção necessária
+- [x] Sem `generateMetadata` no arquivo, nada mais a corrigir
+- [x] `npm run build`: 0 erros, 0 warnings, 23 rotas ✓
+- [x] `GET /reports/6c73077f...` (ID real): 307 → `/login` ✓
+- [x] `GET /reports/qualquer-id` (ID inválido): 307 → `/login` ✓
+
+### Causa
+Next.js 16 mudou `params` (e `searchParams`) de objeto síncrono para `Promise`. Acessar `params.id` direto sem `await` causa erro de runtime e o type check falha quando `Props.params` é tipado corretamente como `Promise<...>`.
+
+---
+
+## [2026-05-26] — Migrar middleware.ts → proxy.ts (convenção Next.js 16)
+
+### Status
+- [x] `taime-web/middleware.ts` renomeado para `taime-web/proxy.ts` (função `middleware` → `proxy`)
+- [x] `config.matcher` mantido: `['/dashboard/:path*', '/reports/:path*', '/admin/:path*']`
+- [x] `npm run build`: 0 erros, 0 warnings (deprecation eliminado), 23 rotas, `ƒ Proxy (Middleware)` registrado
+- [x] `GET /reports/6c73077f...` (ID real): 307 → `/login` ✓ proxy protegendo
+- [x] `GET /reports/qualquer-id` (ID inválido): 307 → `/login` ✓ não dá 404
+
+### Causa
+Next.js 16 inverteu a convenção: `middleware.ts` foi deprecado em favor de `proxy.ts`. O warning explícito do build (`The "middleware" file convention is deprecated. Please use "proxy" instead.`) confirmou a mudança. Migrar para `proxy.ts` elimina o warning e alinha com a convenção oficial.
+
+### Detalhe TypeScript
+O snippet sugerido sem tipo no parâmetro `setAll(cookiesToSet)` quebra o build com `Parameter 'cookiesToSet' implicitly has an 'any' type` (TS strict). Tipo explícito mantido:
+```ts
+setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>)
+```
+
+---
+
+## [2026-05-26] — Restaurar middleware.ts + simplificar timeline (memPeriods)
+
+### Status
+- [x] `taime-web/proxy.ts` renomeado para `taime-web/middleware.ts` (função `proxy` → `middleware`)
+- [x] `config.matcher` mantido: `['/dashboard/:path*', '/reports/:path*', '/admin/:path*']`
+- [x] `lib/i18n/pt.ts` memPeriods: 3 itens → 2 itens (já estava correto da entrega anterior)
+- [x] `lib/i18n/en.ts` memPeriods: 3 itens → 2 itens (já estava correto da entrega anterior)
+- [x] `npm run build`: 0 erros, 23 rotas, `ƒ Proxy (Middleware)` registrado
+- [x] `GET /reports/6c73077f...` (ID real): 307 → `/login` ✓ middleware protegendo
+- [x] `GET /reports/qualquer-id` (ID inválido): 307 → `/login` ✓ não dá 404
+
+### memPeriods finais
+- **PT**: `2000–2014: Relatórios mensais` + `2015–hoje: Análises quinzenais`
+- **EN**: `2000–2014: Monthly reports` + `2015–present: Biweekly analysis`
+
+### ⚠ Warning conhecido (Next.js 16.2.4)
+> The "middleware" file convention is deprecated. Please use "proxy" instead.
+
+O Next.js 16 inverteu a convenção: agora prefere `proxy.ts` em vez de `middleware.ts`. O `middleware.ts` continua funcionando (compatibilidade), mas emite warning no build. Para silenciar, basta renomear novamente para `proxy.ts` e usar `export async function proxy(...)`. Mantido como `middleware.ts` por decisão do usuário.
+
+---
+
 ## [2026-05-26] — Mover queries da home para API routes
 
 ### Status
