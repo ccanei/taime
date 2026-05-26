@@ -20,3 +20,6 @@ batch-periods.json
 .DS_Store
 *.log
 .vercel
+
+# Lockfile raiz — Next.js usa apenas taime-web/package-lock.json
+package-lock.json

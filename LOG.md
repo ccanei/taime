@@ -2,6 +2,23 @@
 
 ---
 
+## [2026-05-26] — Fix conflito de lockfiles: next.config.mjs + .gitignore
+
+### Status
+- [x] `package-lock.json` da raiz adicionado ao `.gitignore` (Next.js usava o errado)
+- [x] `taime-web/next.config.mjs` restaurado com `turbopack.root` apontando para `..`
+- [x] `npm run dev`: ✓ Ready in 346ms — sem warnings de lockfile
+- [x] `npm run build`: 0 erros TypeScript, 19 páginas + Proxy (Middleware) ✓
+
+### Causa
+O Next.js (Turbopack) resolvia o `package-lock.json` da raiz `claude-taime/` em vez do `taime-web/package-lock.json`, gerando conflito silencioso. Solução: ignorar o lockfile da raiz via `.gitignore` e configurar `turbopack.root` para que o Turbopack resolva módulos a partir do workspace correto.
+
+### Mudanças
+- `.gitignore`: `package-lock.json` adicionado (raiz)
+- `taime-web/next.config.mjs`: reescrito com `fileURLToPath` + `turbopack.root: resolve(__dirname, '..')`
+
+---
+
 ## [2026-05-26] — Fix PGRST125: queries simplificadas em app/page.tsx
 
 ### Status
