@@ -120,8 +120,10 @@ Return ONLY the JSON array, no other text.`
     let signals: ClassifiedSignal[] = []
     try {
       const clean = text.replace(/```json|```/g, '').trim()
+      console.log('Claude response text:', clean.substring(0, 500))
       signals = JSON.parse(clean) as ClassifiedSignal[]
     } catch {
+      console.error('Failed to parse:', text.substring(0, 500))
       throw new Error('Failed to parse Claude response')
     }
 

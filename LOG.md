@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-05-27] — Debug: log do texto Claude no parse do radar cron
+
+### Status
+- [x] `app/api/cron/radar/route.ts` bloco do parse:
+  - `console.log('Claude response text:', clean.substring(0, 500))` antes do `JSON.parse`
+  - `console.error('Failed to parse:', text.substring(0, 500))` no catch
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Como usar
+Próxima execução do cron mostra nos Functions logs:
+- Sucesso: `Claude response text: [...]` com os primeiros 500 chars do JSON
+- Falha de parse: `Failed to parse: [...]` com os primeiros 500 chars do raw text (útil pra ver se o Claude está envolvendo em markdown, retornando texto extra, etc.)
+
+---
+
 ## [2026-05-27] — Debug: log do response body do Claude no radar cron
 
 ### Status
