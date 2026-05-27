@@ -2,6 +2,25 @@
 
 ---
 
+## [2026-05-27] — Email de aprovação via Resend em /api/admin/approve
+
+### Status
+- [x] `app/api/admin/approve/route.ts`: novo helper `sendApprovalEmail(to)` + chamada após sucesso do update da waitlist
+- [x] Template HTML em constante `APPROVAL_EMAIL_HTML` — estrutura table-based XHTML (mesmo padrão Outlook-compat do `userEmailHtml` da waitlist), com CTA `Access TAIME →` linkando para `https://www.taime.tech/login`
+- [x] Caracteres HTML-entities (`&rarr;`, `&middot;`) usados em vez de unicode literal — evita risco de codificação em clients que não respeitam UTF-8 declarado
+- [x] `from: 'TAIME <noreply@taime.tech>'`, `subject: 'Your TAIME access is ready'`
+- [x] Padrão de falha consistente com outras rotas Resend: `.catch((e) => console.error('Resend approval error:', e))` + early return se `RESEND_API_KEY` ausente. **Falha no email não bloqueia a aprovação** — usuário já foi criado no Auth e marcado como contacted
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Ordem de operações
+1. Auth check (admin only)
+2. Cria usuário no Supabase Auth (REST admin API)
+3. Marca `contacted = true` na waitlist
+4. Envia email de aprovação via Resend (best-effort)
+5. Retorna `{ success: true }`
+
+---
+
 ## [2026-05-27] — ADMIN_EMAIL agora vem de env var (fallback hardcoded preservado)
 
 ### Status
