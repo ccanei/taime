@@ -75,7 +75,10 @@ function adminEmailHtml(p: {
 }
 
 const sendEmail = async (to: string, subject: string, html: string): Promise<void> => {
-  if (!process.env.RESEND_API_KEY) return
+  if (!process.env.RESEND_API_KEY) {
+    console.error('admin/waitlist: missing RESEND_API_KEY')
+    return
+  }
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -92,9 +95,6 @@ const sendEmail = async (to: string, subject: string, html: string): Promise<voi
 }
 
 export async function POST(req: Request) {
-  console.log('waitlist called')
-  console.log('RESEND_API_KEY set:', !!process.env.RESEND_API_KEY)
-
   const { name, email, company, role, interest } = await req.json()
 
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_KEY ?? ''
 
   if (!supabaseUrl || !serviceKey) {
-    console.error('waitlist: missing env vars')
+    console.error('admin/waitlist: missing Supabase env vars')
     return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
   }
 
@@ -123,27 +123,23 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const err = await res.text()
-      console.error('waitlist insert:', res.status, err)
+      console.error('admin/waitlist insert:', res.status, err)
       if (res.status === 409) {
         return NextResponse.json({ error: 'Email já cadastrado' }, { status: 409 })
       }
       return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
     }
 
-    console.log('inserted:', email)
-
-    // Envio paralelo. Falhas individuais são silenciadas dentro de sendEmail
-    // via .catch, então este Promise.all nunca rejeita — não bloqueia cadastro.
-    console.log('sending emails...')
+    // Envio paralelo. Falhas individuais silenciadas dentro de sendEmail
+    // via .catch — Promise.all nunca rejeita, não bloqueia o cadastro.
     await Promise.all([
-      sendEmail(email, "You're on the TAIME waitlist", userEmailHtml(name)),
+      sendEmail(email, 'You are on the TAIME waitlist', userEmailHtml(name)),
       sendEmail(ADMIN_EMAIL, 'New TAIME waitlist signup', adminEmailHtml({ name, email, company, role, interest })),
     ])
-    console.log('emails sent')
 
     return NextResponse.json({ success: true })
   } catch (e) {
-    console.error('waitlist exception:', e)
+    console.error('admin/waitlist exception:', e)
     return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
   }
 }

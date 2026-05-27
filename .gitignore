@@ -21,5 +21,8 @@ batch-periods.json
 *.log
 .vercel
 
+# Claude Code settings — local-only, podem conter permissões/contexto sensível
+.claude/
+
 # Lockfile raiz — Next.js usa apenas taime-web/package-lock.json
 package-lock.json

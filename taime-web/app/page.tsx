@@ -39,12 +39,11 @@ interface TopTrend {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://taime-xi.vercel.app'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
 async function getLatestReports(): Promise<LandingReport[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/reports/latest`, { cache: 'no-store' })
-    if (!res.ok) return []
     return await res.json()
   } catch { return [] }
 }
@@ -52,7 +51,6 @@ async function getLatestReports(): Promise<LandingReport[]> {
 async function getTopTrends(): Promise<TopTrend[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/trends/top`, { cache: 'no-store' })
-    if (!res.ok) return []
     return await res.json()
   } catch { return [] }
 }

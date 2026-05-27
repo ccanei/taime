@@ -2,6 +2,58 @@
 
 ---
 
+## [2026-05-26] — Nova rota /api/admin/waitlist com Resend (substitui insert direto)
+
+### Status
+- [x] `app/api/admin/waitlist/route.ts` criada: POST recebe `{ name, email, company, role, interest }`, insere via service key na tabela `waitlist`, envia 2 emails via Resend
+- [x] Email **usuário** (`from: TAIME <noreply@taime.tech>`, subject `You are on the TAIME waitlist`): fundo escuro, saudação personalizada com primeiro nome (fallback `there`), corpo formal sem contrações
+- [x] Email **admin** (`claudineicanei1@gmail.com`, subject `New TAIME waitlist signup`): tabela com Nome/Email/Empresa/Cargo/Interesse/Data (timezone `America/Sao_Paulo`) + botão `Ver waitlist completa →` para `/admin/waitlist`
+- [x] `escapeHtml` em todos os campos do user nos 2 emails (defesa XSS)
+- [x] `await Promise.all([...])` — falhas silenciadas dentro de `sendEmail.catch`, não bloqueiam cadastro
+- [x] Trata 409 (duplicate) com `{ error: 'Email já cadastrado' }`
+- [x] `app/login/page.tsx` `handleWaitlist` atualizado: `supabase.from('waitlist').insert(...)` → `fetch('/api/admin/waitlist', POST)`. Trata 409 com `t.login.errDuplicate`, resto com `t.login.errGeneric`. `createSupabaseBrowser` mantido (ainda usado pelo magic link)
+- [x] `npm run build`: 0 erros, 0 warnings, 24 rotas (nova `/api/admin/waitlist`) ✓
+
+### Por que mover para API route
+`supabase.from('waitlist').insert(...)` direto do browser depende de RLS policy aberta para anon role — frágil. Com service key no servidor, dispensa RLS no client e permite enviar emails Resend no mesmo handler.
+
+### Endpoint
+`POST /api/admin/waitlist` — payload `{ name, email, company, role, interest }`, retorna `{ success: true }` ou `{ error: string }` com status apropriado.
+
+---
+
+## [2026-05-26] — Fix remote do git + force push: ccanei/taime-web → ccanei/taime
+
+### Status
+- [x] `git remote set-url origin https://github.com/ccanei/taime.git` — remote corrigido
+- [x] `git fetch origin` — identificada divergência total (remote tinha 2 commits independentes, local tinha 12 commits sem nenhum em comum)
+- [x] `git push --force-with-lease` (autorizado pelo user) — substituído `01f3969`/`0a25c4a` no remote pelos 12 commits locais
+
+### Commits que subiram (em ordem)
+```
+846fce7 chore: remove accidental empty file
+6a2b4fc debug: add logs to waitlist route
+39d07ab feat: Resend emails for waitlist signup
+5445366 feat: Resend emails for waitlist and magic link setup
+1faf659 fix: API routes + waitlist API + login Supabase client
+fc8e097 fix:home reports + Vercel compat
+e9f7a1c fix: downgrade Next.js 16 to 14 — performance + Vercel compat
+3670fe9 fix: PGRST125 query simplification + plural label
+03edc56 fix: home page uses service role for public report preview
+7ae21cc fix: next.config.mjs + middleware + multiple improvements
+bccc63a feat: TAIME initial commit — pipeline + frontend + 9 reports
+a82cd00 TAIME — initial commit
+```
+
+### Commits do remote que foram substituídos
+- `01f3969 fix: next.config.mjs outputFileTracingRoot` (substituído — mudança equivalente já está em `7ae21cc`)
+- `0a25c4a feat: TAIME initial deploy` (substituído — conteúdo equivalente em `a82cd00`/`bccc63a`)
+
+### Convenção
+**Repositório correto SEMPRE: `https://github.com/ccanei/taime.git`** — nunca `ccanei/taime-web`.
+
+---
+
 ## [2026-05-26] — Debug: logs em pontos estratégicos da rota waitlist
 
 ### Status
