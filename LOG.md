@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-05-27] — ADMIN_EMAIL agora vem de env var (fallback hardcoded preservado)
+
+### Status
+- [x] `app/api/admin/waitlist/route.ts`: `const ADMIN_EMAIL = 'claudineicanei1@gmail.com'` → `process.env.ADMIN_NOTIFICATION_EMAIL ?? 'claudineicanei1@gmail.com'`
+- [x] Fallback hardcoded mantido (mesmo email) — se a env var não for definida, comportamento atual é preservado
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Ação opcional na Vercel
+Para mudar o destinatário sem alterar código, definir:
+```
+ADMIN_NOTIFICATION_EMAIL=outro@taime.tech
+```
+
+---
+
 ## [2026-05-27] — Email da waitlist (user) reescrito como tabela (Outlook/Microsoft 365)
 
 ### Status

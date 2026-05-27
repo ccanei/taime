@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const ADMIN_EMAIL = 'claudineicanei1@gmail.com'
+const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'claudineicanei1@gmail.com'
 const FROM        = 'TAIME <noreply@taime.tech>'
 const ADMIN_URL   = 'https://taime-xi.vercel.app/admin/waitlist'
 
