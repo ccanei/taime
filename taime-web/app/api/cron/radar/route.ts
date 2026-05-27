@@ -102,7 +102,7 @@ Return ONLY the JSON array, no other text.`
         'Content-Type':      'application/json',
       },
       body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
+        model:      'claude-haiku-4-5',
         max_tokens: 4000,
         messages:   [{ role: 'user', content: prompt }],
       }),

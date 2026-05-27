@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-05-27] — Fix model ID do Claude Haiku no radar cron
+
+### Status
+- [x] `app/api/cron/radar/route.ts`: `model: 'claude-haiku-4-5-20251001'` → `'claude-haiku-4-5'`
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Nota
+A Anthropic aceita aliases de família (`claude-haiku-4-5`) que apontam para a snapshot mais recente. Útil quando o snapshot versionado (`-20251001`) está indisponível ou foi rotacionado.
+
+---
+
 ## [2026-05-27] — Radar cron roda nativo no Vercel (sem ts-node / child_process)
 
 ### Status
