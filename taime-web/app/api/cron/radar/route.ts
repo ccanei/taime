@@ -109,7 +109,9 @@ Return ONLY the JSON array, no other text.`
     })
 
     if (!claudeRes.ok) {
-      throw new Error(`Claude API error: ${claudeRes.status}`)
+      const errBody = await claudeRes.text()
+      console.error('Claude error:', claudeRes.status, errBody)
+      throw new Error(`Claude API error: ${claudeRes.status}: ${errBody}`)
     }
 
     const claudeData = await claudeRes.json() as { content?: Array<{ text?: string }> }

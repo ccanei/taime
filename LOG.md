@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-05-27] — Debug: log do response body do Claude no radar cron
+
+### Status
+- [x] `app/api/cron/radar/route.ts`: bloco `if (!claudeRes.ok)` agora lê `claudeRes.text()`, faz `console.error('Claude error:', status, body)` e inclui o body na mensagem do `Error`
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Como usar
+Na próxima falha do cron, o Vercel Functions log de `/api/cron/radar` mostra a mensagem de erro completa da Anthropic (model inválido, rate limit, payload malformado, etc.). A mensagem também volta no JSON da resposta `{ error: "..." }`.
+
+---
+
 ## [2026-05-27] — Revert model ID: `claude-haiku-4-5` → `claude-haiku-4-5-20251001`
 
 ### Status
