@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       if (!a.link || seen.has(a.link)) return false
       seen.add(a.link)
       return true
-    }).slice(0, 20)
+    }).slice(0, 8)
 
     if (unique.length === 0) {
       return NextResponse.json({ success: true, count: 0 })
@@ -103,7 +103,7 @@ Return ONLY the JSON array, no other text.`
       },
       body: JSON.stringify({
         model:      'claude-haiku-4-5-20251001',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages:   [{ role: 'user', content: prompt }],
       }),
     })

@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-05-27] — Radar cron: reduz para 8 artigos + dobra max_tokens
+
+### Status
+- [x] `app/api/cron/radar/route.ts`: `slice(0, 20)` → `slice(0, 8)` no dedupe pós-Serper
+- [x] `max_tokens: 4000` → `8000` na chamada ao Claude
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Por quê
+Com 20 artigos no prompt + 4000 max_tokens, o Claude podia truncar a saída no meio do JSON (causando o parse error que estávamos debugando). Menos artigos + mais espaço de resposta = JSON completo + relevância média mais alta no conjunto reduzido.
+
+---
+
 ## [2026-05-27] — Debug: log do texto Claude no parse do radar cron
 
 ### Status
