@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-05-27] — Radar cron roda nativo no Vercel (sem ts-node / child_process)
+
+### Status
+- [x] `app/api/cron/radar/route.ts` reescrito do zero:
+  - Removido `execSync('npx ts-node ../collect-radar.ts')` (não funcionava no serverless da Vercel — sem ts-node, sem child processes confiáveis)
+  - Lógica inteira agora dentro do handler: Serper → Claude Haiku → Supabase REST
+  - `export const maxDuration = 60` para cobrir a chamada ao Claude
+- [x] Pipeline em 3 passos:
+  1. **Serper** (`/news`, `tbs: 'qdr:d'`, 5 resultados por query × 4 queries = até 20 artigos, dedupe por URL)
+  2. **Claude Haiku** (`claude-haiku-4-5-20251001`, max_tokens 4000) classifica em PT+EN, categoria, relevance, source_category
+  3. **Supabase REST**: deleta `radar_signals` antigos (com filtro `id=not.is.null` exigido pelo PostgREST) e insere top 10 high/medium
+- [x] Tipos TS estritos: `SerperNewsItem`, `ClassifiedSignal`; sem `any` solto; `catch (error)` narrowed via `error instanceof Error`
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Variáveis necessárias na Vercel
+- `CRON_SECRET` — gate do endpoint (Vercel envia `Authorization: Bearer <secret>` em crons)
+- `SERPER_API_KEY` — busca de notícias
+- `ANTHROPIC_API_KEY` — classificação via Claude Haiku
+- `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_KEY` — gravação na tabela `radar_signals`
+
+### Detalhe PostgREST
+`DELETE` sem filtro retorna 400. Usei `?id=not.is.null` para deletar todas as linhas — equivalente seguro a `TRUNCATE`.
+
+---
+
 ## [2026-05-27] — Email de aprovação via Resend em /api/admin/approve
 
 ### Status
