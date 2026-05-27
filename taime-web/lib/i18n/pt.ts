@@ -112,8 +112,8 @@ export const pt = {
 
     plansLabel:  'Planos e acesso',
     plansTitle:  'Inteligência estratégica para cada perfil.',
-    plansSub:    'Pagamento via Stripe em breve. Cadastre-se para acesso antecipado.',
-    plansNote:   'Pagamento via Stripe em breve. Cadastre-se agora para garantir acesso antecipado e preços de lançamento.',
+    plansSub:    'Preços serão anunciados em breve. Cadastre-se para garantir acesso antecipado.',
+    plansNote:   'Preços serão anunciados em breve. Cadastre-se agora para garantir condições especiais de lançamento.',
     plans: [
       {
         name: 'Gratuito', price: null, badge: null,
@@ -122,13 +122,13 @@ export const pt = {
         cta: 'Ver relatório público', href: '#preview', highlight: false,
       },
       {
-        name: 'Essencial', price: 'R$ 197/mês', badge: 'Mais popular',
-        desc: 'Inteligência completa mensal',
+        name: 'Essencial', price: 'Acesso Antecipado', badge: 'Mais popular',
+        desc: 'Inteligência completa quinzenal',
         features: ['Relatório completo com todas as trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Score dimensions detalhado', 'Histórico de 90 dias'],
         cta: 'Solicitar acesso', href: '/login', highlight: true,
       },
       {
-        name: 'Estratégico', price: 'R$ 497/mês', badge: null,
+        name: 'Estratégico', price: 'Acesso Antecipado', badge: null,
         desc: 'Inteligência contínua e histórica',
         features: ['Tudo do Essencial', 'Relatórios quinzenais', 'Histórico completo desde 2000', 'Acesso antecipado ao próximo ciclo'],
         cta: 'Solicitar acesso', href: '/login', highlight: false,
@@ -153,7 +153,7 @@ export const pt = {
   faq: {
     items: [
       { q: 'O TAIME é apenas gerado por IA?', a: 'O TAIME combina coleta automatizada de sinais de fontes globais validadas com análise estruturada por IA e revisão editorial humana. O resultado não é geração automática de conteúdo. É inteligência curada com metodologia própria.' },
-      { q: 'Com que frequência os relatórios são publicados?', a: 'A frequência acompanha a velocidade histórica do mercado: relatórios mensais para 2000–2014, quinzenais de 2015 a 2021, e quinzenais a partir de 2022. O histórico completo está disponível para assinantes do plano Estratégico.' },
+      { q: 'Com que frequência os relatórios são publicados?', a: 'A frequência acompanha a velocidade histórica do mercado: relatórios mensais para 2000–2014 e quinzenais de 2015 até hoje. O histórico completo está disponível para assinantes do plano Estratégico.' },
       { q: 'Quais fontes o TAIME monitora?', a: 'O TAIME monitora continuamente mais de 45 fontes globais validadas, incluindo firmas de pesquisa, consultorias estratégicas, big techs, publicações financeiras, centros acadêmicos e organismos regulatórios. A lista completa de fontes não é divulgada para preservar a independência editorial.' },
       { q: 'Para quem o TAIME é indicado?', a: 'Para qualquer pessoa que toma decisões baseadas em tecnologia: executivos e C-level, gestores de área, consultores, advisors, empreendedores e profissionais que precisam entender o mercado tecnológico com profundidade e contexto histórico.' },
       { q: 'O que é o TAIME Score?', a: 'O TAIME Score (0–100) mede a convergência estratégica de uma tendência em 5 dimensões: maturidade de mercado, pressão competitiva, impacto estratégico, complexidade de execução e risco de defasagem. Scores acima de 80 indicam prioridade executiva imediata.' },
@@ -227,11 +227,11 @@ export const pt = {
   planos: {
     badge:    'Planos e acesso',
     h1:       'Inteligência estratégica para cada perfil.',
-    subtitle: 'Pagamento via Stripe em breve. Cadastre-se agora para garantir acesso antecipado e preços de lançamento.',
+    subtitle: 'Preços serão anunciados em breve. Cadastre-se agora para garantir condições especiais de lançamento.',
     planCards: [
-      { name: 'Gratuito',    price: 'Grátis',       desc: 'Preview dos relatórios públicos',  badge: null,          highlight: false },
-      { name: 'Essencial',   price: 'R$ 197/mês',   desc: 'Inteligência completa mensal',     badge: 'Mais popular', highlight: true  },
-      { name: 'Estratégico', price: 'R$ 497/mês',   desc: 'Inteligência contínua e histórica', badge: null,         highlight: false },
+      { name: 'Gratuito',    price: 'Grátis',           desc: 'Preview dos relatórios públicos',     badge: null,          highlight: false },
+      { name: 'Essencial',   price: 'Acesso Antecipado', desc: 'Inteligência completa quinzenal',    badge: 'Mais popular', highlight: true  },
+      { name: 'Estratégico', price: 'Acesso Antecipado', desc: 'Inteligência contínua e histórica',  badge: null,          highlight: false },
     ],
     planCtaBtn: 'Solicitar acesso →',
     featureLabels: [

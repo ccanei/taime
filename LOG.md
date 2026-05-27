@@ -2,6 +2,47 @@
 
 ---
 
+## [2026-05-27] — Preços "Acesso Antecipado", period_label no dashboard, FAQ sobre frequência
+
+### Status
+- [x] **Plans (home + /planos)** PT: `R$ 197/mês` / `R$ 497/mês` → `Acesso Antecipado`. Essencial desc `Inteligência completa mensal` → `Inteligência completa quinzenal`. Estratégico desc mantida (`Inteligência contínua e histórica`). Gratuito mantido (`Grátis`)
+- [x] **Plans EN**: `R$ 197/mo` / `R$ 497/mo` → `Early Access`. Essential desc `Complete monthly intelligence` → `Complete biweekly intelligence`. Strategic mantido
+- [x] **Nota dos planos** PT (`plansNote` na home + `subtitle` em /planos): "Preços serão anunciados em breve. Cadastre-se agora para garantir condições especiais de lançamento."
+- [x] **Nota dos planos** EN: "Pricing coming soon. Sign up now to secure special launch conditions."
+- [x] **plansSub** alinhado também (removida menção a Stripe): PT "Preços serão anunciados em breve. Cadastre-se para garantir acesso antecipado." / EN "Pricing coming soon. Sign up now to secure early access."
+- [x] **FAQ "frequência"** PT: "relatórios mensais para 2000–2014 e quinzenais de 2015 até hoje" (removido "quinzenais de 2015 a 2021, e quinzenais a partir de 2022")
+- [x] **FAQ "frequência"** EN: "monthly reports for 2000–2014 and biweekly from 2015 to present"
+- [x] **DashboardClient.tsx**: já implementado em PT (`report.period_label || formatPeriodFull(report.period, 'pt-BR')`) — sem alteração necessária. Query em `dashboard/page.tsx` faz `select('*, ...')` então `period_label` já vem
+- [x] `npm run build`: 0 erros, 0 warnings TypeScript ✓
+
+### Warning conhecido (não-bloqueador)
+Next detecta múltiplos `package-lock.json` (na raiz e em `taime-web/`) e infere workspace root como a raiz. Para silenciar, ou remover o lockfile raiz, ou definir `turbopack.root` no next.config. Build segue normal.
+
+### Não tocado
+- App/page.tsx e app/planos/page.tsx renderizam `price` com `text-2xl font-bold tabular-nums` — esse estilo foi pensado para "R$ 197/mês" (numérico). "Acesso Antecipado" / "Early Access" vão renderizar mas com `tabular-nums` (visual neutro, sem dano). Se quiser fonte menor para texto não-numérico, posso ajustar depois.
+
+---
+
+## [2026-05-26] — Untrack .claude/ + force push limpo
+
+### Status
+- [x] `.claude/` adicionado ao `.gitignore` raiz
+- [x] `git rm --cached -rf .claude/` — removido do tracking sem deletar do disco
+- [x] Commit refeito sem `.claude/settings.local.json` poluindo o diff
+- [x] `git push --force-with-lease` — substituiu `850028e` no remote por `f7dfc7c`. Os 2 commits "security" do remote foram absorvidos: a intenção (proteger `.claude/`) está agora no `.gitignore` do meu commit
+- [x] Remote agora reflete o trabalho real do projeto
+
+### Histórico final no remote (top 5)
+```
+f7dfc7c feat: waitlist API route with Resend emails
+846fce7 chore: remove accidental empty file
+6a2b4fc debug: add logs to waitlist route
+39d07ab feat: Resend emails for waitlist signup
+5445366 feat: Resend emails for waitlist and magic link setup
+```
+
+---
+
 ## [2026-05-26] — Nova rota /api/admin/waitlist com Resend (substitui insert direto)
 
 ### Status

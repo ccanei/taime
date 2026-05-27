@@ -114,8 +114,8 @@ export const en: Translations = {
 
     plansLabel:  'Plans and access',
     plansTitle:  'Strategic intelligence for every profile.',
-    plansSub:    'Stripe payments coming soon. Sign up now for early access.',
-    plansNote:   'Stripe payments coming soon. Sign up now to secure early access pricing.',
+    plansSub:    'Pricing coming soon. Sign up now to secure early access.',
+    plansNote:   'Pricing coming soon. Sign up now to secure special launch conditions.',
     plans: [
       {
         name: 'Free', price: null, badge: null,
@@ -124,13 +124,13 @@ export const en: Translations = {
         cta: 'View public report', href: '#preview', highlight: false,
       },
       {
-        name: 'Essential', price: 'R$ 197/mo', badge: 'Most popular',
-        desc: 'Complete monthly intelligence',
+        name: 'Essential', price: 'Early Access', badge: 'Most popular',
+        desc: 'Complete biweekly intelligence',
         features: ['Full report with all trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Detailed score dimensions', '90-day history'],
         cta: 'Request access', href: '/login', highlight: true,
       },
       {
-        name: 'Strategic', price: 'R$ 497/mo', badge: null,
+        name: 'Strategic', price: 'Early Access', badge: null,
         desc: 'Continuous and historical intelligence',
         features: ['Everything in Essential', 'Biweekly reports', 'Full archive since 2000', 'Early access to the next cycle'],
         cta: 'Request access', href: '/login', highlight: false,
@@ -155,7 +155,7 @@ export const en: Translations = {
   faq: {
     items: [
       { q: 'Is TAIME just AI-generated content?', a: 'TAIME combines automated signal collection from validated global sources with AI-powered structured analysis and human editorial review. The output is not automatic content generation. It is curated intelligence with a proprietary methodology.' },
-      { q: 'How often are reports published?', a: 'The frequency follows the historical pace of the market: monthly reports for 2000–2014, biweekly from 2015 to 2021, and biweekly from 2022 onward. The complete archive is available for Strategic plan subscribers.' },
+      { q: 'How often are reports published?', a: 'The frequency follows the historical pace of the market: monthly reports for 2000–2014 and biweekly from 2015 to present. The complete archive is available for Strategic plan subscribers.' },
       { q: 'Which sources does TAIME monitor?', a: 'TAIME continuously monitors more than 45 validated global sources, including research firms, strategic consultancies, big tech companies, financial publications, academic centers, and regulatory bodies. The full source list is not disclosed to preserve editorial independence.' },
       { q: 'Who is TAIME for?', a: 'For anyone who makes technology-based decisions: executives and C-suite, department managers, consultants, advisors, entrepreneurs, and professionals who need to understand the technology market with depth and historical context.' },
       { q: 'What is the TAIME Score?', a: 'The TAIME Score (0–100) measures the strategic convergence of a trend across 5 dimensions: market maturity, competitive pressure, strategic impact, execution complexity, and competitive lag risk. Scores above 80 indicate immediate executive priority.' },
@@ -229,11 +229,11 @@ export const en: Translations = {
   planos: {
     badge:    'Plans and access',
     h1:       'Strategic intelligence for every profile.',
-    subtitle: 'Stripe payments coming soon. Sign up now to secure early access pricing.',
+    subtitle: 'Pricing coming soon. Sign up now to secure special launch conditions.',
     planCards: [
-      { name: 'Free',       price: 'Free',        desc: 'Preview of public reports',           badge: null,          highlight: false },
-      { name: 'Essential',  price: 'R$ 197/mo',   desc: 'Complete monthly intelligence',        badge: 'Most popular', highlight: true  },
-      { name: 'Strategic',  price: 'R$ 497/mo',   desc: 'Continuous and historical intelligence', badge: null,        highlight: false },
+      { name: 'Free',       price: 'Free',          desc: 'Preview of public reports',              badge: null,           highlight: false },
+      { name: 'Essential',  price: 'Early Access',  desc: 'Complete biweekly intelligence',         badge: 'Most popular', highlight: true  },
+      { name: 'Strategic',  price: 'Early Access',  desc: 'Continuous and historical intelligence', badge: null,           highlight: false },
     ],
     planCtaBtn: 'Request access →',
     featureLabels: [
