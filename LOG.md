@@ -2,7 +2,18 @@
 
 ---
 
-## [2026-05-27] — Fix model ID do Claude Haiku no radar cron
+## [2026-05-27] — Revert model ID: `claude-haiku-4-5` → `claude-haiku-4-5-20251001`
+
+### Status
+- [x] `app/api/cron/radar/route.ts`: `model: 'claude-haiku-4-5'` → `'claude-haiku-4-5-20251001'` (revertido)
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Nota
+Alias `claude-haiku-4-5` não funcionou no Anthropic API neste setup — necessário usar o snapshot versionado `-20251001` (que é o ID documentado oficialmente).
+
+---
+
+## [2026-05-27] — Fix model ID do Claude Haiku no radar cron (alias)
 
 ### Status
 - [x] `app/api/cron/radar/route.ts`: `model: 'claude-haiku-4-5-20251001'` → `'claude-haiku-4-5'`
