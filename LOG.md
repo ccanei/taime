@@ -2,6 +2,27 @@
 
 ---
 
+## [2026-05-27] — Email da waitlist (user) reescrito como tabela (Outlook/Microsoft 365)
+
+### Status
+- [x] `app/api/admin/waitlist/route.ts` `userEmailHtml` reescrito com estrutura table-based:
+  - DOCTYPE XHTML 1.0 Transitional + `<html xmlns>` para tolerância máxima de renderers
+  - Meta charset UTF-8 + viewport para mobile
+  - `<table>` aninhada (outer 100% + inner 600px) — padrão recomendado para Outlook desktop, que não respeita CSS de layout em `<div>`
+  - Todos os estilos inline (Outlook ignora `<style>` blocks)
+  - `border="0" cellpadding="0" cellspacing="0"` em todas as tables (zera defaults do Outlook)
+  - Cores em hex (`#0F172A`, `#ffffff`) onde possível, rgba mantido nos textos secundários
+  - `font-family:Georgia,serif` declarado em cada `<td>`/elemento (Outlook não herda fontes confiavelmente)
+  - Padding em `<td>` (Outlook ignora `margin` na maioria dos elementos)
+- [x] `escapeHtml(firstName)` mantido — defesa XSS preservada
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Não tocado
+- Email do **admin** (`adminEmailHtml`): mantido como `<div>` simples — vai para `claudineicanei1@gmail.com` (Gmail render é tolerante). Se admin migrar para Outlook, repete o tratamento table-based.
+- Warning de lockfiles duplicados continua (não bloqueador).
+
+---
+
 ## [2026-05-27] — Preços "Acesso Antecipado", period_label no dashboard, FAQ sobre frequência
 
 ### Status

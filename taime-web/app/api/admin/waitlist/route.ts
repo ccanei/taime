@@ -17,27 +17,71 @@ function escapeHtml(s: string | null | undefined): string {
 }
 
 function userEmailHtml(name: string): string {
-  const firstName = (name || '').trim().split(/\s+/)[0] || 'there'
-  const safeName  = escapeHtml(firstName)
-  return `<!DOCTYPE html>
-<html>
-<body style="font-family:Georgia,serif;background:#0F172A;color:white;padding:48px;max-width:600px;margin:0 auto;">
-  <div style="margin-bottom:32px;">
-    <span style="font-size:22px;font-weight:bold;letter-spacing:4px;">TAIME</span>
-  </div>
-  <h1 style="font-size:24px;margin-bottom:16px;">
-    You are on the list, ${safeName}.
-  </h1>
-  <p style="color:rgba(255,255,255,0.7);line-height:1.7;">
-    Thank you for your interest in TAIME — strategic technology intelligence for leaders, managers, consultants and entrepreneurs.
-  </p>
-  <p style="color:rgba(255,255,255,0.7);line-height:1.7;">
-    We are in early access. You will receive an invitation as soon as your access is approved. We will be in touch shortly.
-  </p>
-  <div style="margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.4);font-size:12px;">
-    TAIME · Strategic Technology Intelligence<br/>
-    contact@taime.tech · taime.tech
-  </div>
+  const firstNameRaw = (name || '').trim().split(/\s+/)[0] || 'there'
+  const firstName    = escapeHtml(firstNameRaw)
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background-color:#0F172A;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%"
+    style="background-color:#0F172A;">
+    <tr>
+      <td align="center" style="padding:40px 0;">
+        <table border="0" cellpadding="0" cellspacing="0" width="600"
+          style="background-color:#0F172A;max-width:600px;">
+          <tr>
+            <td style="padding:0 40px 32px 40px;">
+              <span style="font-size:22px;font-weight:bold;
+                color:#ffffff;letter-spacing:4px;
+                font-family:Georgia,serif;">TAIME</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 40px 16px 40px;">
+              <h1 style="margin:0;font-size:24px;color:#ffffff;
+                font-family:Georgia,serif;font-weight:bold;">
+                You are on the list, ${firstName}.
+              </h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 40px 16px 40px;">
+              <p style="margin:0;font-size:15px;line-height:1.7;
+                color:rgba(255,255,255,0.7);font-family:Georgia,serif;">
+                Thank you for your interest in TAIME — strategic
+                technology intelligence for leaders, managers,
+                consultants and entrepreneurs.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 40px 40px 40px;">
+              <p style="margin:0;font-size:15px;line-height:1.7;
+                color:rgba(255,255,255,0.7);font-family:Georgia,serif;">
+                We are in early access. You will receive an invitation
+                as soon as your access is approved.
+                We will be in touch shortly.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px 40px 40px;
+              border-top:1px solid rgba(255,255,255,0.1);">
+              <p style="margin:0;font-size:12px;
+                color:rgba(255,255,255,0.4);font-family:Georgia,serif;">
+                TAIME · Strategic Technology Intelligence<br/>
+                contact@taime.tech · taime.tech
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`
 }
