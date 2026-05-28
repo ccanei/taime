@@ -645,14 +645,18 @@ async function persistReport(
   enMeta: ReportMetadata,
   ptBrTrends: TrendAnalysis[],
   enTrends: TrendAnalysis[],
+  report_number: number = 1,
 ): Promise<string> {
+  const titleSuffix   = report_number > 1 ? ` — Parte ${report_number}` : '';
+  const titleSuffixEn = report_number > 1 ? ` — Part ${report_number}` : '';
   const [report] = await dbPost<ReportRecord>('reports', {
     period:                  PERIOD,
     period_label:            PERIOD_LABEL_PT,
     period_type:             _pi.type,
     status:                  'generating',
-    title_pt_br:             ptBrMeta.report_title,
-    title_en:                enMeta.report_title,
+    report_number:           report_number,
+    title_pt_br:             ptBrMeta.report_title + titleSuffix,
+    title_en:                enMeta.report_title + titleSuffixEn,
     executive_summary_pt_br: ptBrMeta.executive_summary,
     executive_summary_en:    enMeta.executive_summary,
   }, true);
@@ -725,7 +729,7 @@ async function main(): Promise<void> {
   console.log('Score strategy: PT gera valores numéricos → EN herda scores do PT\n');
 
   // Idempotência
-  const existing = await dbGet<{ id: string }>(`reports?period=eq.${PERIOD}&select=id`);
+  const existing = await dbGet<{ id: string }>(`reports?period=eq.${PERIOD}&select=id&order=report_number.asc`);
   if (existing.length > 0) {
     console.log(`⚠ Relatório já existe (id: ${existing[0].id}). Delete-o e re-execute.\n`);
     process.exit(0);
@@ -791,18 +795,53 @@ async function main(): Promise<void> {
     callClaudeMetadata(enTrends, 'en'),
   ]);
 
-  // ── Persiste ──────────────────────────────────────────────────────────────
-  console.log('\nSalvando relatório...');
-  const reportId = await persistReport(clusters, ptBrMeta, enMeta, ptBrTrends, enTrends);
+  // ── Divisão automática de relatórios ─────────────────────────
+  const SPLIT_THRESHOLD = 7
+  const totalClusters = clusters.length
+
+  if (totalClusters <= SPLIT_THRESHOLD) {
+    // Relatório único
+    console.log(`\nGerando 1 relatório com ${totalClusters} trends...`)
+    const reportId = await persistReport(
+      clusters, ptBrMeta, enMeta, ptBrTrends, enTrends, 1
+    )
+    console.log(`✓ Relatório publicado: ${reportId}`)
+  } else {
+    // Divide em 2 relatórios
+    const split = Math.ceil(totalClusters / 2)
+    console.log(`\n${totalClusters} clusters → dividindo em 2 relatórios (${split} + ${totalClusters - split} trends)...`)
+
+    // Relatório 1
+    console.log(`\nRelatório 1/${2} (${split} trends)...`)
+    const reportId1 = await persistReport(
+      clusters.slice(0, split),
+      ptBrMeta, enMeta,
+      ptBrTrends.slice(0, split),
+      enTrends.slice(0, split),
+      1
+    )
+    console.log(`✓ Relatório 1 publicado: ${reportId1}`)
+
+    // Relatório 2
+    console.log(`\nRelatório 2/${2} (${totalClusters - split} trends)...`)
+    const reportId2 = await persistReport(
+      clusters.slice(split),
+      ptBrMeta, enMeta,
+      ptBrTrends.slice(split),
+      enTrends.slice(split),
+      2
+    )
+    console.log(`✓ Relatório 2 publicado: ${reportId2}`)
+  }
 
   // ── Resumo ────────────────────────────────────────────────────────────────
   const scores   = ptBrTrends.map(t => t.taime_score);
   const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
   console.log('\n' + '═'.repeat(52));
-  console.log(`✓ Relatório publicado`);
-  console.log(`  ID:           ${reportId}`);
+  console.log(`✓ Período publicado`);
   console.log(`  Período:      ${PERIOD}`);
+  console.log(`  Relatórios:   ${totalClusters <= SPLIT_THRESHOLD ? 1 : 2}`);
   console.log(`  Trends:       ${ptBrTrends.length}`);
   console.log(`  TAIME Scores: ${scores.join(', ')} (média: ${avgScore})`);
   console.log(`  Título pt-BR: ${ptBrMeta.report_title}`);
