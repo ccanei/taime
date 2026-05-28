@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-05-28] — Remove badge "Parte N" dos cards do dashboard
+
+### Status
+- [x] `components/DashboardClient.tsx`: removido o `<span>` que mostrava `· Parte N` / `· Part N` no card de relatório
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Contexto
+Alinhado com a remoção do sufixo "Parte N" dos títulos (no `generate-report.ts`, entrega anterior). O `report_number` continua na tabela e no tipo `Report`, mas não é mais exibido como badge. O `ReportClient.tsx` ainda mostra o badge "Relatório N do período..." na página individual — não tocado nesta entrega (só o dashboard foi pedido).
+
+---
+
 ## [2026-05-28] — Desativar fontes [DISABLED] no Supabase
 
 ### Status
