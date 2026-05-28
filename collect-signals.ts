@@ -121,9 +121,8 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
 
 function buildQuery(source: Source): string {
   const domain = new URL(source.url).hostname.replace(/^www\./, '');
-  const year   = periodInfo.start.getFullYear();
   const topic  = TOPIC_BY_CATEGORY[source.category] ?? 'technology AI trends innovation';
-  return `site:${domain} ${topic} ${year}`;
+  return `site:${domain} ${topic}`;
 }
 
 async function searchSerper(query: string): Promise<SerperOrganic[]> {
