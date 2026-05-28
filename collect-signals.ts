@@ -108,8 +108,8 @@ async function dbPost(table: string, row: unknown): Promise<void> {
 // ─── Serper ───────────────────────────────────────────────────────────────────
 
 const TOPIC_BY_CATEGORY: Record<string, string> = {
-  research:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  consulting: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  research:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor',
+  consulting: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor',
   vc:         'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   media:      'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   academic:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
@@ -117,6 +117,8 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
   vendor:     'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   security:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   financial:  'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  data:       'data platform OR data governance OR data sovereignty OR "data mesh" OR "data lakehouse" OR privacy OR "data protection" OR GDPR OR LGPD OR "data management" OR analytics OR "data strategy" OR "master data" OR "data quality"',
+  automation: '"business process" OR "process automation" OR RPA OR "robotic process automation" OR "intelligent automation" OR "process mining" OR "workflow automation" OR "hyperautomation" OR "low-code" OR "no-code" OR "process optimization"',
 };
 
 function buildQuery(source: Source): string {
