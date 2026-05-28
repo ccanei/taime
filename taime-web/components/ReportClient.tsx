@@ -413,10 +413,17 @@ export default function ReportClient({
           <p className="text-xs font-bold text-zinc-400 tracking-widest mb-3">
             {formatPeriod(report.period, lang).toUpperCase()}
           </p>
-          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 leading-snug mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 leading-snug mb-2">
             {title}
           </h1>
-          <div className="prose-taime text-sm leading-relaxed text-zinc-700 space-y-4">
+          {report.report_number && report.report_number > 1 && (
+            <p className="text-sm text-zinc-400 mb-6">
+              {isPt
+                ? `Relatório ${report.report_number} do período ${report.period_label || formatPeriod(report.period, 'pt-BR')}`
+                : `Report ${report.report_number} for ${report.period_label || formatPeriod(report.period, 'en')}`}
+            </p>
+          )}
+          <div className="prose-taime text-sm leading-relaxed text-zinc-700 space-y-4 mt-6">
             {summary.split('\n\n').map((p, i) => (
               <p key={i}>{p}</p>
             ))}

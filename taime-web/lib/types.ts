@@ -72,6 +72,7 @@ export interface Report {
   created_at:              string
   period_label:            string | null
   period_type:             string | null
+  report_number?:          number
   report_trends?:          Pick<ReportTrend, 'taime_score' | 'rank'>[]
 }
 

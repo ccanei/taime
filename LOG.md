@@ -2,6 +2,134 @@
 
 ---
 
+## [2026-05-28] — Frontend: suporte a múltiplos relatórios por período
+
+### Status
+- [x] `lib/types.ts` `Report`: adicionado `report_number?: number`
+- [x] `components/DashboardClient.tsx`: card do período mostra `· Parte N` / `· Part N` (em `text-taime-600`) quando `report_number > 1`
+- [x] `components/ReportClient.tsx`: abaixo do título principal, badge `Relatório N do período [label]` / `Report N for [label]` (`text-sm text-zinc-400`) quando `report_number > 1`. Ajustadas margens (h1 `mb-6`→`mb-2`, summary `mt-6`) — margens colapsam para espaçamento consistente com/sem badge
+- [x] MUDANÇA 3 (`dashboard/page.tsx`): query já usa `select('*, report_trends(...)')` → `*` traz `report_number`. `reports/[id]/page.tsx` usa `select('*')`. Sem alteração necessária
+- [x] `npm run build`: 0 erros TypeScript ✓
+
+### Guarda de renderização
+Condição `report.report_number && report.report_number > 1` — seguro porque `report_number` nunca é 0 (default 1 no backend). Quando undefined → não renderiza; quando 1 → `false`; quando >1 → mostra badge.
+
+### Não tocado
+- Home (`/api/reports/latest`) tem select explícito SEM `report_number` — não pedido, e a home só mostra preview de relatórios, não diferencia partes.
+- Ordenação secundária por `report_number` no dashboard não adicionada — o badge "Parte N" já distingue visualmente os 2 reports do mesmo período.
+
+---
+
+## [2026-05-28] — generate-report.ts: divisão automática de relatórios (>7 clusters)
+
+### Status
+- [x] `persistReport`: assinatura ganhou `report_number: number = 1`; objeto `reports` agora inclui `report_number`
+- [x] Idempotência: `reports?period=eq.${PERIOD}&select=id&order=report_number.asc`
+- [x] `main()`: bloco de persistência substituído por lógica de divisão
+  - **≤ 7 clusters** → 1 relatório (`report_number = 1`)
+  - **8–12 clusters** → 2 relatórios: parte 1 = `ceil(n/2)` clusters, parte 2 = restante (`report_number` 1 e 2)
+- [x] Labels: `report_number > 1` adiciona ` — Parte N` (PT) / ` — Part N` (EN) ao título
+- [x] Resumo de `main()` adaptado: `✓ Período publicado`, linha `ID:` removida (não há ID único na divisão), adicionado `Relatórios: 1|2`
+- [x] Type-check com `tsconfig.json` real (target ES2022): 0 erros em generate-report.ts
+
+### Pré-requisito de schema (Supabase)
+A tabela `reports` precisa da coluna `report_number`:
+```sql
+ALTER TABLE reports ADD COLUMN report_number int DEFAULT 1;
+```
+Sem ela, o `dbPost('reports', ...)` falha. Verificar antes de rodar o pipeline.
+
+### Combinação com entregas anteriores
+Junto com clusters 4-12 (entrega anterior), períodos densos agora podem virar 2 relatórios (até 12 trends divididas em 6+6), em vez de forçar tudo num único relatório de 3-5 trends.
+
+---
+
+## [2026-05-27] — generate-report.ts: contra-tese opcional no framework
+
+### Status
+- [x] Bloco `COUNTER-THESIS (optional — include ONLY if a genuine specific condition exists)` adicionado ao prompt após `EXIT:` — instrução completa sobre quando incluir vs. omitir, com exemplos válidos (regulatório, prerequisitos org, market timing) e proibição de truismos
+- [x] `TREND_SCHEMA` ganhou campo `"counter_thesis"` opcional dentro do bloco `taime_framework` (chave única em inglês — convenção do projeto; ver decisão abaixo)
+- [x] Tipo TS inline em `TrendAnalysis.taime_framework` ganhou `counter_thesis?: string | null` **e** `contra_tese?: string | null` (ambos opcionais — permite que o LLM grave qualquer das duas chaves sem quebrar TS)
+
+### Decisão sobre nome da chave (Opção A)
+O prompt menciona `PT label: "contra_tese" / EN label: "counter_thesis"`, mas o JSON `TREND_SCHEMA` usa **uma única chave**: `counter_thesis`. Razão: o `TREND_SCHEMA` é um único const string compartilhado por ambas as chamadas PT e EN — parametrizar por idioma demandaria refatorar o schema em função, fora do escopo cirúrgico desta entrega. Com `counter_thesis` no schema, espera-se que o LLM siga a chave do schema em ambos idiomas (com conteúdo no idioma correto). Se quiser literal `contra_tese` em PT no banco, próximo passo é transformar `TREND_SCHEMA` em `trendSchema(language)`.
+
+### Espalhamento no save
+`taime_framework_pt_br/en` no DB recebem o objeto via `...p.taime_framework`/`...e.taime_framework`. Qualquer campo novo (incluindo `counter_thesis`) é propagado automaticamente sem mudança no código de gravação.
+
+### Não tocado
+- `taime-web/lib/types.ts` `TaimeFramework` (não está no escopo desta entrega). Se a UI precisar mostrar `counter_thesis`, expandir esse tipo posteriormente.
+
+---
+
+## [2026-05-27] — Pipeline: queries amplas + clusters 4-12
+
+### Status
+- [x] `collect-signals.ts` `TOPIC_BY_CATEGORY`: 8 queries específicas → 8 queries iguais e amplas (`AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor`). Mantidas todas as 8 keys (`research`, `consulting`, `vc`, `media`, `academic`, `think_tank`, `vendor`, `security`)
+- [x] `analyze-signals.ts` regra de cluster: `EXACTLY 3 to 5` → `between 4 and 12 ... minimum 8 signals. Quality over quantity.` (linha do prompt)
+- [x] `analyze-signals.ts` validação: `clusters.length < 3 || > 5` → `< 4 || > 12`, com mensagem atualizada
+- [x] `analyze-signals.ts` comentário do header alinhado (`3-5` → `4-12`)
+
+### Por quê
+Queries por categoria eram restritivas demais (cada categoria pegava só seu nicho — `vc` só via "startup investment", `security` só via "threat intelligence"). Com a query ampla idêntica para todas, cada fonte é varrida pelo mesmo leque de 14 termos estratégicos via Serper — mais densidade de sinais e maior chance de capturar trends transversais. Clusters de 4-12 (em vez de 3-5 fixos) deixam o Claude expressar a granularidade real do período: períodos densos viram relatórios maiores, períodos rasos ainda têm pelo menos 4. Minimum 8 signals/cluster filtra ruído.
+
+### Trade-off
+Queries idênticas significam que duas fontes da mesma categoria podem buscar resultados parecidos. O `buildQuery` ainda diferencia por `site:domain`, então não há duplicação real — mas pode haver mais sobreposição entre temas. Vale observar nos próximos runs.
+
+### Próximo
+Rodar `npx ts-node batch-pipeline.ts --resume` para reprocessar os 7 períodos falhados com a nova lógica.
+
+---
+
+## [2026-05-27] — Batch pipeline 2025 (17 períodos) — concluído
+
+### Resultado
+- **10/17 completed** (~$4.80 efetivo, ~59% sucesso)
+- **7/17 failed** (~$3.36 não gasto — falhas antes de chamar Claude na maioria)
+- Exit code 0 do batch-pipeline.ts; falhas individuais não abortam o batch
+
+### Períodos publicados (com TAIME Scores)
+
+| Período | Label | Scores das 5 trends | Média |
+|---|---|---|---|
+| 2025-01-01 | 1ª Quinzena de Janeiro | 87, 84, 82, 81, 81 | **83** |
+| 2025-01-16 | 2ª Quinzena de Janeiro | 89, 84, 84, 84, 85 | **85** |
+| 2025-02-01 | 1ª Quinzena de Fevereiro | 84, 82, 81, 79, 84 | **82** |
+| 2025-04-01 | 1ª Quinzena de Abril | 84, 82, 84, 81, 82 | **83** |
+| 2025-04-16 | 2ª Quinzena de Abril | 85, 87, 82, 84, 79 | **83** |
+| 2025-05-01 | 1ª Quinzena de Maio | 84, 84, 82, 85, 84 | **84** |
+| 2025-05-16 | 2ª Quinzena de Maio | 87, 84, 85, 84, 82 | **84** |
+| 2025-06-01 | 1ª Quinzena de Junho | 87, 82, 81, 84, 82 | **83** |
+| 2025-07-01 | 1ª Quinzena de Julho | 83, 84, 81, 84, 84 | **83** |
+| 2025-07-16 | 2ª Quinzena de Julho | 84, 84, 81, 87, 86 | **84** |
+
+Média geral: **~83.4** (range 82–85). Top score absoluto: **89** (2025-01-16, trend rank 1).
+
+### Períodos com falha (7)
+
+| Período | Etapa | Causa |
+|---|---|---|
+| 2025-02-16 | collect-signals | `TypeError: fetch failed` (Serper) |
+| 2025-03-01 | collect-signals | `TypeError: fetch failed` (Serper) |
+| 2025-03-16 | collect-signals | `TypeError: fetch failed` (Serper) |
+| 2025-06-16 | generate-report | JSON inválido do Claude (parse falhou mesmo após repair) — trend "Agentic AI Deployment Risks and Enterprise Readiness" |
+| 2025-08-01 | generate-report | `ETIMEDOUT` na Anthropic (rede caiu durante chamada) |
+| 2025-12-01 | collect-signals | `TypeError: fetch failed` (Serper) |
+| 2025-12-16 | collect-signals | `TypeError: fetch failed` (Serper) |
+
+6 das 7 falhas são de rede (Serper/Anthropic) — provavelmente reproduzíveis se a rede normalizar.
+
+### Para reprocessar
+```
+npx ts-node batch-pipeline.ts --resume
+```
+Reaplica nos 7 periods em `failed`. Custo estimado: ~$3.36.
+
+### Idempotency
+Pipeline pula relatórios já publicados via `reportExists(periodKey)` — re-runs não duplicam dados no Supabase.
+
+---
+
 ## [2026-05-27] — Radar cron: reduz para 8 artigos + dobra max_tokens
 
 ### Status

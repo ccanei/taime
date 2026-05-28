@@ -192,6 +192,11 @@ export default function DashboardClient({
                       {locale === 'en'
                         ? formatPeriodFull(report.period, 'en')
                         : (report.period_label || formatPeriodFull(report.period, 'pt-BR'))}
+                      {report.report_number && report.report_number > 1 && (
+                        <span className="ml-2 text-taime-600">
+                          {locale === 'en' ? `· Part ${report.report_number}` : `· Parte ${report.report_number}`}
+                        </span>
+                      )}
                     </p>
                     <h2 className="text-base font-semibold text-zinc-900 leading-snug
                                    group-hover:text-taime-600 transition-colors line-clamp-2">
