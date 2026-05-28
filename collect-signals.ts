@@ -108,14 +108,14 @@ async function dbPost(table: string, row: unknown): Promise<void> {
 // ─── Serper ───────────────────────────────────────────────────────────────────
 
 const TOPIC_BY_CATEGORY: Record<string, string> = {
-  research:   'technology trends artificial intelligence digital transformation',
-  consulting: 'technology strategy AI digital transformation future of work',
-  vc:         'AI technology startup investment emerging trends',
-  media:      'artificial intelligence technology innovation breakthroughs',
-  academic:   'AI machine learning research technology implications',
-  think_tank: 'technology policy AI digital economy governance',
-  vendor:     'product announcement AI technology enterprise cloud platform',
-  security:   'threat intelligence cybersecurity enterprise risk vulnerability',
+  research:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  consulting: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  vc:         'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  media:      'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  academic:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  think_tank: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  vendor:     'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  security:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
 };
 
 function buildQuery(source: Source): string {

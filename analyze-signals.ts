@@ -2,7 +2,7 @@
 import 'dotenv/config';
 /**
  * TAIME — Signal Analyzer
- * Agrupa sinais do período em 3-5 clusters temáticos via Claude Sonnet 4.6
+ * Agrupa sinais do período em 4-12 clusters temáticos via Claude Sonnet 4.6
  *
  * BUG FIX: UUIDs nunca são enviados ao LLM.
  * O LLM trabalha com índices numéricos ("001", "042").
@@ -115,7 +115,7 @@ A "cluster" is a group of signals sharing a common strategic theme with direct i
 for SME business operations, technology investment, or competitive positioning.
 
 Rules:
-- Identify EXACTLY 3 to 5 clusters (never fewer, never more)
+- Identify between 4 and 12 clusters based on signal convergence. Only create a cluster if it has strong signal support (minimum 8 signals). Quality over quantity.
 - Each cluster references signals using their 3-digit INDEX (e.g., "001", "042", "117")
   — NEVER invent or modify indices — only use indices that appear in the signal list
 - A signal belongs to its PRIMARY cluster only — no duplicates across clusters
@@ -240,8 +240,8 @@ async function main(): Promise<void> {
   const llmResult = await callClaude(signalsText, signals.length);
 
   const clusters = llmResult.clusters ?? [];
-  if (clusters.length < 3 || clusters.length > 5) {
-    throw new Error(`LLM retornou ${clusters.length} cluster(s) — esperado 3-5.`);
+  if (clusters.length < 4 || clusters.length > 12) {
+    throw new Error(`LLM retornou ${clusters.length} cluster(s) — esperado 4-12.`);
   }
 
   // Resolve índices → UUIDs e descarta inválidos
