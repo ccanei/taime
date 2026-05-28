@@ -788,45 +788,53 @@ async function main(): Promise<void> {
   }
   if (allMatch) console.log('  ✓ Todos os scores idênticos PT = EN');
 
-  // ── Metadata ──────────────────────────────────────────────────────────────
-  console.log('\nGerando metadados do relatório...');
-  const [ptBrMeta, enMeta] = await Promise.all([
-    callClaudeMetadata(ptBrTrends, 'pt-BR'),
-    callClaudeMetadata(enTrends, 'en'),
-  ]);
-
   // ── Divisão automática de relatórios ─────────────────────────
   const SPLIT_THRESHOLD = 7
   const totalClusters = clusters.length
 
   if (totalClusters <= SPLIT_THRESHOLD) {
-    // Relatório único
+    // Relatório único — metadados gerados com todas as trends
+    console.log('\nGerando metadados do relatório...')
+    const [ptBrMeta, enMeta] = await Promise.all([
+      callClaudeMetadata(ptBrTrends, 'pt-BR'),
+      callClaudeMetadata(enTrends, 'en'),
+    ])
     console.log(`\nGerando 1 relatório com ${totalClusters} trends...`)
     const reportId = await persistReport(
       clusters, ptBrMeta, enMeta, ptBrTrends, enTrends, 1
     )
     console.log(`✓ Relatório publicado: ${reportId}`)
   } else {
-    // Divide em 2 relatórios
+    // Divide em 2 relatórios — metadados gerados separadamente para cada grupo
     const split = Math.ceil(totalClusters / 2)
     console.log(`\n${totalClusters} clusters → dividindo em 2 relatórios (${split} + ${totalClusters - split} trends)...`)
 
-    // Relatório 1
-    console.log(`\nRelatório 1/${2} (${split} trends)...`)
+    // Relatório 1 — metadados baseados apenas nas trends 1..split
+    console.log(`\nGerando metadados do Relatório 1 (${split} trends)...`)
+    const [ptBrMeta1, enMeta1] = await Promise.all([
+      callClaudeMetadata(ptBrTrends.slice(0, split), 'pt-BR'),
+      callClaudeMetadata(enTrends.slice(0, split), 'en'),
+    ])
+    console.log(`\nGerando Relatório 1/${2} (${split} trends)...`)
     const reportId1 = await persistReport(
       clusters.slice(0, split),
-      ptBrMeta, enMeta,
+      ptBrMeta1, enMeta1,
       ptBrTrends.slice(0, split),
       enTrends.slice(0, split),
       1
     )
     console.log(`✓ Relatório 1 publicado: ${reportId1}`)
 
-    // Relatório 2
-    console.log(`\nRelatório 2/${2} (${totalClusters - split} trends)...`)
+    // Relatório 2 — metadados baseados apenas nas trends split+1..end
+    console.log(`\nGerando metadados do Relatório 2 (${totalClusters - split} trends)...`)
+    const [ptBrMeta2, enMeta2] = await Promise.all([
+      callClaudeMetadata(ptBrTrends.slice(split), 'pt-BR'),
+      callClaudeMetadata(enTrends.slice(split), 'en'),
+    ])
+    console.log(`\nGerando Relatório 2/${2} (${totalClusters - split} trends)...`)
     const reportId2 = await persistReport(
       clusters.slice(split),
-      ptBrMeta, enMeta,
+      ptBrMeta2, enMeta2,
       ptBrTrends.slice(split),
       enTrends.slice(split),
       2
@@ -844,8 +852,6 @@ async function main(): Promise<void> {
   console.log(`  Relatórios:   ${totalClusters <= SPLIT_THRESHOLD ? 1 : 2}`);
   console.log(`  Trends:       ${ptBrTrends.length}`);
   console.log(`  TAIME Scores: ${scores.join(', ')} (média: ${avgScore})`);
-  console.log(`  Título pt-BR: ${ptBrMeta.report_title}`);
-  console.log(`  Título en:    ${enMeta.report_title}`);
   console.log('═'.repeat(52) + '\n');
 }
 
