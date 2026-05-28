@@ -21,6 +21,9 @@ batch-periods.json
 *.log
 .vercel
 
+# Backups manuais
+taime-web-BACKUP-*/
+
 # Claude Code settings — local-only, podem conter permissões/contexto sensível
 .claude/
 
