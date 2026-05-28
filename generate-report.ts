@@ -411,7 +411,19 @@ Wrong: "Designate a senior leader with 90-day mandate"
 Right PT: "Mapear o portfólio atual de fornecedores, identificar dependências críticas e avaliar exposição..."
 Right PT: "Estabelecer responsabilidade clara pela agenda de IA com autoridade para decidir e recursos dedicados..."
 Right EN: "Map the current vendor portfolio, identify critical dependencies, and evaluate exposure to..."
-Focus on the WHAT and WHY — not the org chart.`;
+Focus on the WHAT and WHY, not the org chart.
+
+═══════════════════════════════════════
+EM DASH PROHIBITION
+═══════════════════════════════════════
+Never use the em dash character (—) anywhere in generated text.
+This applies to ALL fields: titles, type, act, impact, move, exit,
+counter_thesis, then, now, next, executive_snapshot, org_implications,
+decision_triggers, recommended_move, confidence_basis, limitations.
+Use alternative punctuation instead:
+- Replace " — " with ": " or ". " or a new sentence
+- Replace "X — Y" with "X: Y" or "X. Y"
+This rule is absolute and applies to PT-BR and EN equally.`;
 
 // ─── Context formatting ───────────────────────────────────────────────────────
 
@@ -647,8 +659,8 @@ async function persistReport(
   enTrends: TrendAnalysis[],
   report_number: number = 1,
 ): Promise<string> {
-  const titleSuffix   = report_number > 1 ? ` — Parte ${report_number}` : '';
-  const titleSuffixEn = report_number > 1 ? ` — Part ${report_number}` : '';
+  const titleSuffix   = '';
+  const titleSuffixEn = '';
   const [report] = await dbPost<ReportRecord>('reports', {
     period:                  PERIOD,
     period_label:            PERIOD_LABEL_PT,
