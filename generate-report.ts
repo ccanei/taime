@@ -45,7 +45,7 @@ interface TrendAnalysis {
     execution_complexity: ScoreDimension;
     competitive_lag_risk: ScoreDimension;
   };
-  taime_framework: { type: string; act: string; impact: string; move: string; exit: string };
+  taime_framework: { type: string; act: string; impact: string; move: string; exit: string; counter_thesis?: string | null; contra_tese?: string | null };
   then_now_next:   { then: string; now: string; next: string };
   org_implications: { leadership: string; technology: string; operations: string; finance: string; people: string };
   decision_triggers: string[];
@@ -230,6 +230,14 @@ ACT:    Observe | Prepare | Accelerate | Commit
 IMPACT: Specific business dimensions structurally affected
 MOVE:   Concrete first move — not "explore AI" but "appoint PM with 90-day mandate and budget"
 EXIT:   Observable condition signaling opportunity captured OR window passed
+
+COUNTER-THESIS (optional — include ONLY if a genuine specific condition exists):
+A specific condition under which the recommended action would be wrong or premature.
+Valid examples: regulatory constraints making adoption impossible, organizational
+prerequisites not yet met, market timing that genuinely favors waiting.
+Do NOT include if the counter-thesis would be generic, obvious, or a truism.
+If no genuine counter-thesis exists, omit this field entirely from the JSON.
+PT label: "contra_tese" / EN label: "counter_thesis"
 
 ═══════════════════════════════════════
 THEN / NOW / NEXT
@@ -501,7 +509,8 @@ const TREND_SCHEMA = `{
     "act":    "full sentence: observe/prepare/accelerate/commit and WHY now",
     "impact": "full sentence: specific business dimensions structurally affected",
     "move":   "full sentence: concrete first move — specific, executable, time-bound",
-    "exit":   "full sentence: observable success or failure condition"
+    "exit":   "full sentence: observable success or failure condition",
+    "counter_thesis": "OPTIONAL — string | null. PT label: contra_tese / EN label: counter_thesis. Include ONLY when a genuine specific condition would invalidate the recommendation; omit otherwise (do not include the field at all)."
   },
   "then_now_next": {
     "then": "PERIOD_LABEL: [3-6 word subtitle for the THEN period]\\n[2-3 sentences using ABSOLUTE dates only — never relative time]",
