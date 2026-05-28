@@ -2,6 +2,115 @@
 
 ---
 
+## [2026-05-28] — Desativar fontes [DISABLED] no Supabase
+
+### Status
+- [x] `add-sources-active.sql` criado (versionado junto aos outros `add-*.sql`)
+- [x] `ALTER TABLE sources ADD COLUMN active` — **no-op**: coluna `active` já existia no banco (confirmado: Gartner/McKinsey já tinham `active: true`). DDL não roda via REST/local (sem `psql` nem connection string) — mas era desnecessário
+- [x] `UPDATE active = false WHERE name LIKE '%[DISABLED]%'` — aplicado via PostgREST PATCH (HTTP 204): 11 fontes desativadas
+- [x] `UPDATE name = REPLACE(name, ' [DISABLED]', '')` — aplicado individualmente (REPLACE não é inline no PostgREST): 11 nomes limpos
+- [x] Verificação: 0 fontes com `[DISABLED]` no nome; 11 com `active=false`; **110 fontes ativas** restantes
+
+### Fontes desativadas (active=false, nome limpo)
+Databricks Blog, Snowflake Blog, dbt Labs Blog, IAPP, Informatica Blog, UiPath Blog, Automation Anywhere Blog, MuleSoft Blog, Stripe Blog, Plaid Blog, Visa Research
+
+### Efeito no coletor
+`collect-signals.ts` (linha 279) já carrega fontes com `sources?active=eq.true` — as 11 desativadas serão automaticamente puladas nos próximos runs. Nenhuma mudança de código necessária.
+
+### Nota
+Antes desta migração as 11 fontes tinham `[DISABLED]` no nome mas `active=true` — ou seja, o coletor ainda as buscava. Agora o flag e o nome estão consistentes.
+
+---
+
+## [2026-05-28] — collect-signals.ts: +5 categorias (observability, engineering, edge, healthtech, sustainability)
+
+### Status
+- [x] Adicionadas 5 keys ao `TOPIC_BY_CATEGORY` após `automation`, cada uma com query de nicho:
+  - `observability`: LLMOps, AI monitoring, model drift, explainability, OpenTelemetry, AI governance
+  - `engineering`: software engineering, developer productivity, AI coding, DevOps, IDP, technical debt
+  - `edge`: edge computing/AI, IoT, on-device AI, industrial IoT, smart manufacturing
+  - `healthtech`: digital/clinical health AI, drug discovery, EHR, precision medicine, biotech, genomics
+  - `sustainability`: green tech, carbon footprint, data center energy, AI energy consumption, ESG, climate tech
+- [x] Total agora **16 keys**: research, consulting, vc, media, academic, think_tank, vendor, security, financial, data, automation, observability, engineering, edge, healthtech, sustainability
+- [x] Type-check `tsc -p tsconfig.json`: 0 erros
+
+### Contexto
+Expansão de cobertura temática do coletor. Fontes nessas categorias antes caíam no fallback genérico; agora recebem queries específicas do domínio, aumentando a precisão dos sinais coletados via Serper.
+
+---
+
+## [2026-05-28] — Remove sufixo "Parte N" dos títulos + proíbe travessão no conteúdo
+
+### Status
+- [x] CORREÇÃO 1: `titleSuffix`/`titleSuffixEn` agora sempre `''` (removido o ` — Parte N` / ` — Part N`). Com metadados separados por relatório (entrega anterior), cada parte já tem título próprio e distinto — o sufixo era redundante e introduzia travessão
+- [x] CORREÇÃO 2: bloco `EM DASH PROHIBITION` adicionado ao fim do `SYSTEM_PROMPT` — proíbe o caractere `—` em TODOS os campos gerados (PT-BR e EN), com orientação de substituir por `:` / `.` / nova frase
+- [x] Removido também o `—` da própria linha `MOVE VOICE RULE` do prompt (`WHAT and WHY — not` → `WHAT and WHY, not`) para o prompt não se contradizer ao instruir "never use em dash"
+- [x] Type-check `tsc -p tsconfig.json`: 0 erros
+
+### Por quê
+O travessão (`—`) aparecia recorrentemente no conteúdo gerado pelo Claude (títulos, framework, then/now/next), conflitando com a diretriz editorial do projeto de não usar travessões (mesma regra já aplicada nos textos estáticos da home/i18n em entregas anteriores). Agora a proibição é imposta na fonte (system prompt). `report_number` continua sendo gravado no banco — só o sufixo visual no título foi removido.
+
+---
+
+## [2026-05-28] — Fix: metadados separados por relatório dividido + limpeza de 2025-12-16
+
+### Status
+- [x] `generate-report.ts`: bloco de metadados+divisão reescrito — `callClaudeMetadata` agora roda **dentro** de cada branch
+  - **Relatório único**: metadados com todas as trends (como antes)
+  - **Divisão (8-12 clusters)**: cada parte gera metadados próprios — `ptBrMeta1/enMeta1` baseados em `trends.slice(0, split)`, `ptBrMeta2/enMeta2` baseados em `trends.slice(split)`
+- [x] Resumo de `main()` ajustado: removidas linhas `Título pt-BR/en` (as variáveis de metadata viraram block-scoped no if/else; títulos já aparecem nos logs de cada relatório)
+- [x] Type-check `tsc -p tsconfig.json`: 0 erros
+- [x] Deletados os 2 relatórios incorretos de 2025-12-16 no Supabase (HTTP 204): `report_trends` + `reports`. `signal_clusters` e `signals` preservados
+
+### Bug corrigido
+Antes, os metadados (título + executive_summary) eram gerados UMA vez com TODAS as trends e reusados nos 2 relatórios divididos. Resultado: Parte 1 e Parte 2 tinham o mesmo título-base (só diferindo pelo sufixo "— Parte 2"). Confirmado no 2025-12-16: ambos os reports tinham título "Infraestrutura Inteligente ou Irrelevância: As 8 Forças...". Agora cada parte tem título/resumo coerente com suas próprias trends.
+
+### Reprocessar 2025-12-16
+Os `signal_clusters` foram mantidos, então basta re-rodar `generate-report.ts` para esse período (via `PERIOD=2025-12-16 npx ts-node generate-report.ts` ou `batch-pipeline.ts --resume`) para gerar os 2 relatórios com metadados corretos.
+
+---
+
+## [2026-05-28] — collect-signals.ts: categorias 'data' e 'automation' + termos de business transformation
+
+### Status
+- [x] Adicionadas 2 keys ao `TOPIC_BY_CATEGORY` após `financial`:
+  - `data`: query focada em data platform/governance/sovereignty, mesh/lakehouse, privacy/GDPR/LGPD, analytics, data quality
+  - `automation`: query focada em business/process automation, RPA, intelligent automation, process mining, hyperautomation, low-code/no-code
+- [x] `research` e `consulting` reforçadas: adicionados `"business model"`, `"operating model"`, `"platform business"`, `"business transformation"` ao leque amplo (essas duas categorias agora têm 18 termos vs 14 das demais)
+- [x] Total agora **11 keys**: research, consulting, vc, media, academic, think_tank, vendor, security, financial, data, automation
+- [x] Type-check `tsc -p tsconfig.json`: 0 erros
+
+### Racional
+`data` e `automation` ganham queries específicas em vez do leque genérico — fontes dessas categorias retornam sinais mais precisos do nicho. `research`/`consulting` (firmas de pesquisa e consultoria) ganham termos de modelo de negócio/transformação, alinhados ao tipo de conteúdo estratégico que essas fontes publicam.
+
+---
+
+## [2026-05-28] — collect-signals.ts: remove `year` da query Serper
+
+### Status
+- [x] `buildQuery`: removida a linha `const year = periodInfo.start.getFullYear()` e o `${year}` da string de busca
+- [x] Query agora: `site:${domain} ${topic}` (antes `site:${domain} ${topic} ${year}`)
+- [x] `periodInfo` continua usado (tbs date filter, dedup, insert) — sem variável órfã
+- [x] Type-check `tsc -p tsconfig.json`: 0 erros
+
+### Por quê
+O filtro de data já é feito pelo parâmetro `tbs` do Serper (`cdr:1,cd_min:...,cd_max:...` para períodos históricos). Incluir `${year}` no texto da query era redundante e podia excluir resultados relevantes cujo título/snippet não menciona o ano explicitamente — estreitava demais a busca. Com o `tbs` cobrindo o recorte temporal, a query textual fica focada só em domínio + tópicos.
+
+---
+
+## [2026-05-28] — collect-signals.ts: categoria 'financial' adicionada
+
+### Status
+- [x] `TOPIC_BY_CATEGORY` ganhou key `financial` (mesma query ampla das outras), após `security`
+- [x] Total agora **9 keys**: research, consulting, vc, media, academic, think_tank, vendor, security, financial
+- [x] Type-check via `tsc -p tsconfig.json` (target ES2022): 0 erros em collect-signals.ts
+- Nota: o pipeline da raiz não tem script `npm run build` (só `collect`/`analyze`/`report`) — validação feita por `tsc --noEmit`
+
+### Contexto
+Fontes com `category: 'financial'` no banco antes caíam no fallback `'technology AI trends innovation'` do `buildQuery`. Agora recebem o leque completo de 14 termos estratégicos via Serper, alinhado às demais categorias.
+
+---
+
 ## [2026-05-28] — Frontend: suporte a múltiplos relatórios por período
 
 ### Status
