@@ -119,6 +119,11 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
   financial:  'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   data:       'data platform OR data governance OR data sovereignty OR "data mesh" OR "data lakehouse" OR privacy OR "data protection" OR GDPR OR LGPD OR "data management" OR analytics OR "data strategy" OR "master data" OR "data quality"',
   automation: '"business process" OR "process automation" OR RPA OR "robotic process automation" OR "intelligent automation" OR "process mining" OR "workflow automation" OR "hyperautomation" OR "low-code" OR "no-code" OR "process optimization"',
+  observability: '"LLM observability" OR "AI monitoring" OR "model drift" OR "LLMOps" OR "ML monitoring" OR "AI explainability" OR "model audit" OR "AI accountability" OR "production AI" OR "AI reliability" OR OpenTelemetry OR tracing OR "distributed tracing" OR "AI governance" OR "model performance"',
+  engineering:   '"software engineering" OR "developer productivity" OR "AI coding" OR "code generation" OR "developer tools" OR DevOps OR platform OR "internal developer platform" OR "software delivery" OR "engineering culture" OR "technical debt" OR "software architecture" OR "API design"',
+  edge:          '"edge computing" OR "edge AI" OR IoT OR "internet of things" OR "on-device AI" OR "edge inference" OR "industrial IoT" OR "embedded AI" OR "edge cloud" OR "fog computing" OR "connected devices" OR "smart manufacturing"',
+  healthtech:    '"digital health" OR "health AI" OR "clinical AI" OR "drug discovery" OR "medical imaging" OR "health data" OR "electronic health records" OR EHR OR "health interoperability" OR "precision medicine" OR "AI diagnostics" OR biotech OR genomics',
+  sustainability: '"green tech" OR "sustainable technology" OR "carbon footprint" OR "energy efficiency" OR "data center energy" OR "AI energy consumption" OR "green cloud" OR ESG OR "climate tech" OR "renewable energy" OR "sustainable AI" OR "carbon neutral"',
 };
 
 function buildQuery(source: Source): string {
