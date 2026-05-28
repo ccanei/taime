@@ -116,6 +116,7 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
   think_tank: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   vendor:     'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
   security:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  financial:  'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
 };
 
 function buildQuery(source: Source): string {
