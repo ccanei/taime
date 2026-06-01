@@ -2,6 +2,34 @@
 
 ---
 
+## [2026-06-01] — Honeypot anti-bot nos formulários (waitlist + contato)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Honeypot aplicado em ambos os formulários públicos sem fricção para usuários reais
+
+### Implementação
+**Padrão do honeypot** (idêntico nos 2 forms):
+- `<div aria-hidden="true">` com `position:absolute; left:-9999px; width:1; height:1; opacity:0; overflow:hidden` (não usa `display:none` que bots detectam)
+- `<input type="text" name="website">` com `tabIndex={-1}` e `autoComplete="off"`
+- Estado React `[website, setWebsite]` para capturar valor; enviado no body junto com os outros campos
+- Backend: se `body.website` tem conteúdo, retorna sucesso falso **imediatamente** (sem gravar, sem enviar email) — bot acha que funcionou e não tenta de novo
+
+### Arquivos modificados
+- `app/login/page.tsx` (waitlist form): estado + campo escondido + envio
+- `app/api/admin/waitlist/route.ts`: guard no topo do POST — retorna `{ success: true }` se honeypot preenchido
+- `app/contato/page.tsx`: estado + campo escondido + envio
+- `app/api/contact/route.ts`: guard no topo — retorna `{ ok: true }` se honeypot preenchido (consistente com o resto da API contact)
+
+### Por que esse desenho
+- `position:absolute; left:-9999px` é o padrão recomendado (vs `display:none` que detectores de bot reconhecem e ignoram).
+- `tabIndex={-1}` impede que usuários de teclado caiam no campo por engano.
+- `autoComplete="off"` impede que password managers preencham automaticamente.
+- `aria-hidden="true"` esconde para leitores de tela (acessibilidade preservada).
+- Resposta de sucesso falso evita que o bot reporte erro e tente variações.
+
+---
+
 ## [2026-06-01] — Controle de acesso por plano + preview público + SEO PT/EN + waitlist com plano
 
 ### Bloco 1 — Hero text (commit `6daac70`)

@@ -17,6 +17,8 @@ export default function ContatoPage() {
   const [message, setMessage] = useState('')
   const [status,  setStatus]  = useState<Status>('idle')
   const [errMsg,  setErrMsg]  = useState('')
+  // Honeypot anti-bot — escondido para humanos, atrai preenchimento automático de bots
+  const [website, setWebsite] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -27,7 +29,7 @@ export default function ContatoPage() {
       const res  = await fetch('/api/contact', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name, email, message }),
+        body:    JSON.stringify({ name, email, message, website }),
       })
       const json = await res.json() as { ok?: boolean; error?: string }
 
@@ -104,6 +106,23 @@ export default function ContatoPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Honeypot anti-bot — não exibido para usuários reais */}
+            <div
+              aria-hidden="true"
+              style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
+            >
+              <label htmlFor="ct-website">Website</label>
+              <input
+                id="ct-website"
+                type="text"
+                name="website"
+                value={website}
+                onChange={e => setWebsite(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-zinc-500 mb-1.5">
                 {c.nameLabel}

@@ -143,8 +143,16 @@ const sendEmail = async (to: string, subject: string, html: string): Promise<voi
 export async function POST(req: Request) {
   const body = await req.json() as {
     name?: string; email?: string; company?: string | null;
-    role?: string | null; interest?: string; requested_plan?: string
+    role?: string | null; interest?: string; requested_plan?: string;
+    website?: string
   }
+
+  // ── Honeypot: campo "website" só é preenchido por bots (oculto para humanos).
+  //    Retorna sucesso falso para não despertar tentativa de retry; NÃO grava.
+  if (body.website && body.website.trim().length > 0) {
+    return NextResponse.json({ success: true })
+  }
+
   const { name = '', email = '', company = null, role = null, interest = '' } = body
   // Normaliza plano (apenas 'free' | 'essential' | 'strategic'; fallback 'free')
   const requested_plan = ['free', 'essential', 'strategic'].includes(body.requested_plan ?? '')

@@ -27,6 +27,8 @@ export default function LoginPage() {
   const [userRole, setUserRole] = useState('')
   const [interest, setInterest] = useState('')
   const [requestedPlan, setRequestedPlan] = useState<'free' | 'essential' | 'strategic'>('free')
+  // Honeypot anti-bot — escondido para humanos, atrai preenchimento automático de bots
+  const [website, setWebsite] = useState('')
 
   // Magic link field (separate email so it doesn't collide with waitlist)
   const [mlEmail, setMlEmail] = useState('')
@@ -59,6 +61,7 @@ export default function LoginPage() {
           role:           userRole.trim() || null,
           interest,
           requested_plan: requestedPlan,
+          website,
         }),
       })
 
@@ -177,6 +180,23 @@ export default function LoginPage() {
                 </p>
 
                 <form onSubmit={handleWaitlist} className="space-y-4">
+                  {/* Honeypot anti-bot — não exibido para usuários reais */}
+                  <div
+                    aria-hidden="true"
+                    style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
+                  >
+                    <label htmlFor="wl-website">Website</label>
+                    <input
+                      id="wl-website"
+                      type="text"
+                      name="website"
+                      value={website}
+                      onChange={e => setWebsite(e.target.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                    />
+                  </div>
+
                   <div>
                     <label htmlFor="wl-name" className="block text-sm font-medium text-zinc-700 mb-1.5">
                       {t.login.nameLabel} <span className="text-red-400">*</span>

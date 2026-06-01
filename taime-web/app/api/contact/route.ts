@@ -2,11 +2,17 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function POST(request: NextRequest) {
-  let body: { name: string; email: string; message: string }
+  let body: { name: string; email: string; message: string; website?: string }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  // ── Honeypot: campo "website" só é preenchido por bots (oculto para humanos).
+  //    Retorna sucesso falso para não despertar tentativa de retry; NÃO envia email.
+  if (body.website && body.website.trim().length > 0) {
+    return NextResponse.json({ ok: true })
   }
 
   const { name, email, message } = body
