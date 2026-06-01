@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-06-01] — Fix: preferred_language 'pt-BR' + public.users e subscription obrigatórios
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Único arquivo modificado: `app/api/admin/approve/route.ts` (+46/-44)
+- [x] Não tocados: `waitlist-reject`, `waitlist` POST de cadastro, template do email
+
+### Correções
+1. **`preferred_language: 'pt'` → `'pt-BR'`** — a constraint da coluna em `public.users` só aceita `'pt-BR'` ou `'en'`. O valor `'pt'` causava CHECK violation, derrubando o upsert e tudo que dependia dele.
+2. **`public.users` deixou de ser best-effort** — como `subscriptions.user_id` tem FK para `public.users`, se o upsert de users falha a subscription falha em cascata. Agora: log + return 500 com a mensagem do banco. Sem tentar a subscription quando users falha.
+3. **Subscription também bloqueia** — define o acesso por plano. Se falhar, retorna 500 com a mensagem do banco. Antes era "loga e segue".
+4. **Ordem confirmada**: 1) Auth (criar/recuperar) → 2) public.users (bloqueia) → 3) subscriptions (bloqueia) → 4) waitlist PATCH → 5) email → 6) resposta.
+
+### Por que esta linha de bloqueio
+A entrega anterior tornou public.users e subscription "best-effort" para não derrubar o fluxo se houvesse um problema lateral de schema. Mas como ambas são DEPENDÊNCIAS para o acesso funcionar (subscription = define plano; public.users = referência da subscription), tratá-las como opcionais escondia o bug do `preferred_language`. Agora qualquer falha é visível ao admin no momento da aprovação.
+
+### Preservado intacto
+- Lógica de recuperação de usuário existente (GET `/auth/v1/admin/users?email=...`)
+- Fallback de `company`/`job_title` via GET da waitlist
+- PATCH waitlist `{ contacted: true, status: 'approved' }`
+- `sendApprovalEmail(email)` + template HTML
+- Resposta final `{ success: true, message: 'Acesso liberado', plan }`
+
+---
+
 ## [2026-06-01] — Fix: fluxo de aprovação robusto e idempotente
 
 ### Status

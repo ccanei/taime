@@ -219,56 +219,58 @@ export async function POST(request: NextRequest) {
   const company  = body.company   ?? wlCompany
   const jobTitle = body.job_title ?? wlRole
 
-  try {
-    const usersRes = await fetch(
-      `${supabaseUrl}/rest/v1/users?on_conflict=id`,
-      {
-        method: 'POST',
-        headers: {
-          'apikey':        serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
-          'Content-Type':  'application/json',
-          'Prefer':        'resolution=merge-duplicates,return=minimal',
-        },
-        body: JSON.stringify({
-          id:                 userId,
-          email,
-          full_name:          name ?? '',
-          company,
-          job_title:          jobTitle,
-          preferred_language: 'pt',
-        }),
+  // OBRIGATÓRIO: subscriptions.user_id tem FK para public.users — se este
+  // upsert falhar, a subscription falha em cascata. Bloqueia e retorna 500.
+  const usersRes = await fetch(
+    `${supabaseUrl}/rest/v1/users?on_conflict=id`,
+    {
+      method: 'POST',
+      headers: {
+        'apikey':        serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type':  'application/json',
+        'Prefer':        'resolution=merge-duplicates,return=minimal',
       },
+      body: JSON.stringify({
+        id:                 userId,
+        email,
+        full_name:          name ?? '',
+        company,
+        job_title:          jobTitle,
+        preferred_language: 'pt-BR',
+      }),
+    },
+  )
+  if (!usersRes.ok) {
+    const dbErr = await usersRes.text()
+    console.error('approve: upsert public.users falhou', usersRes.status, dbErr)
+    return NextResponse.json(
+      { error: dbErr || 'Erro ao salvar perfil do usuário' },
+      { status: 500 },
     )
-    if (!usersRes.ok) {
-      console.error('approve: upsert public.users falhou', usersRes.status, await usersRes.text())
-      // best-effort, não bloqueia
-    }
-  } catch (e) {
-    console.error('approve: upsert public.users exceção', e)
   }
 
-  // ── 3. Cria/atualiza subscription (sempre, agora que temos userId) ───────
-  try {
-    const subRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscriptions?on_conflict=user_id`,
-      {
-        method: 'POST',
-        headers: {
-          'apikey':        serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
-          'Content-Type':  'application/json',
-          'Prefer':        'resolution=merge-duplicates,return=minimal',
-        },
-        body: JSON.stringify({ user_id: userId, plan, status: 'active' }),
+  // ── 3. Cria/atualiza subscription (crítico — define o acesso por plano) ──
+  const subRes = await fetch(
+    `${supabaseUrl}/rest/v1/subscriptions?on_conflict=user_id`,
+    {
+      method: 'POST',
+      headers: {
+        'apikey':        serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type':  'application/json',
+        'Prefer':        'resolution=merge-duplicates,return=minimal',
       },
+      body: JSON.stringify({ user_id: userId, plan, status: 'active' }),
+    },
+  )
+  if (!subRes.ok) {
+    const dbErr = await subRes.text()
+    console.error('approve: upsert subscription falhou', subRes.status, dbErr)
+    return NextResponse.json(
+      { error: dbErr || 'Erro ao criar assinatura' },
+      { status: 500 },
     )
-    if (!subRes.ok) {
-      console.error('approve: upsert subscription falhou', subRes.status, await subRes.text())
-      // best-effort, não bloqueia
-    }
-  } catch (e) {
-    console.error('approve: upsert subscription exceção', e)
   }
 
   // ── 4. Marca waitlist como aprovada (contacted=true + status='approved') ─
