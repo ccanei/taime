@@ -29,6 +29,7 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
   const [records, setRecords]     = useState<WaitlistRecord[]>(initialRecords)
   const [filter, setFilter]       = useState<Filter>('all')
   const [approving, setApproving] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<string | null>(null)
   const [flash, setFlash]         = useState<{ id: string; name: string } | null>(null)
   const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map())
   // Plano final escolhido pelo admin por registro (default = requested_plan ou 'free')
@@ -76,6 +77,35 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
       setRowErrors(prev => new Map(prev).set(record.id, String(err)))
     } finally {
       setApproving(null)
+    }
+  }
+
+  async function reject(record: WaitlistRecord) {
+    if (!window.confirm(`Rejeitar a solicitação de ${record.name ?? record.email}?`)) return
+    setRejecting(record.id)
+    setRowErrors(prev => { const m = new Map(prev); m.delete(record.id); return m })
+
+    try {
+      const res = await fetch('/api/admin/waitlist-reject', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id: record.id }),
+      })
+
+      const json = await res.json() as { success?: boolean; error?: string }
+
+      if (!res.ok || !json.success) {
+        setRowErrors(prev => new Map(prev).set(record.id, json.error ?? 'Erro desconhecido'))
+        return
+      }
+
+      // Soft-delete: remove da listagem (a página filtra `status != 'rejected'` no SSR;
+      // localmente também removemos para refletir imediatamente sem reload).
+      setRecords(prev => prev.filter(r => r.id !== record.id))
+    } catch (err) {
+      setRowErrors(prev => new Map(prev).set(record.id, String(err)))
+    } finally {
+      setRejecting(null)
     }
   }
 
@@ -140,6 +170,8 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
                 {filtered.map(record => {
                   const rowErr = rowErrors.get(record.id)
                   const isApproving = approving === record.id
+                  const isRejecting = rejecting === record.id
+                  const busy = isApproving || isRejecting || !!approving || !!rejecting
 
                   return (
                     <tr key={record.id} className={`bg-white hover:bg-zinc-50 transition-colors
@@ -190,23 +222,35 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
                                   const val = e.target.value as PlanChoice
                                   setPlanChoice(prev => new Map(prev).set(record.id, val))
                                 }}
-                                disabled={isApproving || !!approving}
+                                disabled={busy}
                                 className="text-xs px-2 py-1 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-2 focus:ring-taime-600"
                               >
                                 <option value="free">free</option>
                                 <option value="essential">essential</option>
                                 <option value="strategic">strategic</option>
                               </select>
-                              <button
-                                onClick={() => approve(record)}
-                                disabled={isApproving || !!approving}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold
-                                           bg-taime-600 text-white hover:bg-taime-700
-                                           disabled:opacity-50 disabled:cursor-not-allowed
-                                           transition-colors"
-                              >
-                                {isApproving ? 'Aprovando...' : 'Aprovar acesso'}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => approve(record)}
+                                  disabled={busy}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold
+                                             bg-taime-600 text-white hover:bg-taime-700
+                                             disabled:opacity-50 disabled:cursor-not-allowed
+                                             transition-colors"
+                                >
+                                  {isApproving ? 'Aprovando...' : 'Aprovar acesso'}
+                                </button>
+                                <button
+                                  onClick={() => reject(record)}
+                                  disabled={busy}
+                                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium
+                                             text-red-600 hover:text-red-700 hover:bg-red-50
+                                             disabled:opacity-50 disabled:cursor-not-allowed
+                                             transition-colors"
+                                >
+                                  {isRejecting ? 'Rejeitando...' : 'Rejeitar'}
+                                </button>
+                              </div>
                             </>
                           )}
                           {rowErr && (

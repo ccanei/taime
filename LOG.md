@@ -2,6 +2,34 @@
 
 ---
 
+## [2026-06-01] — Waitlist: ação Rejeitar (soft delete via status) + limpeza
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Nova rota `/api/admin/waitlist-reject` no output do build
+
+### Parte 0 — Limpeza
+- Deletado `app/admin/waitlist/waitlist-page.tsx` — cópia duplicada não referenciada (confirmado via grep `waitlist-page` no projeto).
+
+### Parte 1 — `/api/admin/waitlist-reject`
+- Padrão de auth idêntico ao `/api/admin/approve`: `createServerClient` (cookies) + `isAdmin(email)`. 403 se não admin.
+- Recebe `{ id: string }`. Valida JSON e presença do id.
+- PATCH via REST com service key: `waitlist?id=eq.${id}` → `{ status: 'rejected' }`. `Prefer: return=minimal`.
+- Retorna `{ success: true }` ou `{ error }` com status apropriado.
+
+### Parte 2 — Filtro na query SSR
+- `app/admin/waitlist/page.tsx` `getWaitlist()`: adicionado `.neq('status', 'rejected')`. Mostra apenas pending + approved.
+
+### Parte 3 — Botão Rejeitar no `WaitlistAdmin`
+- Estado novo: `rejecting: string | null`; helper `busy = isApproving || isRejecting || !!approving || !!rejecting` para travar UI durante operações.
+- Função `reject(record)`: `window.confirm` antes; POST `/api/admin/waitlist-reject`; em sucesso, **remove do `records` localmente** (sem reload — SSR já filtra rejected no próximo carregamento).
+- UI: botão "Rejeitar" ao lado de "Aprovar acesso", estilo discreto (texto `text-red-600`, hover `bg-red-50`, sem fundo sólido para menos destaque). Aparece só em registros pendentes (`!record.contacted`).
+
+### Por que soft delete via status
+A coluna `waitlist.status` já existe no banco com valores `pending|approved|rejected`. Marcar como `rejected` em vez de DELETE preserva o histórico (admin pode auditar/restaurar via SQL se preciso) sem custo de UI extra: a query SSR esconde rejected por padrão.
+
+---
+
 ## [2026-06-01] — Honeypot anti-bot nos formulários (waitlist + contato)
 
 ### Status
