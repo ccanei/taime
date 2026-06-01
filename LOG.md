@@ -2,6 +2,36 @@
 
 ---
 
+## [2026-06-01] — Fix: fluxo de aprovação robusto e idempotente
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Único arquivo modificado: `app/api/admin/approve/route.ts` (+116/-32)
+- [x] `waitlist-reject`, `waitlist` POST (cadastro), `sendApprovalEmail` e o template do email: **intactos**
+
+### Bugs corrigidos
+1. **Usuário "already exists" ficava sem plano** — quando o Auth retornava "already exists", `createdUserId` ficava `null` e o código pulava a subscription. Agora, em caso de "already exists", faz GET `/auth/v1/admin/users?email=...` no GoTrue admin e extrai `users[0].id`. Se nem criar nem recuperar funcionarem, retorna 500 explícito.
+2. **`public.users` nunca era populada** — agora há upsert (`on_conflict=id`, `Prefer: resolution=merge-duplicates`) com `id`, `email`, `full_name`, `company`, `job_title`, `preferred_language: 'pt'`. Best-effort: falha é logada, não bloqueia.
+3. **Waitlist não tinha `status='approved'`** — o PATCH agora envia `{ contacted: true, status: 'approved' }` no mesmo body.
+
+### Mudanças adicionais (já pedidas no spec)
+- **Subscription com `status: 'active'`** explícito (era omitido, podia ficar `inactive` se DB tivesse default ruim).
+- **Fallback de `company`/`job_title` na waitlist**: se o body do admin não enviar esses campos, faz GET `waitlist?email=eq.X&select=company,role` e usa `company` + `role` (mapeado para `job_title`) no upsert de `public.users`.
+- **Ordem de operações**: (1) Auth → (2) public.users → (3) subscription → (4) waitlist PATCH → (5) email → (6) resposta. Email continua sendo o último passo crítico.
+
+### Comportamento preservado
+- Padrão de auth (`createServerClient` + `isAdmin`)
+- Criação no Auth via REST admin API com `email_confirm: true` e `user_metadata.full_name`
+- Erro 500 explícito se o Auth retorna algo que não seja sucesso nem "already exists"
+- `sendApprovalEmail(email)` exatamente como estava (template HTML intocado)
+- Resposta final `{ success: true, message: 'Acesso liberado', plan }`
+- Erro 500 com mensagem do DB se o PATCH da waitlist falhar (ainda é etapa crítica)
+
+### Decisão de design
+public.users e subscription são **best-effort** (logam mas não bloqueiam) porque o "núcleo do acesso" é (a) usuário existir no Auth e (b) waitlist marcada como aprovada. Se a subscription ou public.users falharem por permissão/schema, o usuário ainda consegue logar — admin ajusta manualmente. Já a falha do PATCH waitlist é crítica e bloqueia (status inconsistente seria pior que reverter).
+
+---
+
 ## [2026-06-01] — Waitlist: ação Rejeitar (soft delete via status) + limpeza
 
 ### Status
