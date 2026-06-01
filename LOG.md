@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-06-01] — admin/waitlist: mostra o plano aprovado real em vez de coluna em branco
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] 2 arquivos modificados: `app/admin/waitlist/page.tsx` + `app/admin/waitlist/WaitlistAdmin.tsx`
+- [x] Não tocados: `approve`, `waitlist-reject`, `waitlist` POST (cadastro), template do email
+
+### Resolução do bug
+`subscriptions` não tinha join com a waitlist na query SSR, então registros já aprovados não exibiam o plano final — a coluna ficava vazia.
+
+### Page (`app/admin/waitlist/page.tsx`)
+- Nova função `getApprovedPlansByEmail()` (server-side, service key): 2 GETs separados — primeiro `subscriptions?status=eq.active&select=user_id,plan`, depois `users?id=in.(...)&select=id,email`. Cruza por id no código e retorna `Record<email, plan>`. Mais previsível que depender de relação nomeada do PostgREST.
+- `getWaitlist()` e `getApprovedPlansByEmail()` agora rodam em paralelo via `Promise.all`.
+- Passa `approvedPlanByEmail` como nova prop ao `WaitlistAdmin`.
+
+### Componente (`WaitlistAdmin.tsx`)
+- Nova prop **opcional** `approvedPlanByEmail?: Record<string, string>` (default `{}` para retrocompat).
+- Importado `useLocale` + tabela bilíngue `PLAN_LABELS`:
+  - PT-BR: `free` → "Gratuito", `essential` → "Essencial", `strategic` → "Estratégico"
+  - EN: `free` → "Free", `essential` → "Essential", `strategic` → "Strategic"
+  - Banco continua armazenando em inglês (`free`/`essential`/`strategic`); só a exibição traduz.
+- Detecção de idioma via `t.nav.howItWorks === 'Como funciona'` (padrão já usado em outras telas).
+- Célula "Plano final / Aprovar":
+  - **Pendente** (`!contacted`): mantém select + botões Aprovar/Rejeitar (comportamento atual).
+  - **Aprovado** (`contacted`): exibe badge verde com o plano traduzido (`bg-emerald-50 text-emerald-700`).
+- Fallback: se não há entrada no mapa (subscription não criada por algum motivo histórico), mostra "Gratuito"/"Free" — comportamento seguro.
+
+### Não tocado
+- Fluxo de aprovação (`api/admin/approve`), rejeição (`api/admin/waitlist-reject`), cadastro público (`api/admin/waitlist`), template de email — intactos.
+
+---
+
 ## [2026-06-01] — Fix: preferred_language 'pt-BR' + public.users e subscription obrigatórios
 
 ### Status

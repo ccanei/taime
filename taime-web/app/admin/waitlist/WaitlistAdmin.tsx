@@ -1,6 +1,12 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useLocale } from '@/lib/useLocale'
+
+const PLAN_LABELS: Record<'pt-BR' | 'en', Record<string, string>> = {
+  'pt-BR': { free: 'Gratuito', essential: 'Essencial', strategic: 'Estratégico' },
+  'en':    { free: 'Free',     essential: 'Essential', strategic: 'Strategic'    },
+}
 
 export interface WaitlistRecord {
   id: string
@@ -25,7 +31,16 @@ function formatDate(iso: string) {
   })
 }
 
-export default function WaitlistAdmin({ initialRecords }: { initialRecords: WaitlistRecord[] }) {
+export default function WaitlistAdmin({
+  initialRecords,
+  approvedPlanByEmail = {},
+}: {
+  initialRecords: WaitlistRecord[]
+  approvedPlanByEmail?: Record<string, string>
+}) {
+  const { t } = useLocale()
+  const isPt = t.nav.howItWorks === 'Como funciona'
+  const planLabels = isPt ? PLAN_LABELS['pt-BR'] : PLAN_LABELS['en']
   const [records, setRecords]     = useState<WaitlistRecord[]>(initialRecords)
   const [filter, setFilter]       = useState<Filter>('all')
   const [approving, setApproving] = useState<string | null>(null)
@@ -214,7 +229,7 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex flex-col gap-1 items-start">
-                          {!record.contacted && (
+                          {!record.contacted ? (
                             <>
                               <select
                                 value={planChoice.get(record.id) ?? (record.requested_plan ?? 'free')}
@@ -252,6 +267,16 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
                                 </button>
                               </div>
                             </>
+                          ) : (
+                            (() => {
+                              const approvedPlan = approvedPlanByEmail[record.email]
+                              const label = planLabels[approvedPlan ?? ''] ?? planLabels.free
+                              return (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">
+                                  {label}
+                                </span>
+                              )
+                            })()
                           )}
                           {rowErr && (
                             <p className="text-xs text-red-600 max-w-[180px]">{rowErr}</p>

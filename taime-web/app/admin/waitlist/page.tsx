@@ -15,13 +15,46 @@ async function getWaitlist(): Promise<WaitlistRecord[]> {
   return (data as WaitlistRecord[]) ?? []
 }
 
+/**
+ * Mapa email → plano aprovado (somente subscriptions ativas).
+ * Faz 2 GETs: subscriptions e users — cruza por id (mais previsível que
+ * depender de relação nomeada no PostgREST).
+ */
+async function getApprovedPlansByEmail(): Promise<Record<string, string>> {
+  const supabase = createSupabaseService()
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('user_id, plan')
+    .eq('status', 'active')
+  const subRows = (subs ?? []) as { user_id: string; plan: string }[]
+  if (subRows.length === 0) return {}
+
+  const ids = [...new Set(subRows.map(s => s.user_id))]
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, email')
+    .in('id', ids)
+  const userRows = (users ?? []) as { id: string; email: string }[]
+  const emailById = new Map(userRows.map(u => [u.id, u.email]))
+
+  const map: Record<string, string> = {}
+  for (const s of subRows) {
+    const email = emailById.get(s.user_id)
+    if (email) map[email] = s.plan
+  }
+  return map
+}
+
 export default async function AdminWaitlistPage() {
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   if (!await isAdmin(user.email ?? '')) redirect('/')
 
-  const records = await getWaitlist()
+  const [records, approvedPlanByEmail] = await Promise.all([
+    getWaitlist(),
+    getApprovedPlansByEmail(),
+  ])
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -48,7 +81,7 @@ export default async function AdminWaitlistPage() {
           </p>
         </div>
 
-        <WaitlistAdmin initialRecords={records} />
+        <WaitlistAdmin initialRecords={records} approvedPlanByEmail={approvedPlanByEmail} />
       </main>
     </div>
   )
