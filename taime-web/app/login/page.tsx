@@ -26,6 +26,7 @@ export default function LoginPage() {
   const [company, setCompany]   = useState('')
   const [userRole, setUserRole] = useState('')
   const [interest, setInterest] = useState('')
+  const [requestedPlan, setRequestedPlan] = useState<'free' | 'essential' | 'strategic'>('free')
 
   // Magic link field (separate email so it doesn't collide with waitlist)
   const [mlEmail, setMlEmail] = useState('')
@@ -52,11 +53,12 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name:    name.trim(),
-          email:   email.trim().toLowerCase(),
-          company: company.trim() || null,
-          role:    userRole.trim() || null,
+          name:           name.trim(),
+          email:          email.trim().toLowerCase(),
+          company:        company.trim() || null,
+          role:           userRole.trim() || null,
           interest,
+          requested_plan: requestedPlan,
         }),
       })
 
@@ -254,6 +256,23 @@ export default function LoginPage() {
                       {(t.login.interests as readonly string[]).map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="wl-plan" className="block text-sm font-medium text-zinc-700 mb-1.5">
+                      {t.nav.howItWorks === 'Como funciona' ? 'Plano de interesse' : 'Plan of interest'}
+                    </label>
+                    <select
+                      id="wl-plan"
+                      value={requestedPlan}
+                      onChange={e => setRequestedPlan(e.target.value as 'free' | 'essential' | 'strategic')}
+                      disabled={status === 'loading'}
+                      className={INPUT_CLS}
+                    >
+                      <option value="free">{t.nav.howItWorks === 'Como funciona' ? 'Gratuito — preview público' : 'Free — public preview'}</option>
+                      <option value="essential">{t.nav.howItWorks === 'Como funciona' ? 'Essencial — histórico de 1 ano' : 'Essential — 1-year history'}</option>
+                      <option value="strategic">{t.nav.howItWorks === 'Como funciona' ? 'Estratégico — histórico completo' : 'Strategic — full archive'}</option>
                     </select>
                   </div>
 

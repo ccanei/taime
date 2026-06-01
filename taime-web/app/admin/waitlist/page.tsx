@@ -9,7 +9,7 @@ async function getWaitlist(): Promise<WaitlistRecord[]> {
   const supabase = createSupabaseService()
   const { data } = await supabase
     .from('waitlist')
-    .select('id, email, name, company, role, interest, created_at, contacted')
+    .select('id, email, name, company, role, interest, requested_plan, created_at, contacted')
     .order('created_at', { ascending: false })
   return (data as WaitlistRecord[]) ?? []
 }

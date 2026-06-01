@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Payload ───────────────────────────────────────────────────────────────
-  let body: { id?: string; email: string; name?: string }
+  let body: { id?: string; email: string; name?: string; plan?: string }
   try {
     body = await request.json()
   } catch {
@@ -128,6 +128,10 @@ export async function POST(request: NextRequest) {
   if (!email) {
     return NextResponse.json({ error: 'Missing email' }, { status: 400 })
   }
+  // Plano final escolhido pelo admin. Default 'free' se ausente/inválido.
+  const plan = (['free', 'essential', 'strategic'].includes(body.plan ?? '')
+    ? body.plan
+    : 'free') as 'free' | 'essential' | 'strategic'
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const serviceKey  = process.env.SUPABASE_SERVICE_KEY!
@@ -147,7 +151,11 @@ export async function POST(request: NextRequest) {
     }),
   })
 
-  if (!authRes.ok) {
+  let createdUserId: string | null = null
+  if (authRes.ok) {
+    const created = await authRes.json().catch(() => null) as { id?: string } | null
+    createdUserId = created?.id ?? null
+  } else {
     const authErr = await authRes.json().catch(() => ({})) as { msg?: string; message?: string }
     const msg = authErr.msg ?? authErr.message ?? ''
     // "already exists" é ok — usuário pode ter sido criado antes
@@ -176,9 +184,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: dbErr || 'Erro ao atualizar waitlist' }, { status: 500 })
   }
 
+  // ── Cria/atualiza subscription com o plano escolhido pelo admin ───────────
+  // Best-effort: se não conseguimos o user.id (caso "already exists"), pulamos
+  // — o admin pode ajustar a subscription manualmente.
+  if (createdUserId) {
+    const subRes = await fetch(
+      `${supabaseUrl}/rest/v1/subscriptions?on_conflict=user_id`,
+      {
+        method: 'POST',
+        headers: {
+          'apikey':        serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type':  'application/json',
+          'Prefer':        'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify({ user_id: createdUserId, plan }),
+      },
+    )
+    if (!subRes.ok) {
+      console.error('approve: falha ao upsertar subscription', subRes.status, await subRes.text())
+      // não bloqueia — admin pode ajustar depois
+    }
+  }
+
   // Email de aprovação. Falha aqui é logada mas não bloqueia a resposta — usuário
   // já foi criado no Auth e a waitlist marcada como contacted.
   await sendApprovalEmail(email)
 
-  return NextResponse.json({ success: true, message: 'Acesso liberado' })
+  return NextResponse.json({ success: true, message: 'Acesso liberado', plan })
 }

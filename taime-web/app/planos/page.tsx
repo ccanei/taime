@@ -7,18 +7,17 @@ import Footer from '@/components/Footer'
 import { useLocale } from '@/lib/useLocale'
 
 const FEATURE_VALUES: { free: boolean | string; essential: boolean | string; strategic: boolean | string }[] = [
-  { free: true,  essential: true,  strategic: true  },
-  { free: true,  essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: true,  strategic: true  },
-  { free: false, essential: false, strategic: true  },
-  { free: false, essential: false, strategic: true  },
-  { free: false, essential: false, strategic: true  },
+  { free: true,  essential: true,  strategic: true  }, // Preview dos relatórios
+  { free: true,  essential: true,  strategic: true  }, // TAIME Score geral
+  { free: false, essential: true,  strategic: true  }, // Análise completa das trends
+  { free: false, essential: true,  strategic: true  }, // Framework
+  { free: false, essential: true,  strategic: true  }, // Score dimensions
+  { free: false, essential: true,  strategic: true  }, // THEN / NOW / NEXT
+  { free: false, essential: true,  strategic: true  }, // Implicações organizacionais
+  { free: false, essential: true,  strategic: true  }, // Gatilhos de decisão
+  { free: false, essential: true,  strategic: true  }, // Histórico 1 ano
+  { free: false, essential: false, strategic: true  }, // Relatórios quinzenais
+  { free: false, essential: false, strategic: true  }, // Histórico completo desde 2000
 ]
 
 function Check({ val }: { val: boolean | string }) {

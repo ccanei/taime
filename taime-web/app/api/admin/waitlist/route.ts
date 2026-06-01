@@ -87,11 +87,12 @@ function userEmailHtml(name: string): string {
 }
 
 function adminEmailHtml(p: {
-  name:     string
-  email:    string
-  company:  string | null
-  role:     string | null
-  interest: string
+  name:           string
+  email:          string
+  company:        string | null
+  role:           string | null
+  interest:       string
+  requested_plan: string
 }): string {
   const dataStr = new Date().toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
@@ -109,6 +110,7 @@ function adminEmailHtml(p: {
     <tr><td style="border-bottom:1px solid #f4f4f5;color:#71717a;">Empresa</td><td style="border-bottom:1px solid #f4f4f5;">${escapeHtml(p.company) || empty}</td></tr>
     <tr><td style="border-bottom:1px solid #f4f4f5;color:#71717a;">Cargo</td><td style="border-bottom:1px solid #f4f4f5;">${escapeHtml(p.role) || empty}</td></tr>
     <tr><td style="border-bottom:1px solid #f4f4f5;color:#71717a;">Interesse</td><td style="border-bottom:1px solid #f4f4f5;">${escapeHtml(p.interest)}</td></tr>
+    <tr><td style="border-bottom:1px solid #f4f4f5;color:#71717a;">Plano solicitado</td><td style="border-bottom:1px solid #f4f4f5;"><strong>${escapeHtml(p.requested_plan)}</strong></td></tr>
     <tr><td style="color:#71717a;">Data</td><td>${escapeHtml(dataStr)}</td></tr>
   </table>
   <p style="margin-top:24px;">
@@ -139,7 +141,15 @@ const sendEmail = async (to: string, subject: string, html: string): Promise<voi
 }
 
 export async function POST(req: Request) {
-  const { name, email, company, role, interest } = await req.json()
+  const body = await req.json() as {
+    name?: string; email?: string; company?: string | null;
+    role?: string | null; interest?: string; requested_plan?: string
+  }
+  const { name = '', email = '', company = null, role = null, interest = '' } = body
+  // Normaliza plano (apenas 'free' | 'essential' | 'strategic'; fallback 'free')
+  const requested_plan = ['free', 'essential', 'strategic'].includes(body.requested_plan ?? '')
+    ? body.requested_plan as string
+    : 'free'
 
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
     .replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
@@ -161,7 +171,7 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
           Prefer: 'return=minimal',
         },
-        body: JSON.stringify({ name, email, company, role, interest }),
+        body: JSON.stringify({ name, email, company, role, interest, requested_plan }),
       }
     )
 
@@ -178,7 +188,7 @@ export async function POST(req: Request) {
     // via .catch — Promise.all nunca rejeita, não bloqueia o cadastro.
     await Promise.all([
       sendEmail(email, 'You are on the TAIME waitlist', userEmailHtml(name)),
-      sendEmail(ADMIN_EMAIL, 'New TAIME waitlist signup', adminEmailHtml({ name, email, company, role, interest })),
+      sendEmail(ADMIN_EMAIL, 'New TAIME waitlist signup', adminEmailHtml({ name, email, company, role, interest, requested_plan })),
     ])
 
     return NextResponse.json({ success: true })

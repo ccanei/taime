@@ -2,6 +2,71 @@
 
 ---
 
+## [2026-06-01] — Controle de acesso por plano + preview público + SEO PT/EN + waitlist com plano
+
+### Bloco 1 — Hero text (commit `6daac70`)
+- `lib/i18n/pt.ts` linha 13: `badge` "Fontes globais validadas · Análise com IA · Desde 2000" → "Sinais globais · Inteligência executiva · Desde 2000"
+- `lib/i18n/en.ts` linha 15: análogo
+
+### Bloco 2 — SQL pendente
+- `add-plan-defaults.sql` criado na raiz do pipeline (NÃO rodado — usuário roda no Supabase SQL Editor):
+  - `ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS requested_plan text DEFAULT 'free'`
+  - `ALTER TABLE subscriptions ALTER COLUMN plan SET DEFAULT 'free'`
+
+### Bloco 3 — `lib/access.ts`
+- `getAccessLevel(plan, reportPeriod)`: regra `free → preview only`; `essential → completo se ≤ 1 ano`; `strategic → completo sempre`. Tipo `Plan = 'free' | 'essential' | 'strategic'`.
+
+### Bloco 4 — Preview público em `/reports/[id]`
+- `app/reports/[id]/page.tsx`: **redirect `/login` removido**. Busca plano via `subscriptions` (best-effort com try/catch — tolerante a tabela ausente). Passa `accessLevel` e `plan` ao `ReportClient`.
+- `components/ReportClient.tsx`:
+  - Novas props opcionais `accessLevel?: AccessLevel` e `plan?: Plan | null`.
+  - `isPreview = accessLevel && !accessLevel.canSeeFullReport`.
+  - useEffect de `savedScrollPct` e `reading_progress` guardados com `if (isPreview) return` (não rastreia leitura nem dispara API para visitante).
+  - Branch de preview: header + título + score geral (média) + 1º parágrafo do resumo + lista de trends (título + score, sem detalhes) + CTA contextualizado:
+    - `plan === 'essential'` (out of window) → "Este relatório está fora do período de acesso do seu plano. Faça upgrade para Estratégico." → `/planos`
+    - visitante / free → "Acesso antecipado para ver a análise completa" → `/login`
+
+### Bloco 5 — Waitlist com plano
+- `app/login/page.tsx`: estado `requestedPlan` (default `'free'`); `<select>` com 3 opções (free / essential / strategic) entre interesse e botão. Body inclui `requested_plan`.
+- `app/api/admin/waitlist/route.ts`: extrai e valida `requested_plan` do body (whitelist + fallback `'free'`); grava no insert; mostra "Plano solicitado" no email do admin.
+- `app/admin/waitlist/page.tsx`: select inclui `requested_plan` no get.
+- `app/admin/waitlist/WaitlistAdmin.tsx`: tipo `WaitlistRecord` ganha `requested_plan`; coluna "Plano solicitado" + `<select>` "Plano final" pré-preenchido com o solicitado (admin decide); envia `plan` ao `/api/admin/approve`.
+- `app/api/admin/approve/route.ts`: aceita `plan` no body (whitelist + fallback `'free'`); captura `createdUserId` da resposta do Auth admin API; upsert em `subscriptions` com `on_conflict=user_id` e `Prefer: resolution=merge-duplicates`. Caso "already exists" sem id capturado, pula a subscription (admin ajusta manualmente). Retorno inclui `plan`.
+
+### Bloco 6 — Tabela de planos atualizada
+- `lib/i18n/pt.ts` + `lib/i18n/en.ts`:
+  - `home.plans.Essencial.features`: "Histórico de 90 dias" → "Histórico de 1 ano" (/ "90-day history" → "1-year history")
+  - `home.plans.Estratégico.features`: **removido** "Acesso antecipado ao próximo ciclo" / "Early access to the next cycle" → 3 features (Tudo do Essencial + Quinzenais + Histórico completo)
+  - `planos.featureLabels`: "Histórico 90 dias" → "Histórico 1 ano"; **removido** "Acesso antecipado ao próximo ciclo". Total: 11 features (era 12).
+- `app/planos/page.tsx` `FEATURE_VALUES`: removida última linha; comentários por feature adicionados. 11 entradas alinhadas com as 11 labels.
+
+### Bloco 7 — SEO
+- `app/layout.tsx`: `metadata` expandido (preservados `title`/`description` originais com upgrades). Inclui `metadataBase`, `title` com `template`, `keywords` PT/EN (11 termos), `openGraph` (locale pt_BR + alternateLocale en_US, siteName, image og), `twitter` (summary_large_image), `alternates.canonical`.
+- `app/sitemap.ts` criado: 9 rotas públicas existentes (`/`, `/sobre`, `/about`, `/planos`, `/contato`, `/privacidade`, `/termos`, `/privacy`, `/terms`) com prioridades 0.3–1.0 e `changeFrequency: 'weekly'`. **Importante**: `/reports/[id]` NÃO foi enumerado no sitemap (geração estática exigiria fetch de IDs no banco em build-time) — mas também NÃO está no disallow do robots, então o Google pode indexar via links.
+- `app/robots.ts` criado: allow `/`; disallow `/dashboard`, `/admin`, `/api`, `/login`. Sitemap referenciado.
+
+### Bloco 8 — Verificação
+- `cd taime-web && npm run build`: **✓ Compiled successfully, 0 erros TypeScript**. 24 rotas estáticas no output, incluindo `○ /robots.txt` e `○ /sitemap.xml` como rotas estáticas materializadas.
+- Confirmado via `next start` local: `/robots.txt` retorna conteúdo esperado (User-Agent: *, Allow: /, disallow lista, sitemap referenciado); `/sitemap.xml` retorna XML válido com as URLs e `lastmod` atual.
+
+### SQL pendente (rodar no Supabase Editor)
+```sql
+-- add-plan-defaults.sql
+ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS requested_plan text DEFAULT 'free';
+ALTER TABLE subscriptions ALTER COLUMN plan SET DEFAULT 'free';
+```
+
+### Próximos passos manuais
+- **Google Search Console**: submeter `https://www.taime.tech/sitemap.xml` (Settings → Sitemaps → Add new sitemap).
+- **OG image**: gerar `public/og-image.png` 1200×630 (referenciada em openGraph/twitter). Se ausente, o Next serve 404 — degradação grácil mas vale gerar.
+- Reaprovar usuários antigos da waitlist (que não têm `requested_plan` definido — default `'free'` aplicado pela migração).
+
+### Detalhes técnicos
+- O `ReportClient` mantém compatibilidade retroativa: se `accessLevel` for `undefined` (callers antigos), libera acesso completo.
+- `subscriptions` upsert usa `on_conflict=user_id` com `Prefer: resolution=merge-duplicates`. Funciona se houver constraint UNIQUE em `user_id` — se não houver, o user precisa adicionar.
+
+---
+
 ## [2026-05-31] — Build verde + commit + push do conjunto completo
 
 ### Status

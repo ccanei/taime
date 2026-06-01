@@ -9,9 +9,12 @@ export interface WaitlistRecord {
   company: string | null
   role: string | null
   interest: string | null
+  requested_plan: 'free' | 'essential' | 'strategic' | null
   created_at: string
   contacted: boolean
 }
+
+type PlanChoice = 'free' | 'essential' | 'strategic'
 
 type Filter = 'all' | 'pending' | 'approved'
 
@@ -28,6 +31,8 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
   const [approving, setApproving] = useState<string | null>(null)
   const [flash, setFlash]         = useState<{ id: string; name: string } | null>(null)
   const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map())
+  // Plano final escolhido pelo admin por registro (default = requested_plan ou 'free')
+  const [planChoice, setPlanChoice] = useState<Map<string, PlanChoice>>(new Map())
 
   const counts = useMemo(() => ({
     all:      records.length,
@@ -45,11 +50,13 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
     setApproving(record.id)
     setRowErrors(prev => { const m = new Map(prev); m.delete(record.id); return m })
 
+    const plan: PlanChoice = planChoice.get(record.id) ?? (record.requested_plan ?? 'free')
+
     try {
       const res = await fetch('/api/admin/approve', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ id: record.id, email: record.email, name: record.name ?? '' }),
+        body:    JSON.stringify({ id: record.id, email: record.email, name: record.name ?? '', plan }),
       })
 
       const json = await res.json() as { success?: boolean; ok?: boolean; error?: string; message?: string }
@@ -122,7 +129,7 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 border-b border-zinc-200">
                 <tr>
-                  {['Nome', 'Email', 'Empresa', 'Cargo', 'Interesse', 'Data', 'Status', ''].map(h => (
+                  {['Nome', 'Email', 'Empresa', 'Cargo', 'Interesse', 'Plano solicitado', 'Data', 'Status', 'Plano final / Aprovar'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-zinc-400 tracking-widest uppercase whitespace-nowrap">
                       {h}
                     </th>
@@ -152,6 +159,11 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
                       <td className="px-4 py-3 text-zinc-500 max-w-[160px] truncate">
                         {record.interest ?? <span className="text-zinc-300">—</span>}
                       </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-100 text-zinc-700">
+                          {record.requested_plan ?? 'free'}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">
                         {formatDate(record.created_at)}
                       </td>
@@ -171,16 +183,31 @@ export default function WaitlistAdmin({ initialRecords }: { initialRecords: Wait
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex flex-col gap-1 items-start">
                           {!record.contacted && (
-                            <button
-                              onClick={() => approve(record)}
-                              disabled={isApproving || !!approving}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold
-                                         bg-taime-600 text-white hover:bg-taime-700
-                                         disabled:opacity-50 disabled:cursor-not-allowed
-                                         transition-colors"
-                            >
-                              {isApproving ? 'Aprovando...' : 'Aprovar acesso'}
-                            </button>
+                            <>
+                              <select
+                                value={planChoice.get(record.id) ?? (record.requested_plan ?? 'free')}
+                                onChange={e => {
+                                  const val = e.target.value as PlanChoice
+                                  setPlanChoice(prev => new Map(prev).set(record.id, val))
+                                }}
+                                disabled={isApproving || !!approving}
+                                className="text-xs px-2 py-1 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-2 focus:ring-taime-600"
+                              >
+                                <option value="free">free</option>
+                                <option value="essential">essential</option>
+                                <option value="strategic">strategic</option>
+                              </select>
+                              <button
+                                onClick={() => approve(record)}
+                                disabled={isApproving || !!approving}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold
+                                           bg-taime-600 text-white hover:bg-taime-700
+                                           disabled:opacity-50 disabled:cursor-not-allowed
+                                           transition-colors"
+                              >
+                                {isApproving ? 'Aprovando...' : 'Aprovar acesso'}
+                              </button>
+                            </>
                           )}
                           {rowErr && (
                             <p className="text-xs text-red-600 max-w-[180px]">{rowErr}</p>

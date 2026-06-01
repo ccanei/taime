@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import type { Report, ReportTrend, Lang, TaimeFramework, OrgImplications, ThenNowNext, ScoreDimensions } from '@/lib/types'
 import { formatPeriod, formatPeriodFull, scoreColor, scoreBg, scoreRing } from '@/lib/types'
+import type { AccessLevel, Plan } from '@/lib/access'
 import LanguageSelector from '@/components/LanguageSelector'
 
 // ─── Score gauge ──────────────────────────────────────────────────────────────
@@ -357,13 +359,21 @@ export default function ReportClient({
   report,
   trends,
   savedScrollPct = 0,
+  accessLevel,
+  plan,
 }: {
   report: Report
   trends: ReportTrend[]
   savedScrollPct?: number
+  accessLevel?: AccessLevel
+  plan?: Plan | null
 }) {
   const [lang, setLang] = useState<Lang>('pt-BR')
   const isPt = lang === 'pt-BR'
+
+  // Preview = não pode ver o relatório completo (visitante, free, ou essential
+  // fora da janela de 1 ano). Quando undefined (callers antigos), libera tudo.
+  const isPreview = accessLevel ? !accessLevel.canSeeFullReport : false
 
   useEffect(() => {
     const match = document.cookie.match(/(?:^|;\s*)taime-locale=([^;]+)/)
@@ -372,6 +382,7 @@ export default function ReportClient({
 
   // ─── Restaurar posição de leitura (retomar de onde parou) ───────────────────
   useEffect(() => {
+    if (isPreview) return
     if (!savedScrollPct || savedScrollPct < 1) return
     // espera o conteúdo renderizar antes de calcular a altura total
     const t = setTimeout(() => {
@@ -381,10 +392,11 @@ export default function ReportClient({
       window.scrollTo({ top: target, behavior: 'smooth' })
     }, 300)
     return () => clearTimeout(t)
-  }, [savedScrollPct])
+  }, [savedScrollPct, isPreview])
 
   // ─── Reading progress tracking ──────────────────────────────────────────────
   useEffect(() => {
+    if (isPreview) return
     const reportId = report.id
 
     const send = (scrollPct: number, completed: boolean) =>
@@ -412,10 +424,116 @@ export default function ReportClient({
 
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [report.id])
+  }, [report.id, isPreview])
 
   const title   = isPt ? report.title_pt_br : report.title_en
   const summary = isPt ? report.executive_summary_pt_br : report.executive_summary_en
+
+  // ─── Preview público (visitante / free / essential fora da janela) ──────────
+  if (isPreview) {
+    const firstPara = summary.split('\n\n')[0] ?? ''
+    const avgScore  = trends.length > 0
+      ? Math.round(trends.reduce((acc, t) => acc + t.taime_score, 0) / trends.length)
+      : 0
+    const outOfWindow = plan === 'essential'
+    const ctaHref  = outOfWindow ? '/planos' : '/login'
+    const ctaTitle = outOfWindow
+      ? (isPt ? 'Este relatório está fora do período de acesso do seu plano.' : 'This report is outside your plan’s access window.')
+      : (isPt ? 'Acesso antecipado para ver a análise completa' : 'Early access to view the full analysis')
+    const ctaSub = outOfWindow
+      ? (isPt ? 'Faça upgrade para Estratégico para acessar todo o histórico desde 2000.' : 'Upgrade to Strategic to access the full archive since 2000.')
+      : (isPt ? 'Preview · cadastre-se para receber acesso completo aos relatórios.' : 'Preview · sign up to get full access to the reports.')
+    const ctaBtn = outOfWindow
+      ? (isPt ? 'Ver planos →' : 'View plans →')
+      : (isPt ? 'Solicitar acesso →' : 'Request access →')
+
+    return (
+      <div className="min-h-screen bg-zinc-50">
+        {/* Sticky header */}
+        <header className="bg-white border-b border-zinc-200 px-6 py-3 sticky top-0 z-20">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link href="/" className="font-bold text-lg tracking-tight text-zinc-900 shrink-0">
+                TAIME
+              </Link>
+              <span className="text-zinc-200">·</span>
+              <span className="text-sm text-zinc-500 truncate hidden sm:block">{title}</span>
+            </div>
+            <LanguageSelector />
+          </div>
+        </header>
+
+        <main className="max-w-5xl mx-auto px-6 py-10 space-y-6">
+          {/* Header do relatório: título + score geral + 1º parágrafo */}
+          <div className="bg-white rounded-2xl border border-zinc-200 px-8 py-8">
+            <p className="text-xs font-bold text-zinc-400 tracking-widest mb-3">
+              {formatPeriod(report.period, lang).toUpperCase()}
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 leading-snug mb-6">
+              {title}
+            </h1>
+
+            <div className="flex items-center gap-4 mb-6">
+              <div className={`flex flex-col items-center justify-center w-20 h-20 rounded-2xl ring-2 shrink-0 ${scoreRing(avgScore)}`}>
+                <span className={`text-3xl font-bold tabular-nums leading-none ${scoreColor(avgScore)}`}>{avgScore}</span>
+                <span className="text-[9px] text-zinc-400 font-bold tracking-widest mt-0.5">SCORE</span>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-zinc-400 tracking-widest mb-1">{isPt ? 'TAIME SCORE GERAL' : 'OVERALL TAIME SCORE'}</p>
+                <p className="text-sm text-zinc-500">
+                  {isPt
+                    ? `Média de ${trends.length} trend${trends.length !== 1 ? 's' : ''} neste período`
+                    : `Average of ${trends.length} trend${trends.length !== 1 ? 's' : ''} in this period`}
+                </p>
+              </div>
+            </div>
+
+            {firstPara && (
+              <p className="prose-taime text-sm leading-relaxed text-zinc-700">{firstPara}</p>
+            )}
+          </div>
+
+          {/* Lista de trends com título + score (sem detalhes) */}
+          <div className="bg-white rounded-2xl border border-zinc-200 px-8 py-6">
+            <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-4">
+              {isPt ? `${trends.length} TRENDS NESTE PERÍODO` : `${trends.length} TRENDS IN THIS PERIOD`}
+            </p>
+            <ul className="divide-y divide-zinc-100">
+              {trends.map(trend => {
+                const tTitle = isPt ? trend.title_pt_br : trend.title_en
+                return (
+                  <li key={trend.id} className="flex items-center gap-4 py-3">
+                    <div className={`w-12 h-12 rounded-xl ring-2 shrink-0 flex flex-col items-center justify-center ${scoreRing(trend.taime_score)}`}>
+                      <span className={`text-base font-bold tabular-nums leading-none ${scoreColor(trend.taime_score)}`}>{trend.taime_score}</span>
+                    </div>
+                    <p className="text-sm font-semibold text-zinc-800 leading-snug">{tTitle}</p>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          {/* CTA */}
+          <div className="rounded-2xl bg-taime-900 text-white p-8">
+            <p className="text-[10px] font-bold tracking-widest text-white/40 uppercase mb-3">{isPt ? 'PREVIEW' : 'PREVIEW'}</p>
+            <h2 className="text-xl sm:text-2xl font-bold mb-3 leading-snug">{ctaTitle}</h2>
+            <p className="text-sm text-white/60 leading-relaxed mb-6">{ctaSub}</p>
+            <Link
+              href={ctaHref}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white text-taime-900 text-sm font-semibold hover:bg-white/90 transition-colors"
+            >
+              {ctaBtn}
+            </Link>
+          </div>
+        </main>
+
+        <footer className="max-w-5xl mx-auto px-6 py-8 text-xs text-zinc-400 text-center">
+          TAIME · {formatPeriod(report.period, lang)}
+        </footer>
+      </div>
+    )
+  }
+  // ─── Acesso completo (essential dentro da janela, strategic, ou sem accessLevel) ─
 
   return (
     <div className="min-h-screen bg-zinc-50">
