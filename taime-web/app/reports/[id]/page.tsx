@@ -39,5 +39,23 @@ export default async function ReportPage({ params }: Props) {
   const data = await getReport(id)
   if (!data) notFound()
 
-  return <ReportClient report={data.report} trends={data.trends} />
+  // Posição de leitura salva (para retomar de onde parou)
+  const { data: progress } = await supabase
+    .from('reading_progress')
+    .select('scroll_pct, completed')
+    .eq('user_id', user.id)
+    .eq('report_id', id)
+    .maybeSingle()
+
+  // só retoma se houver progresso parcial (não retoma se já concluiu a leitura)
+  const savedScrollPct =
+    progress && !progress.completed ? (progress.scroll_pct ?? 0) : 0
+
+  return (
+    <ReportClient
+      report={data.report}
+      trends={data.trends}
+      savedScrollPct={savedScrollPct}
+    />
+  )
 }

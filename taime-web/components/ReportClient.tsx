@@ -356,9 +356,11 @@ function TrendSection({ trend, lang, period }: { trend: ReportTrend; lang: Lang;
 export default function ReportClient({
   report,
   trends,
+  savedScrollPct = 0,
 }: {
   report: Report
   trends: ReportTrend[]
+  savedScrollPct?: number
 }) {
   const [lang, setLang] = useState<Lang>('pt-BR')
   const isPt = lang === 'pt-BR'
@@ -367,6 +369,50 @@ export default function ReportClient({
     const match = document.cookie.match(/(?:^|;\s*)taime-locale=([^;]+)/)
     setLang(match?.[1] === 'en' ? 'en' : 'pt-BR')
   }, [])
+
+  // ─── Restaurar posição de leitura (retomar de onde parou) ───────────────────
+  useEffect(() => {
+    if (!savedScrollPct || savedScrollPct < 1) return
+    // espera o conteúdo renderizar antes de calcular a altura total
+    const t = setTimeout(() => {
+      const el = document.documentElement
+      const max = el.scrollHeight - el.clientHeight
+      const target = (savedScrollPct / 100) * max
+      window.scrollTo({ top: target, behavior: 'smooth' })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [savedScrollPct])
+
+  // ─── Reading progress tracking ──────────────────────────────────────────────
+  useEffect(() => {
+    const reportId = report.id
+
+    const send = (scrollPct: number, completed: boolean) =>
+      fetch('/api/reading-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportId, scrollPct, completed }),
+        keepalive: true, // garante envio mesmo ao fechar a aba
+      }).catch(() => {})
+
+    // marca a abertura imediatamente
+    send(0, false)
+
+    let last = 0
+    const onScroll = () => {
+      const now = Date.now()
+      if (now - last < 3000) return // throttle 3s
+      last = now
+
+      const el = document.documentElement
+      const max = el.scrollHeight - el.clientHeight
+      const pct = max > 0 ? (el.scrollTop / max) * 100 : 0
+      send(pct, pct >= 90)
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [report.id])
 
   const title   = isPt ? report.title_pt_br : report.title_en
   const summary = isPt ? report.executive_summary_pt_br : report.executive_summary_en

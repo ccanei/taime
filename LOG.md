@@ -2,6 +2,244 @@
 
 ---
 
+## [2026-05-31] — Build verde + commit + push do conjunto completo
+
+### Status
+- [x] `cd taime-web && npm run build`: **✓ Compiled successfully, 0 erros TypeScript** (Next.js 16.2.4, target ES2022)
+- [x] Novas rotas no output: `/admin/reports`, `/admin/reports/[id]`, `/api/admin/report-action`, `/api/admin/report-edit`, `/api/reading-progress`
+- [x] `git add . && git commit -m "feat: validador editorial + admin/reports + edição inline de flags + copiloto corretor"` + `git push` para `ccanei/taime`
+- [x] Destrava os checkboxes "npm run build — pendente" das entradas anteriores (Dashboard "Ler depois", Chips de categoria etc.)
+
+### Limpeza necessária
+- **`taime-web/app/admin/reports/[id]/page copy.tsx` deletado**: era backup acidental do macOS Finder. Continha a versão antiga do `<ReviewPanel>` sem o prop `trends` (que agora é obrigatório) — quebrava o type-check do Next com `Property 'trends' is missing`. Identificado pelo erro de build, removido, build passou.
+
+### Conjunto pushado
+- Curadoria editorial (validador LLM-as-judge + checks determinísticos) + fila `/admin/reports`
+- Edição inline de flags (`/api/admin/report-edit`, `lib/reportFieldPath.ts`)
+- Copiloto corretor (README + UX)
+- Continue reading + Recomendados + "Ler depois" (`/api/reading-progress`, `ContinueReadingCard`, `NextReadsPanel`, `SavedReportsPanel`)
+- Chips de categoria no dashboard + ampliação 8→14 categorias + back-fill (`backfill-trend-theme.ts`)
+- Frontend (`ReportClient`, `DashboardClient`, `lib/types.ts`, `app/dashboard/page.tsx`, `app/reports/[id]/page.tsx`) ajustado
+
+### Warning conhecido (não bloqueador)
+Next detecta múltiplos `package-lock.json` (raiz + `taime-web/`) e infere workspace root como a raiz. Para silenciar: remover lockfile raiz ou definir `turbopack.root`.
+
+### Migrações Supabase pendentes (rodar no painel)
+- `add-validation-columns.sql` — confirmado pelo user em entrega anterior (já rodado)
+- `add-saved-reports.sql` — listado na entrada da feature "Ler depois", aguarda execução
+
+---
+
+## [2026-05-31] — Dashboard: "Ler depois" (salvos manuais) + "Recomendados"
+
+### Status
+- [x] **Migração** `add-saved-reports.sql` — nova tabela `saved_reports` (user_id, report_id, saved_at; unique(user_id, report_id); índice por (user_id, saved_at desc); RLS por `auth.uid()` com select/insert/delete).
+- [x] **Novo** `app/api/saved-reports/route.ts` — POST (upsert, salvar) e DELETE (remover). Autenticado via `createSupabaseServer`. `dynamic = 'force-dynamic'`.
+- [x] **Novo** `components/SavedReportsPanel.tsx` — bloco "Ler depois" (grid de cards salvos, link p/ report).
+- [x] `components/DashboardClient.tsx` — ícone de marcador (bookmark) em cada card (canto inferior-direito); prop `savedIds`; `toggleSaved` com atualização otimista + reversão em falha; `e.preventDefault/stopPropagation` para não navegar ao clicar no marcador; strings `savedAdd`/`savedRemove` PT/EN.
+- [x] `components/NextReadsPanel.tsx` — heading renomeado "Próximas leituras" → "Recomendados" (para distinguir do bloco manual).
+- [x] `app/dashboard/page.tsx` — busca `saved_reports`; render do bloco "Ler depois" (acima de "Recomendados"); passa `savedIds` ao DashboardClient.
+- [ ] `npm run build` — pendente (rodar no ambiente do usuário).
+- [ ] Migração pendente no Supabase: `add-saved-reports.sql`.
+
+### Decisões técnicas
+- **Dois blocos distintos**: "Ler depois" (manual, intenção do usuário) e "Recomendados" (automático, por tema dominante). Nomes diferentes para não confundir.
+- **Bookmark no card** (não só dentro do report): salvar é decisão tomada ao navegar a lista. Clique no ícone é interceptado (não abre o report).
+- **DELETE em saved_reports** = usuário removendo o próprio item salvo (reversível, RLS restrita ao próprio user). Não é deleção de conteúdo do produto.
+- Um mesmo report pode aparecer em "Ler depois" e "Recomendados" — aceitável (propósitos diferentes). Excluir salvos das recomendações fica como ajuste futuro opcional.
+
+### NÃO commitado
+Sem commit/push/deploy. Aguardando build verde + migração no Supabase.
+
+---
+
+## [2026-05-30] — Dashboard: chips de categoria + back-fill + ampliação 8→14 categorias + fix buildNextReads
+
+### Status
+- [x] **Chips de categoria** (`components/DashboardClient.tsx`): linha de chips acima da lista, derivados de `report_trends.category`, ordenados por frequência. Clicar filtra reports onde **qualquer** trend é da categoria (não "dominante"). Integrado ao `useMemo` existente — combina com busca por título + filtro de período. Strings PT/EN no objeto `UI` (`allCategories`, `filterCategory`). Botão "limpar filtros" e contador agora consideram `category`.
+- [x] `app/dashboard/page.tsx`: `getReports` traz `category` no select aninhado — `report_trends(taime_score, rank, category)`.
+- [x] `lib/types.ts`: `ReportTrend` ganhou `category: string | null` e `theme_slug: string | null`; o `Pick` em `Report.report_trends` inclui `category`.
+- [x] **Back-fill** `backfill-trend-theme.ts` (NOVO, raiz do pipeline): classifica `category` + `theme_slug` nas trends já existentes via LLM, em lotes de 12, sem regenerar relatório/scores/texto. Flags `--dry-run` e `--force`. Reusa slugs entre lotes. **Rodado**: ~14 lotes, trends classificadas (output confirmado pelo usuário).
+- [x] **Ampliação 8→14 categorias** (`generate-report.ts` + `backfill-trend-theme.ts`): `VALID_CATEGORIES` agora IA, Cloud, Cybersecurity, Regulation, Infrastructure, Data, Market, Fintech, Automation, Observability, Engineering, Edge, Healthtech, Sustainability. Atualizada também a lista no texto do `TREND_SCHEMA` (prompt). Alinha o classificador com os nichos que o coletor já busca (observability/engineering/edge/healthtech/sustainability).
+- [x] **Fix crash** `app/dashboard/page.tsx` (`buildNextReads`): `TypeError: Cannot read properties of undefined (reading 'title_pt_br')`. Causa: `getAllTrendMeta` traz trends de TODOS os reports (inclui não-publicados); `reports` só tem publicados → `find` retornava undefined. Correção em 2 camadas: (1) filtra `trendMeta` por reports publicados na entrada da função; (2) guarda `if (!r) return null` no map + `.slice(0,4)` movido para depois do filtro.
+- [ ] `npm run build` — pendente (rodar no ambiente do usuário).
+
+### Decisões técnicas
+- **Chip = "qualquer trend da categoria"**, não "categoria dominante": relatório quinzenal cobre vários temas; quem filtra por "Cyber" quer todo report que tocou em cyber.
+- **category vs theme_slug são independentes**: category = gaveta larga (14, vira chip); theme_slug = tema fino estável entre ciclos (rastreia evolução). Ex.: trend de "Observabilidade de LLMs" → category `Observability` (após ampliação), theme_slug `observabilidade-ia`. Back-fill com `--force` reclassifica category sem alterar theme_slug.
+- **Back-fill em vez de regeneração**: `category` é rótulo derivável do conteúdo; classificar ~150 trends ≈ 13 chamadas LLM curtas, muito mais barato que regenerar 26 relatórios. Scores e texto intocados.
+
+### Cobertura de categorias vs. formulário de acesso antecipado
+Form "Principal interesse" tem 6 opções: Estratégia de Tecnologia, IA & Agentes, Cloud & Infraestrutura, Cibersegurança, Inteligência de Mercado, Planejamento/Roadmap. Cobertura: IA/Cloud/Cyber bem cobertas (trends reais, PT+EN); Estratégia e Roadmap atendidas pelo framework (TYPE→ACT→…, THEN/NOW/NEXT) transversalmente; Inteligência de Mercado (`Market`) a validar volume. Form (6 interesses) e classificador (14 categorias) não batem 1:1 de propósito — form é segmentação de lead.
+
+### Dependência de dados
+Chips só renderizam com `category` preenchida. Após o back-fill, os 26 relatórios atuais têm categoria → chips aparecem. Healthtech/Edge/Sustainability/Fintech podem ter pouco volume publicado mesmo com o coletor buscando (dependem de clusters fortes virarem trend).
+
+### NÃO commitado
+Sem commit/push/deploy. Migração `add-trend-theme.sql` já rodada (pré-requisito do back-fill). Aguardando `npm run build` verde.
+
+---
+
+## [2026-05-30] — Curadoria: refinamentos do validador + edição inline + copiloto corretor
+
+### Status
+- [x] **Refinamento 1 — regra de fonte semântica (Opção A)**: removida a checagem de nomes de fonte do nível determinístico (regex não distinguia papel do nome na frase). Movida para o `JUDGE_SYSTEM` do `validate-report.ts`. Distinção: nome como **sujeito** de um fato ("Microsoft testa quântica") é permitido; nome como **atribuição** ("segundo a Gartner", "dados da PwC") é bloqueado. Régua: se remover o nome destrói um fato → sujeito (permite); se só remove citação → atribuição (flag). Verdict novo `source_attribution` (category `source`, severity blocking).
+- [x] **Refinamento 1b — isenção confidence_basis**: descrição de fontes por categoria ("global strategic consulting firms") é o formato mandatório e nunca é flagueada; só flagueia nome específico.
+- [x] **Refinamento 2 — anti-números não-rastreáveis**: bloco `NON-TRACEABLE QUANTIFICATION RULE` no `SYSTEM_PROMPT` do `generate-report.ts`. Proíbe multiplicadores/percentuais/prazos inventados (2x-3x, 20%, "within hours"). Reduz na origem; validador é a rede.
+- [x] **Refinamento 3 — sub-scores fora de escopo**: `JUDGE_SYSTEM` ignora o `taime_score` e as 5 dimensões no grounding (são juízo analítico, não fato). PT=EN e range seguem no determinístico.
+- [x] **Pós-processamento de em dash** (`stripEmDash` + `sanitizeTrend` em `generate-report.ts`): remove em dash (U+2014) **sem tocar hífen** (U+002D) antes de persistir. Faixa numérica `2022—2026`→hífen; separador de oração→vírgula. "self-guided"/"AI-powered" intactos. Aplicado a trends + metadados.
+- [x] **Trava de idempotência v2** (`generate-report.ts`): só bloqueia se houver relatório **vivo** (published/pending_review/generating/draft). Relatórios `rejected`/`archived` no período são limpos automaticamente (trends+report) e a geração prossegue → recusar na interface + rodar generate = regenera sem mexer no banco.
+- [x] **Edição inline de flags** — NOVO `lib/reportFieldPath.ts` (parse de field path: coluna vs JSONB, acha gêmeo PT/EN, lê/grava valor), NOVO `app/api/admin/report-edit/route.ts` (grava PT+EN, strip de em dash, remove flags do campo editado, marca `validation_verdict='stale'` + `pending_review`), `ReviewPanel.tsx` reescrito com textareas PT/EN por flag, `page.tsx` passa `trends` ao painel.
+- [x] **Migração** `add-stale-verdict.sql` — adiciona `'stale'` ao CHECK de `validation_verdict` (editado, requer revalidação no terminal).
+- [x] **Copiloto corretor** (`validate-report.ts`): `CORRECTOR_SYSTEM` + `suggestCorrection` geram sugestão **subtrativa** por flag durante a validação (1 chamada LLM por flag corrigível). Flag ganhou `suggestion_pt/_en/_reason` (JSONB, sem migração). `ReviewPanel.tsx`: UI ✨ com Aceitar / Editar antes / Corrigir manual.
+- [ ] `npm run build` — rodar no ambiente do usuário.
+- [x] **Teste fev/16 ponta a ponta**: 57→29→13→10 flags ao longo dos refinamentos. Em dash zerado pelo pós-processamento; sub-scores e confidence_basis-por-categoria deixaram de ser flagueados. Sugestões do copiloto confirmadas subtrativas e dentro do boundary temporal.
+
+### Decisões técnicas
+- **Copiloto = Opção Copiloto, não Autônoma**: IA **propõe**, humano **aplica**. Correção estritamente **subtrativa** (só remove/suaviza, nunca adiciona fato/número/nome/data). Razão: o sistema existe para policiar alucinação; dar à IA poder de reescrever conteúdo sem gate humano contradiz a premissa. Subtrair não inventa.
+- **Publicação nunca automática pós-falha**: relatório que falhou de primeira sempre passa pelo OK humano final, mesmo após correções e revalidação limpa.
+- **Escopo de idioma na correção**: corrige só o idioma flagueado; PT e EN podem variar naturalmente desde que ambos fiéis aos sinais. Só alinha quando o flag é sobre divergência factual entre os dois (ex: caso do "17%").
+- **Revalidação no terminal, não no web**: edição/aceite marca `stale`; revalidação completa (com LLM) roda via `npx ts-node validate-report.ts`. Não duplicar o validador no web (dívida + chave Anthropic na Vercel + risco de divergência do prompt do juiz).
+- **em dash via código, não via prompt**: o prompt proibia em dash e o modelo ignorava sistematicamente (13 flags num relatório). Substituição determinística é mais confiável que instrução.
+
+### Atenção / dependência de dados
+- **Relatórios antigos (pré-30/mai) têm em dash cravado** — gerados antes do `stripEmDash`. Ao validar jan–mar/2026, vieram 30-40 flags de em dash por relatório. Pendente: limpador de em dash em massa no banco (UPDATE tratando JSONB) antes de curar manualmente, senão é muito clique mecânico.
+- Validar publicados antigos exige mudar status para `pending_review` (validador não processa `published`). Eles **saem do ar** enquanto pendentes; voltam a `published` sozinhos se passarem (auto-publish), ou ficam pendentes se flagueados.
+- Erros esporádicos `(judge) JSON não parseável` em algumas trends — não auditadas naquela passada; tratados como warning de revisão manual. Reprocessar costuma resolver.
+
+### NÃO commitado
+Sem commit/push/deploy. Tudo local, aguardando `npm run build` verde. Migração `add-stale-verdict.sql` já rodada no Supabase. `add-validation-columns.sql` (sessão 29/mai) também já rodada. Em curso: validação retroativa de jan–mar/2026 (status alterado para pending_review).
+
+---
+
+## [2026-05-30] — Dashboard v2: continuar lendo + próximas leituras por tema + theme_slug no pipeline
+
+### Status
+- [x] **Migração** `add-reading-progress.sql` — nova tabela `reading_progress` (user_id, report_id, scroll_pct, completed, first_read_at, last_read_at; unique(user_id, report_id); índice por (user_id, last_read_at desc); RLS por `auth.uid()`)
+- [x] **Migração** `add-trend-theme.sql` — `report_trends` ganhou `category text` e `theme_slug text` (+ índice em theme_slug). `if not exists`, seguro re-rodar
+- [x] **Novo** `app/api/reading-progress/route.ts` — POST autenticado (`createSupabaseServer`), upsert idempotente com clamp de scroll_pct 0–100. `dynamic = 'force-dynamic'`
+- [x] **Novo** `components/ContinueReadingCard.tsx` — card "continuar de onde parou" com barra de progresso
+- [x] **Novo** `components/NextReadsPanel.tsx` — recomendações de próxima leitura por tema dominante
+- [x] `components/ReportClient.tsx` — +prop `savedScrollPct`; efeito que **restaura a posição de leitura** ao abrir (scrollTo suave após 300ms); efeito de tracking de scroll (throttle 3s, completed em ≥90%, keepalive)
+- [x] `app/reports/[id]/page.tsx` — busca `reading_progress` do usuário e passa `savedScrollPct` (só retoma se `!completed`)
+- [x] `app/dashboard/page.tsx` — reescrito: removida faixa de métricas e watchlist; adicionado continuar lendo + próximas leituras por tema
+- [x] `generate-report.ts` — `category`+`theme_slug` no tipo `TrendAnalysis`, no `TREND_SCHEMA` e no prompt; `loadExistingThemes()` injeta slugs existentes para reuso entre ciclos; `normalizeSlug`/`normalizeCategory`; EN herda slug/category do PT (idioma-neutros); persistidos em `report_trends`. **Scores PT=EN intactos** (enforceScoresFromPt preservado)
+- [ ] `npm run build` — **pendente** (rodar no ambiente do usuário; tsc não disponível na sessão)
+- [ ] Migrações pendentes de rodar no Supabase: `add-reading-progress.sql`, `add-trend-theme.sql`
+
+### Contexto / iterações
+Primeira versão tinha faixa de 4 métricas (total, novos desde visita, trends ≥80, sinais Radar) + watchlist de trends ≥80. Descartada após teste do usuário: "trends ≥80" contava trends de **todos** os reports (135 — quase tudo, já que scores médios ficam em 83-85), número não-clicável e sem filtro útil; labels vagas ("0 novos" — novo o quê?). Substituído por foco em retenção real.
+
+### Decisões técnicas
+- **Continuar lendo**: limiar baixado — basta ter aberto o report (`!completed`), não exige scroll mínimo. Retoma a posição via `scroll_pct` salvo, convertido em offset pela altura do documento (não em px absolutos, robusto a reflow).
+- **Próximas leituras por tema**: analisa as últimas 5 leituras (`reading_progress` ordenado por last_read_at), pondera `category` das trends por recência (peso 5→1), pega top 1-2 temas e recomenda reports **não lidos** com trends desses temas, ranqueados por score. Sem libs de ML — heurística determinística.
+- **theme_slug estável**: `loadExistingThemes()` carrega slugs dos ~120 registros recentes e instrui o LLM a reutilizar quando a trend continua um tema; só cria slug novo para tema genuinamente novo. Normalização kebab-case ASCII defensiva no código.
+- **reading_progress usa cliente autenticado** (não service key) — é dado pessoal com RLS por usuário, ao contrário de reports/trends que seguem via service.
+
+### Atenção / dependência de dados
+- "Próximas leituras" depende de `category` preenchida nas trends — só vem nos relatórios gerados pelo `generate-report.ts` novo. Reports antigos têm `category=null` → recomendações podem vir vazias até regenerar ou fazer back-fill. "Continuar lendo" funciona de imediato.
+- Componentes `DashboardStatusBar.tsx` e `WatchlistPanel.tsx` da 1ª versão foram **abandonados** (não referenciados). Podem ser apagados.
+
+### NÃO commitado
+Sem commit/push/deploy. Aguardando `npm run build` verde + teste local do usuário. Migrações ainda não rodadas no Supabase.
+
+---
+
+## [2026-05-29] — Integração da curadoria editorial (validador + /admin/reports)
+
+### Status
+- [x] `lib/types.ts` `Report`: adicionados 4 campos opcionais — `validation_verdict?: 'pass'|'needs_review'|'fail'|null`, `validation_flags?: unknown[]|null`, `signal_count?: number|null`, `validated_at?: string|null` (nada removido)
+- [x] `app/admin/reports/[id]/page.tsx`: casts defensivos `report as unknown as {...}` simplificados para acesso direto (`report.validation_flags`/`validation_verdict`/`signal_count`); mantido só o cast mínimo `as ValidationFlag[]` (coluna é `unknown[]` no tipo)
+- [x] `generate-report.ts` patch 1: `import { validatePersistedReport } from './validate-report'`
+- [x] `generate-report.ts` patch 2: fim de `persistReport` agora `dbPatch(..., { status: 'generating' })` (era `published` + `published_at`). O relatório nasce em `generating`; o validador decide o status final
+- [x] `generate-report.ts` patch 3: nos 3 pontos de `persistReport` (1 do caminho único + 2 do dividido), guardado o id e chamado `await validatePersistedReport(id)`, logando `verdict · flags.length · signalCount`
+- [x] `cd taime-web && npm run build`: **✓ 0 erros TypeScript**; rotas `/admin/reports` e `/admin/reports/[id]` no output
+- [x] `tsc --noEmit -p tsconfig.json` (raiz): **0 erros** — `validate-report.ts` e `generate-report.ts` patcheado validados
+
+### Descoberta importante
+`validate-report.ts` não estava no disco na primeira leitura (foi salvo durante a sessão). **Não criei nem alterei esse arquivo** — usei o real fornecido. É um validador LLM-as-judge (grounding + temporal) + checks determinísticos (scores PT=EN, nomes de fonte, em dash, monetário). Assinatura `validatePersistedReport(id): Promise<{verdict, flags, signalCount}>`.
+
+### Comportamento preservado (não alterei a lógica)
+- Auto-publish no veredito `pass` (sem flags) → `status='published'`; qualquer flag → `pending_review`. Lógica está dentro do `validate-report.ts` do usuário, intocada.
+- Arquivar = soft delete (`status='archived'`, nunca DELETE) — em `api/admin/report-action/route.ts`.
+- Nunca trava publicação mesmo com flags bloqueantes — o admin decide no `ReviewPanel`.
+- `/admin/reports/[id]` reusa `ReportClient` por prop e busca via service key sem filtrar status.
+
+### Atenção operacional
+A validação agora roda **inline no pipeline** (após cada `persistReport`), e o validador faz chamadas LLM (grounding por trend). Isso aumenta custo/tempo de cada run do `generate-report.ts`/`batch-pipeline.ts` proporcionalmente ao nº de trends. Migração `add-validation-columns.sql` já rodada no Supabase (confirmado pelo usuário).
+
+### NÃO commitado (conforme pedido)
+Build verde, sem commit/push/deploy. Aguardando teste local do usuário.
+
+---
+
+## [2026-05-29] — Resume 2026 + Batch 2025-H2 (2 etapas)
+
+### ETAPA 1 — Resume dos 2 falhados de 2026
+- `batch-pipeline.ts --resume`
+- **`2026-03-16` recuperado** ✓ — 7 trends, 1 report, scores 87, 87, 82, 81, 82, 82, 79 (média 83)
+- **`2026-02-16` falhou de novo** ✗ — `TypeError: fetch failed` (rede). Único período de 2026 ainda pendente (8/9 publicados)
+
+### ETAPA 2 — Batch 2025-07-01 → 2025-12-01 (banco estava vazio nesse range)
+- `generate-periods.ts 2025-07-01 2025-12-01` (10 períodos; +`2025-07-01` manual = 11)
+- `batch-pipeline.ts` → **11/11 completos, 0 falhas** → **17 relatórios**
+
+| Período | Trends | Relatórios | TAIME Scores | Média |
+|---|---|---|---|---|
+| 2025-07-01 | 8 | 2 | 87, 83, 82, 84, 79, 87, 83, 84 | 84 |
+| 2025-07-16 | 7 | 1 | 84, 81, 85, 82, 85, 81, 62 | 80 |
+| 2025-08-01 | 8 | 2 | 87, 84, 81, 84, 87, 82, 81, 79 | 83 |
+| 2025-08-16 | 8 | 2 | 87, 86, 84, 81, 84, 52, 81, 84 | 80 |
+| 2025-09-01 | 8 | 2 | 87, 84, 82, 84, 81, 85, 78, 84 | 83 |
+| 2025-09-16 | 7 | 1 | 85, 84, 84, 86, 85, 82, 84 | 84 |
+| 2025-10-01 | 7 | 1 | 87, 82, 84, 87, 72, 81, 82 | 82 |
+| 2025-10-16 | 7 | 1 | 84, 84, 82, 81, 82, 84, 81 | 83 |
+| 2025-11-01 | 7 | 1 | 87, 82, 82, 81, 82, 71, 72 | 80 |
+| 2025-11-16 | 8 | 2 | 87, 82, 84, 82, 84, 71, 82, 84 | 82 |
+| 2025-12-01 | 8 | 2 | 87, 84, 84, 85, 84, 79, 62, 78 | 80 |
+
+Total: **17 relatórios** (6 períodos de 8 clusters → 2 reports; 5 períodos de 7 clusters → 1 report). 0 falhas — rede estável neste run.
+
+### Pendência
+`2026-02-16` segue como única falha não recuperada (2 tentativas, ambas `fetch failed`). Reprocessar quando a rede estabilizar: adicionar `["2026-02-16"]` ao `batch-periods.json` e rodar `batch-pipeline.ts`, ou `PERIOD=2026-02-16 npx ts-node generate-report.ts` (clusters de 2026-02-16 podem não existir — checar se precisa rodar collect+analyze antes).
+
+---
+
+## [2026-05-28] — Batch pipeline 2026 (9 períodos) — concluído
+
+### Resultado
+- **7/9 períodos completos** → **12 relatórios** publicados no banco (5 períodos com 8 clusters dividiram em 2; 2 períodos com 7 clusters = 1 report)
+- **2/9 falhas transientes** (rede/API, reprocessáveis com `--resume`)
+- Banco estava vazio para 2026 → geração 100% "do zero"
+
+### Períodos publicados (clusters → relatórios + scores)
+
+| Período | Trends | Relatórios | TAIME Scores | Média |
+|---|---|---|---|---|
+| 2026-01-01 | 8 | 2 (4+4) | 87, 81, 84, 79, 84, 85, 52, 81 | 79 |
+| 2026-01-16 | 8 | 2 (4+4) | 87, 84, 82, 82, 81, 81, 79, 84 | 83 |
+| 2026-02-01 | 8 | 2 (4+4) | 87, 82, 84, 84, 82, 87, 82, 84 | 84 |
+| 2026-03-01 | 7 | 1 | 87, 82, 81, 87, 82, 79, 61 | 80 |
+| 2026-04-01 | 8 | 2 (4+4) | 84, 84, 79, 82, 85, 82, 87, 86 | 84 |
+| 2026-04-16 | 8 | 2 (4+4) | 86, 82, 79, 83, 84, 87, 89, 82 | 84 |
+| 2026-05-01 | 7 | 1 | 87, 84, 85, 86, 84, 81, 74 | 83 |
+
+Total: **12 relatórios**. Maior amplitude de scores que o batch 2025 (de 52 a 89) — efeito das melhorias (clusters 4-12 + contra-tese geram diferenciação real).
+
+### Falhas (2)
+| Período | Etapa | Causa |
+|---|---|---|
+| 2026-02-16 | generate-report | `ETIMEDOUT` na Anthropic (rede) |
+| 2026-03-16 | generate-report | Anthropic API 500 `Internal server error` (req_011CbVmKZDDdQtPcidF19444) |
+
+Ambas transientes do lado da API/rede, não bug. Reprocessar: `npx ts-node batch-pipeline.ts --resume`.
+
+### Validação das features novas em produção
+- **Auto-split funcionou**: 5 períodos de 8 clusters → 2 reports cada (4+4); 2 períodos de 7 clusters → 1 report. Threshold de 7 respeitado nos dois sentidos.
+- **Metadados separados por parte**: cada um dos 10 reports divididos tem título/resumo próprios (correção da entrega anterior).
+
+---
+
 ## [2026-05-28] — Remove badge "Parte N" dos cards do dashboard
 
 ### Status

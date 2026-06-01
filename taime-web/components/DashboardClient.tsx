@@ -77,9 +77,11 @@ const UI = {
   pt: {
     search:      'Buscar por título...',
     allPeriods:  'Todos os períodos',
+    allCategories: 'Todas',
     filterCount: (n: number, total: number) => `${n} de ${total} relatório${total !== 1 ? 's' : ''}`,
     filterSearch: (q: string) => `busca: "${q}"`,
     filterPeriod: (p: string) => `período: ${p}`,
+    filterCategory: (c: string) => `categoria: ${c}`,
     empty:       'Nenhum relatório encontrado.',
     clearFilter: 'Limpar filtros',
     trends:      (n: number) => `${n} trend${n !== 1 ? 's' : ''}`,
@@ -90,9 +92,11 @@ const UI = {
   en: {
     search:      'Search by title...',
     allPeriods:  'All periods',
+    allCategories: 'All',
     filterCount: (n: number, total: number) => `${n} of ${total} report${total !== 1 ? 's' : ''}`,
     filterSearch: (q: string) => `search: "${q}"`,
     filterPeriod: (p: string) => `period: ${p}`,
+    filterCategory: (c: string) => `category: ${c}`,
     empty:       'No reports found.',
     clearFilter: 'Clear filters',
     trends:      (n: number) => `${n} trend${n !== 1 ? 's' : ''}`,
@@ -111,6 +115,7 @@ export default function DashboardClient({
 }) {
   const [search, setSearch] = useState('')
   const [period, setPeriod] = useState('')
+  const [category, setCategory] = useState('')
   const t = UI[locale]
 
   const periods = useMemo(
@@ -118,13 +123,38 @@ export default function DashboardClient({
     [reports],
   )
 
+  // categorias disponíveis (das trends de todos os reports), ordenadas por frequência
+  const categories = useMemo(() => {
+    const freq = new Map<string, number>()
+    for (const r of reports) {
+      const seen = new Set<string>()
+      for (const tr of r.report_trends ?? []) {
+        const c = (tr as { category?: string | null }).category
+        if (!c || seen.has(c)) continue
+        seen.add(c)
+        freq.set(c, (freq.get(c) ?? 0) + 1)
+      }
+    }
+    return [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c)
+  }, [reports])
+
   const filtered = useMemo(() => {
     return reports
       .map(r => ({ report: r, score: scoreMatch(r, search) }))
-      .filter(({ report: r, score }) => score > 0 && (!period || r.period === period))
+      .filter(({ report: r, score }) => {
+        if (score <= 0) return false
+        if (period && r.period !== period) return false
+        if (category) {
+          const has = (r.report_trends ?? []).some(
+            tr => (tr as { category?: string | null }).category === category,
+          )
+          if (!has) return false
+        }
+        return true
+      })
       .sort((a, b) => b.score - a.score)
       .map(({ report: r }) => r)
-  }, [reports, search, period])
+  }, [reports, search, period, category])
 
   return (
     <>
@@ -152,12 +182,40 @@ export default function DashboardClient({
         </select>
       </div>
 
+      {/* ── Chips de categoria ──────────────────────────────────────────── */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          <button
+            onClick={() => setCategory('')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-full border transition
+              ${category === ''
+                ? 'bg-taime-600 text-white border-taime-600'
+                : 'bg-white text-zinc-600 border-zinc-200 hover:border-taime-200'}`}
+          >
+            {t.allCategories}
+          </button>
+          {categories.map(c => (
+            <button
+              key={c}
+              onClick={() => setCategory(category === c ? '' : c)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition
+                ${category === c
+                  ? 'bg-taime-600 text-white border-taime-600'
+                  : 'bg-white text-zinc-600 border-zinc-200 hover:border-taime-200'}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Contador ────────────────────────────────────────────────────── */}
-      {(search || period) && (
+      {(search || period || category) && (
         <p className="text-xs text-zinc-400 mb-4">
           {t.filterCount(filtered.length, reports.length)}
           {search && <> · {t.filterSearch(search)}</>}
           {period && <> · {t.filterPeriod(formatPeriod(period, t.periodLang === 'en' ? 'en' : 'pt-BR'))}</>}
+          {category && <> · {t.filterCategory(category)}</>}
         </p>
       )}
 
@@ -166,7 +224,7 @@ export default function DashboardClient({
         <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
           <p className="text-zinc-400 mb-2">{t.empty}</p>
           <button
-            onClick={() => { setSearch(''); setPeriod('') }}
+            onClick={() => { setSearch(''); setPeriod(''); setCategory('') }}
             className="text-xs text-taime-600 hover:underline"
           >
             {t.clearFilter}

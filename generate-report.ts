@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { parsePeriod } from './period-utils';
+import { validatePersistedReport } from './validate-report';
 /**
  * TAIME — Report Generator
  * Gera relatório executivo em pt-BR e en via Claude Sonnet 4.6
@@ -35,6 +36,8 @@ interface ScoreDimension { score: number; label: string }
 
 interface TrendAnalysis {
   title: string;
+  category: string;
+  theme_slug: string;
   executive_snapshot: string;
   taime_score: number;
   taime_score_rationale: string;
@@ -166,6 +169,44 @@ const SCORE_DIMS = [
 ] as const;
 
 type ScoreDimKey = typeof SCORE_DIMS[number];
+
+// ─── Theme identity (ENTREGA 2) ────────────────────────────────────────────────
+
+const VALID_CATEGORIES = [
+  'IA', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Data',
+  'Market', 'Fintech', 'Automation', 'Observability', 'Engineering',
+  'Edge', 'Healthtech', 'Sustainability',
+] as const;
+
+/** Normaliza um slug para kebab-case ASCII estável. Retorna null se vazio. */
+function normalizeSlug(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const s = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s || null;
+}
+
+/** Valida a categoria contra o conjunto permitido; fallback para null. */
+function normalizeCategory(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const found = VALID_CATEGORIES.find(c => c.toLowerCase() === raw.trim().toLowerCase());
+  return found ?? null;
+}
+
+/** Carrega os theme_slug distintos já existentes (relatórios recentes) para reuso. */
+async function loadExistingThemes(): Promise<string[]> {
+  const rows = await dbGet<{ theme_slug: string | null }>(
+    `report_trends?select=theme_slug&theme_slug=not.is.null&order=created_at.desc&limit=120`,
+  );
+  const seen = new Set<string>();
+  for (const r of rows) if (r.theme_slug) seen.add(r.theme_slug);
+  return [...seen];
+}
 
 /**
  * Overwrites all numeric score values in `en` with the canonical PT values.
@@ -359,6 +400,20 @@ Financial sizing is the client's responsibility. TAIME provides the strategic ra
 and direction.
 
 ═══════════════════════════════════════
+NON-TRACEABLE QUANTIFICATION RULE
+═══════════════════════════════════════
+Do NOT invent specific quantified claims that are not present in the signals.
+This includes multipliers (2x, 3x), percentages (20% efficiency gain, 40% reduction),
+time thresholds (within hours, by Q3), and any precise statistic.
+If the signals do not provide a specific number, describe the direction or magnitude
+qualitatively instead.
+Wrong: "organizations that delay beyond Q3 2026 face 2x to 3x higher integration costs"
+Wrong: "competitors publishing 20% or greater efficiency gains"
+Right: "organizations that delay face materially higher integration costs as lock-in accelerates"
+Right: "competitors demonstrating significant operational efficiency gains"
+A specific number is acceptable ONLY when it appears in a signal. When in doubt, stay qualitative.
+
+═══════════════════════════════════════
 TEMPORAL INTEGRITY PROTOCOL
 ═══════════════════════════════════════
 You are analyzing signals from ${PERIOD} (${PERIOD_LABEL_EN}). Write as if you are an analyst on ${PERIOD_END_DATE} — you only know what was publicly available then.
@@ -506,6 +561,8 @@ async function anthropicPost(body: unknown): Promise<{ text: string; usage: Anth
 
 const TREND_SCHEMA = `{
   "title": "executive-grade trend title (10–15 words)",
+  "category": "ONE broad label, EXACTLY one of: IA, Cloud, Cybersecurity, Regulation, Infrastructure, Data, Market, Fintech, Automation, Observability, Engineering, Edge, Healthtech, Sustainability",
+  "theme_slug": "stable kebab-case ASCII key for this theme ACROSS cycles (e.g. ia-agentes-autonomos, governanca-ia, repatriacao-cloud). REUSE an existing slug from the list if this trend continues that theme; only create a new slug for a genuinely new theme. Language-neutral: identical in PT and EN.",
   "executive_snapshot": "2–3 sentences — the non-obvious insight that defines this trend's significance",
   "taime_score": 88,
   "taime_score_rationale": "2–3 sentences naming the dominant dimensions and competitive dynamic",
@@ -553,6 +610,7 @@ async function callClaudeTrend(
   signalMap: Map<string, Signal>,
   language: 'pt-BR' | 'en',
   ptReference?: TrendAnalysis,
+  existingThemes: string[] = [],
 ): Promise<TrendAnalysis> {
   const lang       = language === 'pt-BR' ? 'Brazilian Portuguese' : 'English';
   const clusterCtx = formatClusterContext(cluster, signalMap);
@@ -562,6 +620,19 @@ async function callClaudeTrend(
     `${clusterCtx}\n\n` +
     `Return VALID JSON ONLY — a single object (not an array, not wrapped).\n\n` +
     TREND_SCHEMA;
+
+  // ENTREGA 2: lista de slugs existentes para reuso entre ciclos
+  const themesList = existingThemes.length
+    ? existingThemes.join(', ')
+    : '(none yet — create the first slug for this theme)';
+  instruction +=
+    `\n\n${'═'.repeat(50)}\n` +
+    `EXISTING THEME SLUGS — REUSE WHEN APPLICABLE:\n` +
+    `${'═'.repeat(50)}\n` +
+    `${themesList}\n` +
+    `If this trend continues one of the themes above, REUSE its exact slug.\n` +
+    `Only invent a NEW kebab-case slug for a genuinely new theme.\n` +
+    `category and theme_slug must be identical in PT and EN.`;
 
   if (ptReference !== undefined) {
     // BUG 1 FIX: pass ALL numeric constraints, not just the top-level score.
@@ -582,7 +653,10 @@ async function callClaudeTrend(
       `Your ONLY task is to write the narrative analysis in English.\n` +
       `Generate ENGLISH labels for each dimension that interpret the FIXED scores above.\n` +
       `DO NOT recalculate, reinterpret, or deviate from any of the scores above.\n` +
-      `Copy the integers as-is into the JSON output.`;
+      `Copy the integers as-is into the JSON output.\n\n` +
+      `category and theme_slug are language-neutral. Use EXACTLY:\n` +
+      `  category   = "${ptReference.category}"\n` +
+      `  theme_slug = "${ptReference.theme_slug}"`;
   }
 
   const { text, usage } = await anthropicPost({
@@ -606,6 +680,15 @@ async function callClaudeTrend(
   if (typeof trend.taime_score !== 'number') trend.taime_score = ptReference?.taime_score ?? 70;
   trend.taime_score = Math.max(0, Math.min(100, Math.round(trend.taime_score)));
   if (!Array.isArray(trend.decision_triggers)) trend.decision_triggers = [];
+
+  // ENTREGA 2: normaliza category + theme_slug. EN herda do PT (idioma-neutros).
+  if (ptReference !== undefined) {
+    trend.category   = ptReference.category;
+    trend.theme_slug = ptReference.theme_slug;
+  } else {
+    trend.category   = normalizeCategory(trend.category) ?? 'Market';
+    trend.theme_slug = normalizeSlug(trend.theme_slug) ?? normalizeSlug(trend.title) ?? 'tema-sem-slug';
+  }
 
   // BUG 1 FIX: belt-and-suspenders — overwrite all numeric values with PT canonical values.
   // Even if the LLM drifted despite the constraints, this guarantees PT = EN scores.
@@ -651,6 +734,64 @@ async function callClaudeMetadata(
 
 interface ReportRecord { id: string }
 
+/**
+ * Remove em dash (—, U+2014) do texto, SEM tocar em hífens (-, U+002D).
+ * São caracteres Unicode distintos, então "self-guided" e "AI-powered" ficam intactos.
+ *
+ * O prompt já proíbe em dash, mas o modelo às vezes ignora. Esta é a rede determinística.
+ * Substituição contextual conservadora:
+ *   "2022—2026"  → "2022-2026"  (faixa numérica: vira hífen, mantém a faixa)
+ *   "X — Y"      → "X, Y"        (separador de oração com espaços: vira vírgula)
+ *   "X—Y"        → "X, Y"        (colado, não-numérico: vírgula com espaço)
+ * NUNCA altera hífens existentes.
+ *
+ * Para desligar (modo "só detectar, validador flagueia, você corrige à mão"),
+ * troque o corpo por `return s;`.
+ */
+function stripEmDash(s: string): string {
+  if (typeof s !== 'string' || !s.includes('\u2014')) return s;
+  return s
+    .replace(/(\d)\s*\u2014\s*(\d)/g, '$1-$2')   // faixa numérica → hífen
+    .replace(/\s*\u2014\s*/g, ', ');              // qualquer outro em dash → vírgula
+}
+
+/** Aplica stripEmDash recursivamente a todos os campos string de um TrendAnalysis. */
+function sanitizeTrend(t: TrendAnalysis): TrendAnalysis {
+  const fw = t.taime_framework;
+  return {
+    ...t,
+    title:                 stripEmDash(t.title),
+    executive_snapshot:    stripEmDash(t.executive_snapshot),
+    taime_score_rationale: stripEmDash(t.taime_score_rationale),
+    taime_framework: {
+      ...fw,
+      type:   stripEmDash(fw.type),
+      act:    stripEmDash(fw.act),
+      impact: stripEmDash(fw.impact),
+      move:   stripEmDash(fw.move),
+      exit:   stripEmDash(fw.exit),
+      counter_thesis: fw.counter_thesis != null ? stripEmDash(fw.counter_thesis) : fw.counter_thesis,
+      contra_tese:    fw.contra_tese    != null ? stripEmDash(fw.contra_tese)    : fw.contra_tese,
+    },
+    then_now_next: {
+      then: stripEmDash(t.then_now_next.then),
+      now:  stripEmDash(t.then_now_next.now),
+      next: stripEmDash(t.then_now_next.next),
+    },
+    org_implications: {
+      leadership: stripEmDash(t.org_implications.leadership),
+      technology: stripEmDash(t.org_implications.technology),
+      operations: stripEmDash(t.org_implications.operations),
+      finance:    stripEmDash(t.org_implications.finance),
+      people:     stripEmDash(t.org_implications.people),
+    },
+    decision_triggers: (t.decision_triggers ?? []).map(stripEmDash),
+    recommended_move:  stripEmDash(t.recommended_move),
+    confidence_basis:  stripEmDash(t.confidence_basis),
+    limitations:       stripEmDash(t.limitations),
+  };
+}
+
 async function persistReport(
   clusters: Cluster[],
   ptBrMeta: ReportMetadata,
@@ -659,6 +800,13 @@ async function persistReport(
   enTrends: TrendAnalysis[],
   report_number: number = 1,
 ): Promise<string> {
+  // Rede determinística contra em dash (o prompt proíbe, mas o modelo às vezes ignora).
+  // Sanitiza metadados e trends antes de gravar. Hífens permanecem intactos.
+  ptBrTrends = ptBrTrends.map(sanitizeTrend);
+  enTrends   = enTrends.map(sanitizeTrend);
+  ptBrMeta = { report_title: stripEmDash(ptBrMeta.report_title), executive_summary: stripEmDash(ptBrMeta.executive_summary) };
+  enMeta   = { report_title: stripEmDash(enMeta.report_title),   executive_summary: stripEmDash(enMeta.executive_summary) };
+
   const titleSuffix   = '';
   const titleSuffixEn = '';
   const [report] = await dbPost<ReportRecord>('reports', {
@@ -687,6 +835,9 @@ async function persistReport(
 
       title_pt_br: p.title,
       title_en:    e.title,
+
+      category:   p.category,    // ENTREGA 2 — idioma-neutro
+      theme_slug: p.theme_slug,  // ENTREGA 2 — idioma-neutro
 
       taime_score:                 p.taime_score,  // canonical PT value
       taime_score_rationale_pt_br: p.taime_score_rationale,
@@ -723,7 +874,9 @@ async function persistReport(
     console.log(`  [${i + 1}/${ptBrTrends.length}] "${p.title.slice(0, 55)}" — ${p.taime_score} ${scoreTag}`);
   }
 
-  await dbPatch('reports', report.id, { status: 'published', published_at: new Date().toISOString() });
+  // Nasce em 'generating'. O validador (validatePersistedReport) decide o status
+  // final: 'published' (pass limpo) ou 'pending_review' (qualquer flag).
+  await dbPatch('reports', report.id, { status: 'generating' });
   return report.id;
 }
 
@@ -740,11 +893,32 @@ async function main(): Promise<void> {
   console.log(`Modelo:  ${cfg.model} | max_tokens: ${cfg.maxTokens} | por trend\n`);
   console.log('Score strategy: PT gera valores numéricos → EN herda scores do PT\n');
 
-  // Idempotência
-  const existing = await dbGet<{ id: string }>(`reports?period=eq.${PERIOD}&select=id&order=report_number.asc`);
-  if (existing.length > 0) {
-    console.log(`⚠ Relatório já existe (id: ${existing[0].id}). Delete-o e re-execute.\n`);
+  // Idempotência — só bloqueia se houver relatório "vivo" no período.
+  // 'rejected' e 'archived' são considerados descartados: não bloqueiam a
+  // regeneração e são limpos (com suas trends) para liberar o UNIQUE(period, report_number).
+  const existing = await dbGet<{ id: string; status: string }>(
+    `reports?period=eq.${PERIOD}&select=id,status&order=report_number.asc`,
+  );
+  const live = existing.filter(r => r.status !== 'rejected' && r.status !== 'archived');
+  const dead = existing.filter(r => r.status === 'rejected' || r.status === 'archived');
+
+  if (live.length > 0) {
+    console.log(`⚠ Já existe relatório vivo (id: ${live[0].id}, status: ${live[0].status}). Delete-o e re-execute.\n`);
     process.exit(0);
+  }
+
+  if (dead.length > 0) {
+    console.log(`Limpando ${dead.length} relatório(s) descartado(s) (rejected/archived) do período...`);
+    for (const r of dead) {
+      // apaga trends primeiro (FK), depois o relatório
+      await fetch(`${cfg.supabaseUrl}/rest/v1/report_trends?report_id=eq.${r.id}`, {
+        method: 'DELETE', headers: dbHeaders(),
+      });
+      await fetch(`${cfg.supabaseUrl}/rest/v1/reports?id=eq.${r.id}`, {
+        method: 'DELETE', headers: dbHeaders(),
+      });
+    }
+    console.log('  ✓ Período liberado para regeneração.\n');
   }
 
   // Carrega clusters
@@ -767,11 +941,15 @@ async function main(): Promise<void> {
 
   const globalContext = formatGlobalContext(clusters, signalMap);
 
+  // ENTREGA 2: slugs de temas já existentes, para reuso entre ciclos
+  const existingThemes = await loadExistingThemes();
+  console.log(`Temas existentes para reuso: ${existingThemes.length}`);
+
   // ── STEP 1: PT-BR — gera scores canônicos ────────────────────────────────
   console.log(`Gerando trends pt-BR (${clusters.length} chamadas) — scores canônicos...`);
   const ptBrTrends: TrendAnalysis[] = [];
   for (const cluster of clusters) {
-    const trend = await callClaudeTrend(globalContext, cluster, signalMap, 'pt-BR');
+    const trend = await callClaudeTrend(globalContext, cluster, signalMap, 'pt-BR', undefined, existingThemes);
     ptBrTrends.push(trend);
   }
 
@@ -815,7 +993,9 @@ async function main(): Promise<void> {
     const reportId = await persistReport(
       clusters, ptBrMeta, enMeta, ptBrTrends, enTrends, 1
     )
-    console.log(`✓ Relatório publicado: ${reportId}`)
+    console.log(`✓ Relatório gerado: ${reportId}`)
+    const v = await validatePersistedReport(reportId)
+    console.log(`  Validação: ${v.verdict} · ${v.flags.length} flag(s) · ${v.signalCount} sinais`)
   } else {
     // Divide em 2 relatórios — metadados gerados separadamente para cada grupo
     const split = Math.ceil(totalClusters / 2)
@@ -835,7 +1015,9 @@ async function main(): Promise<void> {
       enTrends.slice(0, split),
       1
     )
-    console.log(`✓ Relatório 1 publicado: ${reportId1}`)
+    console.log(`✓ Relatório 1 gerado: ${reportId1}`)
+    const v1 = await validatePersistedReport(reportId1)
+    console.log(`  Validação R1: ${v1.verdict} · ${v1.flags.length} flag(s) · ${v1.signalCount} sinais`)
 
     // Relatório 2 — metadados baseados apenas nas trends split+1..end
     console.log(`\nGerando metadados do Relatório 2 (${totalClusters - split} trends)...`)
@@ -851,7 +1033,9 @@ async function main(): Promise<void> {
       enTrends.slice(split),
       2
     )
-    console.log(`✓ Relatório 2 publicado: ${reportId2}`)
+    console.log(`✓ Relatório 2 gerado: ${reportId2}`)
+    const v2 = await validatePersistedReport(reportId2)
+    console.log(`  Validação R2: ${v2.verdict} · ${v2.flags.length} flag(s) · ${v2.signalCount} sinais`)
   }
 
   // ── Resumo ────────────────────────────────────────────────────────────────

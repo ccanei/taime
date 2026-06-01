@@ -43,6 +43,8 @@ export interface ReportTrend {
   id:                          string
   report_id:                   string
   rank:                        number
+  category:                    string | null
+  theme_slug:                  string | null
   title_pt_br:                 string
   title_en:                    string
   taime_score:                 number
@@ -73,7 +75,11 @@ export interface Report {
   period_label:            string | null
   period_type:             string | null
   report_number?:          number
-  report_trends?:          Pick<ReportTrend, 'taime_score' | 'rank'>[]
+  validation_verdict?:     'pass' | 'needs_review' | 'fail' | null
+  validation_flags?:       unknown[] | null
+  signal_count?:           number | null
+  validated_at?:           string | null
+  report_trends?:          Pick<ReportTrend, 'taime_score' | 'rank' | 'category'>[]
 }
 
 export type Lang = 'pt-BR' | 'en'

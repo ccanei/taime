@@ -1,0 +1,693 @@
+import 'dotenv/config';
+import { parsePeriod } from './period-utils';
+
+/**
+ * TAIME — Report Validator (LLM-as-judge + checks determinísticos)
+ *
+ * Roda APÓS o generate-report.ts. Para cada relatório do período:
+ *   1. Checks determinísticos (sem LLM): scores PT=EN, nomes de fonte,
+ *      em dash, valores monetários. Baratos e 100% confiáveis — rodam primeiro.
+ *   2. Grounding / anti-alucinação (LLM): cada claim factual é classificado
+ *      contra os sinais reais do período (supported / partial / unsupported).
+ *   3. Boundary temporal (LLM): nada posterior a PERIOD_END_DATE, sem hindsight.
+ *
+ * Veredito:
+ *   - pass          → nenhuma flag → AUTO-PUBLICA (status = 'published')
+ *   - needs_review  → só warnings  → status = 'pending_review'
+ *   - fail          → blocking     → status = 'pending_review'
+ *
+ * O validador NUNCA recusa nem arquiva. Ele só separa o que vai direto ao ar
+ * do que precisa dos seus olhos. A decisão final é sua, no /admin/reports.
+ *
+ * Usage:  PERIOD=2025-06-01 npx ts-node validate-report.ts
+ *         (sem PERIOD → mês atual, mesmo default do generate-report.ts)
+ * Env:    ANTHROPIC_API_KEY  SUPABASE_URL  SUPABASE_SERVICE_KEY
+ */
+
+// ─── Config (espelha generate-report.ts) ──────────────────────────────────────
+
+const cfg = {
+  anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
+  supabaseUrl:  (process.env.SUPABASE_URL ?? '').replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
+  supabaseKey:  process.env.SUPABASE_SERVICE_KEY ?? '',
+  model:        'claude-sonnet-4-6',
+  maxTokens:    4096,
+};
+
+const now    = new Date();
+const PERIOD = process.env.PERIOD
+  ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+const _pi             = parsePeriod(PERIOD);
+const PERIOD_END_DATE = `${_pi.end.getFullYear()}-${String(_pi.end.getMonth() + 1).padStart(2, '0')}-${String(_pi.end.getDate()).padStart(2, '0')}`;
+
+// ─── Tipos ─────────────────────────────────────────────────────────────────────
+
+type Severity = 'blocking' | 'warning' | 'info';
+type Category = 'deterministic' | 'grounding' | 'temporal' | 'source';
+type Verdict  = 'pass' | 'needs_review' | 'fail';
+
+interface Flag {
+  id: string;
+  severity: Severity;
+  category: Category;
+  trend_rank: number | null;
+  field: string;
+  claim: string;
+  detail: string;
+  lang: 'pt-BR' | 'en' | null;
+  // Sugestão do copiloto corretor (subtrativo). null quando não há correção
+  // subtrativa honesta possível (requer reescrita manual).
+  suggestion_pt?: string | null;
+  suggestion_en?: string | null;
+  suggestion_reason?: string | null;
+}
+
+interface ScoreDimension { score: number; label: string }
+
+interface ReportRow {
+  id: string;
+  period: string;
+  report_number: number;
+  status: string;
+  title_pt_br: string | null;
+  title_en: string | null;
+  executive_summary_pt_br: string | null;
+  executive_summary_en: string | null;
+}
+
+interface TrendRow {
+  id: string;
+  report_id: string;
+  rank: number;
+  signal_cluster_id: string | null;
+  title_pt_br: string;
+  title_en: string;
+  taime_score: number;
+  taime_score_rationale_pt_br: string;
+  taime_score_rationale_en: string;
+  taime_framework_pt_br: Record<string, unknown> & {
+    score_dimensions?: Record<string, ScoreDimension>;
+  };
+  taime_framework_en: Record<string, unknown> & {
+    score_dimensions?: Record<string, ScoreDimension>;
+  };
+  then_now_next_pt_br: { then?: string; now?: string; next?: string };
+  then_now_next_en: { then?: string; now?: string; next?: string };
+  org_implications_pt_br: Record<string, string>;
+  org_implications_en: Record<string, string>;
+  recommended_move_pt_br: string | null;
+  recommended_move_en: string | null;
+}
+
+interface ClusterRow { id: string; signal_ids: string[] }
+interface SignalRow { id: string; title: string; content: string | null; metadata: { snippet?: string } }
+
+interface AnthropicUsage { input_tokens: number; output_tokens: number }
+
+// ─── Supabase REST (idêntico ao generate-report.ts) ───────────────────────────
+
+function dbHeaders(returnData = false) {
+  return {
+    apikey:         cfg.supabaseKey,
+    Authorization:  `Bearer ${cfg.supabaseKey}`,
+    'Content-Type': 'application/json',
+    Prefer:         returnData ? 'return=representation' : 'return=minimal',
+  };
+}
+
+async function dbGet<T>(path: string): Promise<T[]> {
+  const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${path}`, { headers: dbHeaders(true) });
+  if (!res.ok) throw new Error(`DB GET /${path}: ${await res.text()}`);
+  return res.json() as Promise<T[]>;
+}
+
+async function dbPatch(table: string, id: string, data: unknown): Promise<void> {
+  const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH', headers: dbHeaders(), body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`DB PATCH ${table}/${id}: ${await res.text()}`);
+}
+
+// ─── Anthropic API ──────────────────────────────────────────────────────────
+
+async function anthropicPost(body: unknown): Promise<{ text: string; usage: AnthropicUsage }> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         cfg.anthropicKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta':    'prompt-caching-2024-07-31',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
+  const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage };
+  const text = data.content.find(b => b.type === 'text')?.text ?? '';
+  return { text, usage: data.usage };
+}
+
+function parseJsonSafe<T>(raw: string, label: string): T {
+  let text = raw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+  const start = text.indexOf('{');
+  const startArr = text.indexOf('[');
+  const cut = startArr !== -1 && (startArr < start || start === -1) ? startArr : start;
+  if (cut > 0) text = text.slice(cut);
+  try { return JSON.parse(text) as T; }
+  catch (e) { throw new Error(`JSON inválido [${label}]: ${e}\n${text.slice(0, 300)}`); }
+}
+
+// ─── Helpers de coleta de texto da trend ──────────────────────────────────────
+
+const SCORE_DIMS = [
+  'market_maturity', 'competitive_pressure', 'strategic_impact',
+  'execution_complexity', 'competitive_lag_risk',
+] as const;
+
+/** Todos os campos textuais de uma trend, num idioma, com o caminho do campo. */
+function trendTextFields(t: TrendRow, lang: 'pt-BR' | 'en'): Array<{ field: string; text: string }> {
+  const fw  = lang === 'pt-BR' ? t.taime_framework_pt_br : t.taime_framework_en;
+  const tnn = lang === 'pt-BR' ? t.then_now_next_pt_br    : t.then_now_next_en;
+  const org = lang === 'pt-BR' ? t.org_implications_pt_br : t.org_implications_en;
+  const sfx = lang === 'pt-BR' ? '_pt_br' : '_en';
+
+  const out: Array<{ field: string; text: string }> = [];
+  const push = (field: string, v: unknown) => {
+    if (typeof v === 'string' && v.trim()) out.push({ field, text: v });
+  };
+
+  push(`title${sfx}`, lang === 'pt-BR' ? t.title_pt_br : t.title_en);
+  push(`taime_score_rationale${sfx}`, lang === 'pt-BR' ? t.taime_score_rationale_pt_br : t.taime_score_rationale_en);
+  for (const k of ['type', 'act', 'impact', 'move', 'exit', 'counter_thesis', 'contra_tese', 'executive_snapshot', 'confidence_basis', 'limitations']) {
+    push(`taime_framework${sfx}.${k}`, fw?.[k]);
+  }
+  for (const k of ['then', 'now', 'next'] as const) push(`then_now_next${sfx}.${k}`, tnn?.[k]);
+  for (const k of Object.keys(org ?? {})) push(`org_implications${sfx}.${k}`, org[k]);
+  push(`recommended_move${sfx}`, lang === 'pt-BR' ? t.recommended_move_pt_br : t.recommended_move_en);
+  return out;
+}
+
+/**
+ * Lê o texto PT e EN de um campo de uma trend, a partir do field path do flag
+ * (ex "taime_framework_en.executive_snapshot" → base "taime_framework", key "executive_snapshot").
+ * Retorna o texto nos dois idiomas (para o corretor ter contexto completo).
+ */
+function readFieldBothLangs(t: TrendRow, field: string): { pt: string; en: string } {
+  const [columnPart, jsonKey] = field.split('.');
+  // remove o sufixo de idioma para achar a base
+  const base = columnPart.replace(/_pt_br$|_en$/, '');
+  const get = (lang: 'pt-BR' | 'en'): string => {
+    const sfx = lang === 'pt-BR' ? '_pt_br' : '_en';
+    switch (base) {
+      case 'title': return (lang === 'pt-BR' ? t.title_pt_br : t.title_en) ?? '';
+      case 'taime_score_rationale': return (lang === 'pt-BR' ? t.taime_score_rationale_pt_br : t.taime_score_rationale_en) ?? '';
+      case 'recommended_move': return (lang === 'pt-BR' ? t.recommended_move_pt_br : t.recommended_move_en) ?? '';
+      case 'taime_framework': {
+        const fw = lang === 'pt-BR' ? t.taime_framework_pt_br : t.taime_framework_en;
+        const v = jsonKey ? fw?.[jsonKey] : undefined;
+        return typeof v === 'string' ? v : '';
+      }
+      case 'then_now_next': {
+        const tnn = lang === 'pt-BR' ? t.then_now_next_pt_br : t.then_now_next_en;
+        const v = jsonKey ? (tnn as Record<string, string>)?.[jsonKey] : undefined;
+        return typeof v === 'string' ? v : '';
+      }
+      case 'org_implications': {
+        const org = lang === 'pt-BR' ? t.org_implications_pt_br : t.org_implications_en;
+        const v = jsonKey ? org?.[jsonKey] : undefined;
+        return typeof v === 'string' ? v : '';
+      }
+      default: { void sfx; return ''; }
+    }
+  };
+  return { pt: get('pt-BR'), en: get('en') };
+}
+
+/** Um flag é "corrigível" pelo copiloto se aponta um campo de trend real. */
+function isCorrectable(flag: Flag): boolean {
+  if (flag.trend_rank == null) return false;          // erros de parse, nível relatório
+  if (flag.field === '(judge)' || flag.field === '(unknown)') return false;
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NÍVEL 1 — Checks determinísticos (sem LLM)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Nota: a checagem de nomes de fonte saiu do nível determinístico (regex não
+// distingue "Microsoft lançou X" — sujeito legítimo — de "segundo a Microsoft" —
+// atribuição proibida). Essa regra agora vive no JUDGE_SYSTEM (nível LLM), que
+// entende o papel do nome na frase. Ver REFINAMENTO 1.
+
+// Símbolos / padrões monetários.
+const MONETARY_RE = /(R\$|US\$|U\$|\bUSD\b|\bBRL\b|\bEUR\b|€|\bsalár|\bbudget of|\$\s?\d)/i;
+
+function deterministicChecks(report: ReportRow, trends: TrendRow[]): Flag[] {
+  const flags: Flag[] = [];
+
+  for (const t of trends) {
+    // ── Scores PT = EN ────────────────────────────────────────────────────────
+    const ptDims = t.taime_framework_pt_br?.score_dimensions;
+    const enDims = t.taime_framework_en?.score_dimensions;
+    for (const dim of SCORE_DIMS) {
+      const ptS = ptDims?.[dim]?.score;
+      const enS = enDims?.[dim]?.score;
+      if (ptS !== undefined && enS !== undefined && ptS !== enS) {
+        flags.push({
+          id: 'score_mismatch', severity: 'blocking', category: 'deterministic',
+          trend_rank: t.rank, field: `score_dimensions.${dim}`,
+          claim: `${dim}`, detail: `Score PT (${ptS}) diverge do EN (${enS}). Devem ser idênticos.`,
+          lang: null,
+        });
+      }
+    }
+
+    // ── Em dash + valores monetários em todos os campos ───────────────────────
+    // (nomes de fonte agora são auditados pelo juiz LLM — ver JUDGE_SYSTEM)
+    for (const lang of ['pt-BR', 'en'] as const) {
+      for (const { field, text } of trendTextFields(t, lang)) {
+        if (text.includes('—')) {
+          flags.push({
+            id: 'em_dash', severity: 'warning', category: 'deterministic',
+            trend_rank: t.rank, field,
+            claim: text.slice(0, 160), detail: 'Em dash (—) no meio de frase. Usar vírgula ou ponto.',
+            lang,
+          });
+        }
+        if (MONETARY_RE.test(text)) {
+          flags.push({
+            id: 'monetary', severity: 'warning', category: 'deterministic',
+            trend_rank: t.rank, field,
+            claim: text.slice(0, 160), detail: 'Possível valor monetário. TAIME dá direção, não sizing financeiro.',
+            lang,
+          });
+        }
+      }
+    }
+  }
+
+  // Checa também os campos de nível de relatório (título + resumo executivo)
+  const reportFields: Array<{ field: string; text: string | null; lang: 'pt-BR' | 'en' }> = [
+    { field: 'title_pt_br', text: report.title_pt_br, lang: 'pt-BR' },
+    { field: 'title_en', text: report.title_en, lang: 'en' },
+    { field: 'executive_summary_pt_br', text: report.executive_summary_pt_br, lang: 'pt-BR' },
+    { field: 'executive_summary_en', text: report.executive_summary_en, lang: 'en' },
+  ];
+  for (const { field, text, lang } of reportFields) {
+    if (!text) continue;
+    if (text.includes('—')) {
+      flags.push({
+        id: 'em_dash', severity: 'warning', category: 'deterministic',
+        trend_rank: null, field, claim: text.slice(0, 160),
+        detail: 'Em dash (—) no meio de frase.', lang,
+      });
+    }
+  }
+
+  return flags;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NÍVEL 2 + 3 — Grounding + temporal (LLM-as-judge, contexto isolado)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const JUDGE_SYSTEM = `\
+You are an independent fact-checker auditing a strategic intelligence report.
+You did NOT write this report. Your only job is to verify, never to improve or rewrite it.
+
+You receive: (a) the raw signals collected for a time period, and (b) factual claims
+extracted from the report. For each claim, decide whether the SIGNALS support it.
+
+GROUNDING — classify each claim:
+  "supported"   : the claim's factual content (company names, products, numbers,
+                  events, statistics) is directly traceable to the signals.
+  "partial"     : partially grounded but adds specifics not present in the signals.
+  "unsupported" : the claim asserts facts that do NOT appear in any signal.
+
+Interpretive/analytical language ("this suggests", "leaders should") is NOT a factual
+claim — judge only the factual assertions embedded in it. A claim that is purely
+strategic opinion with no invented facts is "supported".
+
+OUT OF SCOPE — do NOT audit the TAIME Score or its five dimension sub-scores
+(market_maturity, competitive_pressure, strategic_impact, execution_complexity,
+competitive_lag_risk). These numbers are TAIME's expert analytical judgment, not facts
+to be traced to signals. Ignore them entirely. Do NOT flag a claim merely because it
+states or interprets one of these scores (e.g. "competitive pressure is the dominant
+driver at 89" is analytical framing, not a factual claim — do not flag it).
+Still audit every OTHER factual assertion normally.
+
+TEMPORAL — separately, flag any claim that references events, data, or outcomes that
+occurred AFTER the period end date (hindsight), or that an analyst writing on that date
+could not have known.
+
+SOURCE ATTRIBUTION — flag any text that reveals a named firm AS THE SOURCE of the
+report's information, which exposes TAIME's editorial method. The distinction is the
+ROLE the name plays in the sentence:
+  ALLOWED   — the named entity is the SUBJECT/actor of a fact: "Microsoft is testing
+              quantum computing for...", "Gartner ran trials with...", "Deloitte uses
+              AI to generate...". The name is part of the news itself. Do NOT flag.
+  FORBIDDEN — a named research/consulting firm is cited as the SOURCE or attribution of
+              a claim: "according to Gartner", "per McKinsey's data", "our source IDC
+              indicates", "as reported by Forrester", "based on PwC figures". This leaks
+              where TAIME got its information. FLAG it.
+This applies especially to research and consulting firms (Gartner, McKinsey, Forrester,
+IDC, HBR, Bain, BCG, Deloitte, KPMG, PwC, and similar). When in doubt, judge by whether
+removing the firm name would destroy a fact (then it is subject, ALLOW) or merely remove
+a citation (then it is attribution, FLAG).
+EXEMPTION — the confidence_basis field is REQUIRED to describe sources by CATEGORY
+(e.g. "global strategic consulting firms", "academic research centers", "investment
+research firms"). Describing sources by category is the CORRECT, mandated format and
+must NEVER be flagged as source attribution. Only flag confidence_basis if it names a
+SPECIFIC firm (e.g. "Gartner", "McKinsey"). Generic category descriptions are always allowed.
+
+Be precise and conservative. Do NOT flag a claim as unsupported just because the wording
+differs from the signal — match on factual substance. Only flag genuine invention.
+
+Return VALID JSON ONLY, an array. One object per claim you find problematic
+(supported claims are omitted to keep output small):
+[
+  {
+    "field": "<the field path given>",
+    "verdict": "partial" | "unsupported" | "temporal_breach" | "source_attribution",
+    "claim": "<short quote of the problematic assertion>",
+    "detail": "<one sentence: what fact is missing, what is hindsight, or what source is leaked>"
+  }
+]
+If every claim is supported, temporally sound, and free of source attribution, return [].`;
+
+function buildSignalsBlock(signals: SignalRow[]): string {
+  return signals.map((s, i) => {
+    const body = (s.content || s.metadata?.snippet || '').slice(0, 500);
+    return `[${i + 1}] ${s.title}\n    ${body || '(sem conteúdo)'}`;
+  }).join('\n\n');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COPILOTO CORRETOR — sugere correção SUBTRATIVA para um campo flagueado
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CORRECTOR_SYSTEM = `\
+You are a careful copy editor fixing a flagged passage in a strategic intelligence report.
+You receive: the current text (in one or both languages), why it was flagged, the raw
+signals for the period, and the period end date. You propose a corrected version.
+
+STRICT RULES — these are inviolable:
+1. SUBTRACTIVE ONLY. You may ONLY remove or soften the flagged problem. You must NEVER
+   add any fact, number, statistic, date, company name, or entity that is not already
+   present in the current text or directly supported by the signals. When in doubt, remove.
+2. NO NEW SOURCE. If the flag is source attribution (e.g. "according to Gartner"), fix it
+   by REMOVING the attribution while keeping the underlying fact. Never swap in another source.
+3. TEMPORAL BOUNDARY. Your correction must NEVER reference events, data, or outcomes after
+   the period end date. No hindsight.
+4. PRESERVE THE INSIGHT. Keep the strategic direction and meaning. Remove only what is not
+   defensible. The corrected text should read naturally, not truncated.
+5. NO EM DASH. Do not introduce em dash (—); use commas or periods.
+6. HONEST NULL. If the problem cannot be fixed by subtraction alone (the entire claim is the
+   violation and removing it would gut the passage, requiring a rewrite that adds new content),
+   return null for the suggestion and explain why in the reason.
+
+LANGUAGE SCOPE: fix ONLY the language(s) actually flagged. PT and EN may differ naturally in
+phrasing — do NOT force them to mirror each other. Only align them if the flag itself is about
+a factual divergence between the two languages.
+
+Return VALID JSON ONLY:
+{
+  "suggestion_pt": "<corrected PT text, or null if PT was not flagged or has no subtractive fix>",
+  "suggestion_en": "<corrected EN text, or null if EN was not flagged or has no subtractive fix>",
+  "reason": "<one short sentence in Portuguese explaining what you changed and why it resolves the flag>"
+}`;
+
+interface Suggestion { suggestion_pt: string | null; suggestion_en: string | null; reason: string }
+
+/**
+ * Gera uma sugestão de correção subtrativa para um flag.
+ * Recebe o texto atual PT e/ou EN do campo (o que existir), o flag, os sinais e o boundary.
+ * Retorna sugestão por idioma (null no idioma não flagueado ou sem correção possível).
+ */
+async function suggestCorrection(
+  flag: Flag,
+  currentPt: string,
+  currentEn: string,
+  signals: SignalRow[],
+): Promise<Suggestion | null> {
+  const signalsBlock = buildSignalsBlock(signals);
+  const user =
+    `PERIOD END DATE (hard temporal boundary): ${PERIOD_END_DATE}\n\n` +
+    `═══ FLAG ═══\n` +
+    `Category: ${flag.category}\n` +
+    `Field: ${flag.field}\n` +
+    `Reason it was flagged: ${flag.detail}\n` +
+    `Problematic excerpt: "${flag.claim}"\n\n` +
+    `═══ CURRENT TEXT ═══\n` +
+    `PT (${currentPt ? 'flagged or present' : 'not present'}): ${currentPt || '(n/a)'}\n\n` +
+    `EN (${currentEn ? 'flagged or present' : 'not present'}): ${currentEn || '(n/a)'}\n\n` +
+    `═══ SIGNALS FOR THIS PERIOD ═══\n${signalsBlock}\n\n` +
+    `Propose a subtractive correction following the strict rules. Return the JSON.`;
+
+  try {
+    const { text } = await anthropicPost({
+      model:      cfg.model,
+      max_tokens: 2048,
+      system: [{ type: 'text', text: CORRECTOR_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
+    });
+    const parsed = parseJsonSafe<Suggestion>(text, `corrector:${flag.field}`);
+    // Garante que em dash não vaze na sugestão (defesa extra).
+    const clean = (v: string | null) =>
+      typeof v === 'string'
+        ? v.replace(/(\d)\s*\u2014\s*(\d)/g, '$1-$2').replace(/\s*\u2014\s*/g, ', ')
+        : null;
+    return {
+      suggestion_pt: clean(parsed.suggestion_pt),
+      suggestion_en: clean(parsed.suggestion_en),
+      reason: parsed.reason || '',
+    };
+  } catch {
+    return null; // falha do corretor não quebra a validação; flag fica sem sugestão
+  }
+}
+
+async function groundingCheck(
+  trend: TrendRow,
+  signals: SignalRow[],
+): Promise<Flag[]> {
+  // Junta os campos PT e EN. Como scores PT=EN é checado no nível 1, basta auditar
+  // o conteúdo factual uma vez por idioma (fatos devem ser os mesmos nos dois).
+  const claims = [
+    ...trendTextFields(trend, 'pt-BR').map(f => ({ ...f, lang: 'pt-BR' as const })),
+    ...trendTextFields(trend, 'en').map(f => ({ ...f, lang: 'en' as const })),
+  ];
+
+  const claimsBlock = claims
+    .map((c, i) => `(${i + 1}) [${c.field}]: ${c.text}`)
+    .join('\n\n');
+
+  const signalsBlock = buildSignalsBlock(signals);
+
+  const user =
+    `PERIOD END DATE (hard temporal boundary): ${PERIOD_END_DATE}\n\n` +
+    `═══ SIGNALS COLLECTED FOR THIS PERIOD (${signals.length} total) ═══\n\n` +
+    `${signalsBlock}\n\n` +
+    `═══ CLAIMS EXTRACTED FROM THE REPORT (trend rank ${trend.rank}) ═══\n\n` +
+    `${claimsBlock}\n\n` +
+    `Audit every claim against the signals and the temporal boundary. Return the JSON array.`;
+
+  const { text } = await anthropicPost({
+    model:      cfg.model,
+    max_tokens: cfg.maxTokens,
+    system: [{ type: 'text', text: JUDGE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+    messages: [{
+      role: 'user',
+      content: [
+        // sinais cacheados — reusados entre as trends do mesmo relatório
+        { type: 'text', text: `PERIOD ${PERIOD} SIGNALS`, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: user },
+      ],
+    }],
+  });
+
+  type JudgeItem = { field: string; verdict: string; claim: string; detail: string };
+  let items: JudgeItem[] = [];
+  try { items = parseJsonSafe<JudgeItem[]>(text, `judge:trend${trend.rank}`); }
+  catch { return [{
+    id: 'judge_parse_error', severity: 'warning', category: 'grounding',
+    trend_rank: trend.rank, field: '(judge)', claim: '',
+    detail: 'Validador não retornou JSON parseável; revisar manualmente.', lang: null,
+  }]; }
+
+  return items.map(it => {
+    const isTemporal = it.verdict === 'temporal_breach';
+    const isSource   = it.verdict === 'source_attribution';
+    let id: string;
+    let severity: Severity;
+    let category: Category;
+    if (isSource) {
+      id = 'source_name'; severity = 'blocking'; category = 'source';
+    } else if (isTemporal) {
+      id = 'temporal_breach'; severity = 'blocking'; category = 'temporal';
+    } else if (it.verdict === 'unsupported') {
+      id = 'unsupported_claim'; severity = 'blocking'; category = 'grounding';
+    } else {
+      id = 'partially_supported'; severity = 'warning'; category = 'grounding';
+    }
+    return {
+      id,
+      severity,
+      category,
+      trend_rank: trend.rank,
+      field: it.field || '(unknown)',
+      claim: (it.claim || '').slice(0, 200),
+      detail: it.detail || '',
+      lang: null,
+    } as Flag;
+  });
+}
+
+// ─── Veredito + persistência ───────────────────────────────────────────────────
+
+function computeVerdict(flags: Flag[]): Verdict {
+  if (flags.some(f => f.severity === 'blocking')) return 'fail';
+  if (flags.some(f => f.severity === 'warning'))  return 'needs_review';
+  return 'pass';
+}
+
+/**
+ * Valida UM relatório já persistido e decide seu destino.
+ * Esta é a função plugável: chame-a passando o report.id logo após o persistReport.
+ */
+export async function validatePersistedReport(reportId: string): Promise<{
+  verdict: Verdict; flags: Flag[]; signalCount: number;
+}> {
+  const [report] = await dbGet<ReportRow>(`reports?id=eq.${reportId}&select=*`);
+  if (!report) throw new Error(`Relatório ${reportId} não encontrado.`);
+
+  const trends = await dbGet<TrendRow>(`report_trends?report_id=eq.${reportId}&select=*&order=rank.asc`);
+
+  // Sinais do período (para grounding e para o signal_count do painel).
+  const clusters = await dbGet<ClusterRow>(`signal_clusters?period=eq.${report.period}&select=id,signal_ids`);
+  const allIds = [...new Set(clusters.flatMap(c => c.signal_ids ?? []))];
+  const signalMap = new Map<string, SignalRow>();
+  for (let i = 0; i < allIds.length; i += 100) {
+    const ids = allIds.slice(i, i + 100).map(id => `"${id}"`).join(',');
+    if (!ids) continue;
+    const rows = await dbGet<SignalRow>(`signals?id=in.(${ids})&select=id,title,content,metadata`);
+    for (const s of rows) signalMap.set(s.id, s);
+  }
+  const allSignals = [...signalMap.values()];
+  const signalCount = allSignals.length;
+
+  // NÍVEL 1 — determinístico
+  const flags: Flag[] = deterministicChecks(report, trends);
+
+  // NÍVEL 2+3 — grounding + temporal, uma chamada por trend (sinais ficam cacheados)
+  for (const t of trends) {
+    // sinais do cluster específico desta trend (fallback: todos do período)
+    const cluster = clusters.find(c => c.id === t.signal_cluster_id);
+    const trendSignals = cluster
+      ? cluster.signal_ids.map(id => signalMap.get(id)).filter((s): s is SignalRow => !!s)
+      : allSignals;
+    try {
+      const judged = await groundingCheck(t, trendSignals.length ? trendSignals : allSignals);
+      flags.push(...judged);
+    } catch (e) {
+      flags.push({
+        id: 'judge_error', severity: 'warning', category: 'grounding',
+        trend_rank: t.rank, field: '(judge)', claim: '',
+        detail: `Falha ao validar trend ${t.rank}: ${e}. Revisar manualmente.`, lang: null,
+      });
+    }
+  }
+
+  // ── COPILOTO CORRETOR — sugestão subtrativa para cada flag corrigível ───────
+  // Roda durante a validação (sinais já carregados). 1 chamada LLM por flag corrigível.
+  for (const flag of flags) {
+    if (!isCorrectable(flag)) continue;
+    const t = trends.find(tr => tr.rank === flag.trend_rank);
+    if (!t) continue;
+    const cluster = clusters.find(c => c.id === t.signal_cluster_id);
+    const trendSignals = cluster
+      ? cluster.signal_ids.map(id => signalMap.get(id)).filter((s): s is SignalRow => !!s)
+      : allSignals;
+    const { pt, en } = readFieldBothLangs(t, flag.field);
+    const sug = await suggestCorrection(flag, pt, en, trendSignals.length ? trendSignals : allSignals);
+    if (sug) {
+      flag.suggestion_pt     = sug.suggestion_pt;
+      flag.suggestion_en     = sug.suggestion_en;
+      flag.suggestion_reason = sug.reason;
+    }
+  }
+
+  const verdict = computeVerdict(flags);
+
+  // ── Destino ──────────────────────────────────────────────────────────────────
+  // pass limpo → auto-publica. Qualquer flag → pending_review (você decide).
+  const patch: Record<string, unknown> = {
+    validation_verdict: verdict,
+    validation_flags:   flags,
+    validated_at:       new Date().toISOString(),
+    signal_count:       signalCount,
+  };
+  if (verdict === 'pass') {
+    patch.status       = 'published';
+    patch.published_at = new Date().toISOString();
+  } else {
+    patch.status = 'pending_review';
+  }
+  await dbPatch('reports', reportId, patch);
+
+  return { verdict, flags, signalCount };
+}
+
+// ─── CLI: valida todos os relatórios do PERIOD ─────────────────────────────────
+
+async function main(): Promise<void> {
+  const missing = ['ANTHROPIC_API_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY'].filter(k => !process.env[k]);
+  if (missing.length) { console.error(`\n✗ Variáveis faltando: ${missing.join(', ')}\n`); process.exit(1); }
+
+  console.log('\n╔══════════════════════════════════╗');
+  console.log('║   TAIME — Report Validator       ║');
+  console.log('╚══════════════════════════════════╝');
+  console.log(`Período:  ${PERIOD}`);
+  console.log(`Boundary: ${PERIOD_END_DATE}\n`);
+
+  // Valida relatórios que ainda não foram ao ar definitivamente.
+  // Pega 'generating' (acabou de sair do pipeline) e 'pending_review' (re-validação).
+  const reports = await dbGet<ReportRow>(
+    `reports?period=eq.${PERIOD}&status=in.(generating,pending_review,draft)&select=id,report_number,status&order=report_number.asc`,
+  );
+
+  if (reports.length === 0) {
+    console.log('Nenhum relatório aguardando validação neste período.\n');
+    console.log('(O validador processa status: generating, pending_review, draft.)\n');
+    return;
+  }
+
+  for (const r of reports) {
+    console.log(`\n▶ Validando relatório (parte ${r.report_number}, id ${r.id.slice(0, 8)})...`);
+    const { verdict, flags, signalCount } = await validatePersistedReport(r.id);
+
+    const blocking = flags.filter(f => f.severity === 'blocking').length;
+    const warning  = flags.filter(f => f.severity === 'warning').length;
+
+    const icon = verdict === 'pass' ? '✓' : verdict === 'fail' ? '✗' : '⚠';
+    console.log(`  ${icon} Veredito: ${verdict.toUpperCase()}`);
+    console.log(`     Sinais no período: ${signalCount}`);
+    console.log(`     Flags: ${blocking} bloqueantes, ${warning} avisos`);
+    if (verdict === 'pass') {
+      console.log('     → AUTO-PUBLICADO');
+    } else {
+      console.log('     → pending_review (revisar em /admin/reports)');
+      for (const f of flags.slice(0, 8)) {
+        console.log(`       · [${f.severity}] ${f.id} ${f.trend_rank ? `(trend ${f.trend_rank})` : ''} — ${f.detail}`);
+      }
+      if (flags.length > 8) console.log(`       … +${flags.length - 8} flags (ver painel)`);
+    }
+  }
+  console.log('\n' + '═'.repeat(52) + '\n');
+}
+
+// Só roda o CLI se executado diretamente (permite importar validatePersistedReport)
+if (require.main === module) {
+  main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });
+}
