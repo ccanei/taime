@@ -12,7 +12,7 @@ export const en: Translations = {
   },
 
   home: {
-    badge:      'Validated global sources · AI-powered analysis · Since 2000',
+    badge:      'Global signals · Executive intelligence · Since 2000',
     hero:       ['From signal to decision.', 'Strategic intelligence', 'in technology.'],
     heroBody:   'TAIME transforms the global technology information overload into structured intelligence, with scoring, temporal analysis, and decision guidance for leaders.',
     heroSub:    'For executives, managers, consultants, and entrepreneurs.',

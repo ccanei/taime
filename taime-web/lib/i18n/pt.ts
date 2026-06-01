@@ -10,7 +10,7 @@ export const pt = {
   },
 
   home: {
-    badge:      'Fontes globais validadas · Análise com IA · Desde 2000',
+    badge:      'Sinais globais · Inteligência executiva · Desde 2000',
     hero:       ['Do sinal à decisão.', 'Inteligência estratégica', 'em tecnologia.'],
     heroBody:   'O TAIME transforma o volume de informação tecnológica global em inteligência estruturada, com scoring, análise temporal e orientação de movimento para quem decide.',
     heroSub:    'Para líderes, gestores, consultores e empreendedores.',
