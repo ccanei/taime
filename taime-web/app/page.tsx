@@ -1,6 +1,13 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createSupabaseServer } from '@/lib/supabase-server'
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: 'https://www.taime.tech',
+  },
+}
 import { getTranslations, detectLocale } from '@/lib/i18n'
 import { formatPeriod, scoreColor } from '@/lib/types'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'

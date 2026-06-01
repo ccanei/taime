@@ -5,6 +5,9 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Privacy Policy, TAIME',
   description: 'How TAIME collects, uses and protects your personal data.',
+  alternates: {
+    canonical: 'https://www.taime.tech/privacy',
+  },
 }
 
 export default function PrivacyPage() {

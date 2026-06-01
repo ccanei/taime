@@ -10,6 +10,9 @@ export async function generateMetadata() {
   return {
     title: t.sobre.badge,
     description: t.sobre.missionQuote,
+    alternates: {
+      canonical: 'https://www.taime.tech/sobre',
+    },
   }
 }
 

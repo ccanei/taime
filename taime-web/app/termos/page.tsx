@@ -5,6 +5,9 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Termos de Uso, TAIME',
   description: 'Termos e condições de uso da plataforma TAIME.',
+  alternates: {
+    canonical: 'https://www.taime.tech/termos',
+  },
 }
 
 export default function TermosPage() {

@@ -37,9 +37,7 @@ export const metadata: Metadata = {
     description: 'Sinais globais de tecnologia transformados em inteligência executiva.',
     images: ['/og-image.png'],
   },
-  alternates: {
-    canonical: 'https://www.taime.tech',
-  },
+  // Canonical é definida por página (cada rota tem sua URL própria).
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

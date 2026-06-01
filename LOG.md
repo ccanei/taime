@@ -2,6 +2,52 @@
 
 ---
 
+## [2026-06-01] — Fix SEO: canonical por página (não global)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] 10 arquivos tocados / 2 layouts novos
+- [x] Não tocados: rotas autenticadas (`/dashboard`, `/admin`, etc), fluxo de aprovação, APIs
+
+### Bug corrigido
+`app/layout.tsx` declarava `alternates.canonical: 'https://www.taime.tech'` globalmente — efeito colateral: **todas as páginas estavam dizendo ao Google que a home era a canônica**, bloqueando indexação de `/sobre`, `/planos`, `/contato` etc. como páginas próprias.
+
+### Canonical por página
+
+| Rota | Como foi resolvida |
+|---|---|
+| `/` (home) | `metadata` adicionado a `app/page.tsx` (server component) |
+| `/sobre` | Canonical inserida no objeto retornado por `generateMetadata` (preserva i18n title/description) |
+| `/planos` | **Novo** `app/planos/layout.tsx` — page é `'use client'` e não pode exportar metadata; layout server resolve |
+| `/contato` | **Novo** `app/contato/layout.tsx` — mesmo motivo |
+| `/privacidade` | `alternates.canonical` adicionado ao metadata existente |
+| `/termos` | idem |
+| `/privacy` | idem |
+| `/terms` | idem |
+
+### Layout global (`app/layout.tsx`)
+- Removida a propriedade `alternates: { canonical: ... }` inteira (não havia `languages`).
+- Mantidos intactos: `metadataBase`, `title.template`, `description`, `keywords`, `openGraph`, `twitter`.
+
+### Por que `layout.tsx` para client components
+No App Router do Next.js, `export const metadata` (e `generateMetadata`) **só funciona em server components**. Páginas marcadas com `'use client'` (como `/planos` e `/contato`) precisam de um `layout.tsx` server adjacente para exportar metadata da rota. Adicionar metadata diretamente nesses page.tsx seria silenciosamente ignorado.
+
+### Verificação
+```
+$ grep -rn "canonical" app
+app/page.tsx:                'https://www.taime.tech'
+app/sobre/page.tsx:          'https://www.taime.tech/sobre'
+app/planos/layout.tsx:       'https://www.taime.tech/planos'
+app/contato/layout.tsx:      'https://www.taime.tech/contato'
+app/privacidade/page.tsx:    'https://www.taime.tech/privacidade'
+app/termos/page.tsx:         'https://www.taime.tech/termos'
+app/privacy/page.tsx:        'https://www.taime.tech/privacy'
+app/terms/page.tsx:          'https://www.taime.tech/terms'
+```
+`app/layout.tsx` sem nenhuma menção a `canonical` ou `alternates`.
+
+---
+
 ## [2026-06-01] — admin/waitlist: mostra o plano aprovado real em vez de coluna em branco
 
 ### Status
