@@ -2,6 +2,43 @@
 
 ---
 
+## [2026-06-02] — admin/waitlist: mudança de plano para usuários aprovados
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Nova rota `ƒ /api/admin/change-plan` no output do build
+- [x] 2 arquivos modificados / criados
+
+### Bloco 1 — `/api/admin/change-plan`
+Padrão de auth idêntico ao `/api/admin/approve` (`createServerClient` + `isAdmin`, 403 se não admin).
+
+Handler POST:
+1. Valida body `{ email, plan }` (plan whitelist `['free','essential','strategic']` → 400 se inválido).
+2. Resolve `user_id` via GET `users?email=eq.X&select=id&limit=1` (service key). Se não acha → **404** com `"Usuário ainda não aprovado ou sem conta criada."`
+3. Upsert REST: `subscriptions?on_conflict=user_id` + `Prefer: resolution=merge-duplicates,return=minimal` + `{ user_id, plan, status: 'active' }`
+4. Erro de DB → log + 500. Sucesso → `{ success: true, plan }`.
+
+### Bloco 2 — Seletor no `WaitlistAdmin`
+- Novos estados: `updatingPlan: string | null`, `changePlanChoice: Map<email, plan>` (seleção temporária), `planOverrides: Map<email, plan>` (refletir mudança sem reload), `planFlashEmail: string | null` (feedback 3s).
+- Função `changePlan(record)`:
+  - Resolve plano corrente: `planOverrides[email] ?? approvedPlanByEmail[email] ?? 'free'`
+  - Se selected = current → no-op
+  - `window.confirm` bilíngue com nomes traduzidos (`Mudar plano de X de "Y" para "Z"?` / `Change X's plan from "Y" to "Z"?`)
+  - POST `/api/admin/change-plan` com `{ email, plan }`
+  - Sucesso: `planOverrides` atualizado + flash de 3s "✓ Plano atualizado / ✓ Plan updated"
+  - Erro: registrado em `rowErrors`
+- `busy` agora inclui `updatingPlan` (trava UI durante qualquer operação ativa).
+- Célula de aprovados refeita:
+  - Badge mantida (`✓ Aprovado: <plano traduzido>` / `✓ Approved:`)
+  - **Select** com 3 opções (valor enviado em inglês: `free/essential/strategic`) + botão **Atualizar / Update**
+  - Botão desabilitado quando `selected === current` (evita request inútil)
+  - Labels via `planLabels` (PT/EN via `PLAN_LABELS` existente)
+
+### Observação técnica
+`approvedPlanByEmail` continua sendo prop SSR (snapshot do banco no carregamento). Os `planOverrides` locais são a camada de UI optimistic — refletem mudanças bem-sucedidas sem reload. No próximo `router.refresh()` ou navegação SSR, o estado vem do banco e os overrides ficam consistentes.
+
+---
+
 ## [2026-06-02] — Radar 1x/dia com 15 sinais + briefing único
 
 ### Status

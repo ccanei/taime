@@ -45,10 +45,17 @@ export default function WaitlistAdmin({
   const [filter, setFilter]       = useState<Filter>('all')
   const [approving, setApproving] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<string | null>(null)
+  const [updatingPlan, setUpdatingPlan] = useState<string | null>(null)
   const [flash, setFlash]         = useState<{ id: string; name: string } | null>(null)
   const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map())
   // Plano final escolhido pelo admin por registro (default = requested_plan ou 'free')
   const [planChoice, setPlanChoice] = useState<Map<string, PlanChoice>>(new Map())
+  // Plano sendo escolhido para troca pós-aprovação (key = email)
+  const [changePlanChoice, setChangePlanChoice] = useState<Map<string, PlanChoice>>(new Map())
+  // Overrides do plano aprovado para refletir mudanças sem reload (key = email)
+  const [planOverrides, setPlanOverrides] = useState<Map<string, PlanChoice>>(new Map())
+  // Flash de sucesso na mudança de plano (key = email)
+  const [planFlashEmail, setPlanFlashEmail] = useState<string | null>(null)
 
   const counts = useMemo(() => ({
     all:      records.length,
@@ -92,6 +99,45 @@ export default function WaitlistAdmin({
       setRowErrors(prev => new Map(prev).set(record.id, String(err)))
     } finally {
       setApproving(null)
+    }
+  }
+
+  async function changePlan(record: WaitlistRecord) {
+    const currentPlan: PlanChoice =
+      planOverrides.get(record.email) ?? ((approvedPlanByEmail[record.email] ?? 'free') as PlanChoice)
+    const newPlan: PlanChoice =
+      changePlanChoice.get(record.email) ?? currentPlan
+    if (newPlan === currentPlan) return
+
+    const who = record.name ?? record.email
+    const confirmMsg = isPt
+      ? `Mudar plano de ${who} de "${planLabels[currentPlan]}" para "${planLabels[newPlan]}"?`
+      : `Change ${who}'s plan from "${planLabels[currentPlan]}" to "${planLabels[newPlan]}"?`
+    if (!window.confirm(confirmMsg)) return
+
+    setUpdatingPlan(record.id)
+    setRowErrors(prev => { const m = new Map(prev); m.delete(record.id); return m })
+
+    try {
+      const res = await fetch('/api/admin/change-plan', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email: record.email, plan: newPlan }),
+      })
+      const json = await res.json() as { success?: boolean; error?: string; plan?: string }
+
+      if (!res.ok || !json.success) {
+        setRowErrors(prev => new Map(prev).set(record.id, json.error ?? 'Erro desconhecido'))
+        return
+      }
+
+      setPlanOverrides(prev => new Map(prev).set(record.email, newPlan))
+      setPlanFlashEmail(record.email)
+      setTimeout(() => setPlanFlashEmail(null), 3000)
+    } catch (err) {
+      setRowErrors(prev => new Map(prev).set(record.id, String(err)))
+    } finally {
+      setUpdatingPlan(null)
     }
   }
 
@@ -186,7 +232,9 @@ export default function WaitlistAdmin({
                   const rowErr = rowErrors.get(record.id)
                   const isApproving = approving === record.id
                   const isRejecting = rejecting === record.id
-                  const busy = isApproving || isRejecting || !!approving || !!rejecting
+                  const isUpdating  = updatingPlan === record.id
+                  const busy = isApproving || isRejecting || isUpdating
+                            || !!approving || !!rejecting || !!updatingPlan
 
                   return (
                     <tr key={record.id} className={`bg-white hover:bg-zinc-50 transition-colors
@@ -269,12 +317,50 @@ export default function WaitlistAdmin({
                             </>
                           ) : (
                             (() => {
-                              const approvedPlan = approvedPlanByEmail[record.email]
-                              const label = planLabels[approvedPlan ?? ''] ?? planLabels.free
+                              const effectivePlan: PlanChoice =
+                                planOverrides.get(record.email)
+                                ?? ((approvedPlanByEmail[record.email] ?? 'free') as PlanChoice)
+                              const selectedPlan: PlanChoice =
+                                changePlanChoice.get(record.email) ?? effectivePlan
+                              const flashed = planFlashEmail === record.email
                               return (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">
-                                  {label}
-                                </span>
+                                <div className="flex flex-col gap-1.5 items-start">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">
+                                    ✓ {isPt ? 'Aprovado' : 'Approved'}: {planLabels[effectivePlan]}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <select
+                                      value={selectedPlan}
+                                      onChange={e => {
+                                        const val = e.target.value as PlanChoice
+                                        setChangePlanChoice(prev => new Map(prev).set(record.email, val))
+                                      }}
+                                      disabled={busy}
+                                      className="text-xs px-2 py-1 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-2 focus:ring-taime-600"
+                                    >
+                                      <option value="free">free</option>
+                                      <option value="essential">essential</option>
+                                      <option value="strategic">strategic</option>
+                                    </select>
+                                    <button
+                                      onClick={() => changePlan(record)}
+                                      disabled={busy || selectedPlan === effectivePlan}
+                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold
+                                                 bg-zinc-100 text-zinc-700 hover:bg-zinc-200
+                                                 disabled:opacity-50 disabled:cursor-not-allowed
+                                                 transition-colors"
+                                    >
+                                      {isUpdating
+                                        ? (isPt ? 'Atualizando...' : 'Updating...')
+                                        : (isPt ? 'Atualizar' : 'Update')}
+                                    </button>
+                                  </div>
+                                  {flashed && (
+                                    <span className="text-[11px] text-emerald-600 font-medium">
+                                      {isPt ? '✓ Plano atualizado' : '✓ Plan updated'}
+                                    </span>
+                                  )}
+                                </div>
                               )
                             })()
                           )}
