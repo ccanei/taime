@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { Report, ReportTrend, Lang, TaimeFramework, OrgImplications, ThenNowNext, ScoreDimensions } from '@/lib/types'
 import { formatPeriod, formatPeriodFull, scoreColor, scoreBg, scoreRing } from '@/lib/types'
-import type { AccessLevel, Plan } from '@/lib/access'
+import type { AccessLevel, AccessReason, Plan } from '@/lib/access'
 import LanguageSelector from '@/components/LanguageSelector'
 
 // ─── Score gauge ──────────────────────────────────────────────────────────────
@@ -429,23 +429,108 @@ export default function ReportClient({
   const title   = isPt ? report.title_pt_br : report.title_en
   const summary = isPt ? report.executive_summary_pt_br : report.executive_summary_en
 
-  // ─── Preview público (visitante / free / essential fora da janela) ──────────
+  // ─── Preview público / acesso bloqueado ────────────────────────────────────
   if (isPreview) {
+    const reason: AccessReason = accessLevel?.reason ?? 'visitor'
+    const noAccess = !accessLevel?.canSeePreview // strategic_only / out_of_range
     const firstPara = summary.split('\n\n')[0] ?? ''
     const avgScore  = trends.length > 0
       ? Math.round(trends.reduce((acc, t) => acc + t.taime_score, 0) / trends.length)
       : 0
-    const outOfWindow = plan === 'essential'
-    const ctaHref  = outOfWindow ? '/planos' : '/login'
-    const ctaTitle = outOfWindow
-      ? (isPt ? 'Este relatório está fora do período de acesso do seu plano.' : 'This report is outside your plan’s access window.')
-      : (isPt ? 'Acesso antecipado para ver a análise completa' : 'Early access to view the full analysis')
-    const ctaSub = outOfWindow
-      ? (isPt ? 'Faça upgrade para Estratégico para acessar todo o histórico desde 2000.' : 'Upgrade to Strategic to access the full archive since 2000.')
-      : (isPt ? 'Preview · cadastre-se para receber acesso completo aos relatórios.' : 'Preview · sign up to get full access to the reports.')
-    const ctaBtn = outOfWindow
-      ? (isPt ? 'Ver planos →' : 'View plans →')
-      : (isPt ? 'Solicitar acesso →' : 'Request access →')
+
+    const PT = {
+      visitor: {
+        label: 'PREVIEW',
+        title: 'Solicite acesso para ler o relatório completo',
+        sub:   'Cadastre-se para receber acesso completo aos relatórios.',
+        btn:   'Solicitar acesso →',
+        href:  '/login',
+      },
+      free_limit_reached: {
+        label: 'LIMITE ATINGIDO',
+        title: 'Você atingiu seu limite de 2 relatórios este mês.',
+        sub:   'Faça upgrade para Essencial ou Estratégico para acesso ilimitado.',
+        btn:   'Ver planos →',
+        href:  '/planos',
+      },
+      too_old_for_plan: {
+        label: 'PREVIEW',
+        title: 'Este relatório está fora do período do seu plano.',
+        sub:   'Essencial cobre relatórios de até 1 ano. Faça upgrade para Estratégico para o histórico completo.',
+        btn:   'Ver planos →',
+        href:  '/planos',
+      },
+      strategic_only: {
+        label: 'EXCLUSIVO ESTRATÉGICO',
+        title: 'Este relatório está disponível apenas no plano Estratégico.',
+        sub:   'O histórico completo desde 2000 é exclusivo dos assinantes Estratégicos.',
+        btn:   'Ver planos →',
+        href:  '/planos',
+      },
+      out_of_range: {
+        label: 'INDISPONÍVEL',
+        title: 'Este relatório não está disponível no seu plano.',
+        sub:   'Faça upgrade para acessar relatórios anteriores.',
+        btn:   'Ver planos →',
+        href:  '/planos',
+      },
+      preview_only: {
+        label: 'PREVIEW',
+        title: 'Apenas o preview deste relatório está disponível.',
+        sub:   'Faça upgrade para ler o conteúdo completo.',
+        btn:   'Ver planos →',
+        href:  '/planos',
+      },
+      full: { label: '', title: '', sub: '', btn: '', href: '/' }, // unreachable
+    } as const
+
+    const EN = {
+      visitor: {
+        label: 'PREVIEW',
+        title: 'Request access to read the full report',
+        sub:   'Sign up to get full access to the reports.',
+        btn:   'Request access →',
+        href:  '/login',
+      },
+      free_limit_reached: {
+        label: 'LIMIT REACHED',
+        title: 'You have reached your monthly limit of 2 reports.',
+        sub:   'Upgrade to Essential or Strategic for unlimited access.',
+        btn:   'View plans →',
+        href:  '/planos',
+      },
+      too_old_for_plan: {
+        label: 'PREVIEW',
+        title: 'This report is outside your plan window.',
+        sub:   'Essential covers reports up to 1 year old. Upgrade to Strategic for the full archive.',
+        btn:   'View plans →',
+        href:  '/planos',
+      },
+      strategic_only: {
+        label: 'STRATEGIC ONLY',
+        title: 'This report is available only on the Strategic plan.',
+        sub:   'The full archive since 2000 is exclusive to Strategic subscribers.',
+        btn:   'View plans →',
+        href:  '/planos',
+      },
+      out_of_range: {
+        label: 'UNAVAILABLE',
+        title: 'This report is not available on your plan.',
+        sub:   'Upgrade your plan to access earlier reports.',
+        btn:   'View plans →',
+        href:  '/planos',
+      },
+      preview_only: {
+        label: 'PREVIEW',
+        title: 'Only the preview of this report is available.',
+        sub:   'Upgrade to read the full content.',
+        btn:   'View plans →',
+        href:  '/planos',
+      },
+      full: { label: '', title: '', sub: '', btn: '', href: '/' }, // unreachable
+    } as const
+
+    const cta = (isPt ? PT : EN)[reason]
 
     return (
       <div className="min-h-screen bg-zinc-50">
@@ -464,7 +549,7 @@ export default function ReportClient({
         </header>
 
         <main className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-          {/* Header do relatório: título + score geral + 1º parágrafo */}
+          {/* Header do relatório: período + título sempre visíveis */}
           <div className="bg-white rounded-2xl border border-zinc-200 px-8 py-8">
             <p className="text-xs font-bold text-zinc-400 tracking-widest mb-3">
               {formatPeriod(report.period, lang).toUpperCase()}
@@ -473,56 +558,63 @@ export default function ReportClient({
               {title}
             </h1>
 
-            <div className="flex items-center gap-4 mb-6">
-              <div className={`flex flex-col items-center justify-center w-20 h-20 rounded-2xl ring-2 shrink-0 ${scoreRing(avgScore)}`}>
-                <span className={`text-3xl font-bold tabular-nums leading-none ${scoreColor(avgScore)}`}>{avgScore}</span>
-                <span className="text-[9px] text-zinc-400 font-bold tracking-widest mt-0.5">SCORE</span>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-zinc-400 tracking-widest mb-1">{isPt ? 'TAIME SCORE GERAL' : 'OVERALL TAIME SCORE'}</p>
-                <p className="text-sm text-zinc-500">
-                  {isPt
-                    ? `Média de ${trends.length} trend${trends.length !== 1 ? 's' : ''} neste período`
-                    : `Average of ${trends.length} trend${trends.length !== 1 ? 's' : ''} in this period`}
-                </p>
-              </div>
-            </div>
+            {/* Score geral + 1º parágrafo só quando há preview permitido */}
+            {!noAccess && (
+              <>
+                <div className="flex items-center gap-4 mb-6">
+                  <div className={`flex flex-col items-center justify-center w-20 h-20 rounded-2xl ring-2 shrink-0 ${scoreRing(avgScore)}`}>
+                    <span className={`text-3xl font-bold tabular-nums leading-none ${scoreColor(avgScore)}`}>{avgScore}</span>
+                    <span className="text-[9px] text-zinc-400 font-bold tracking-widest mt-0.5">SCORE</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-400 tracking-widest mb-1">{isPt ? 'TAIME SCORE GERAL' : 'OVERALL TAIME SCORE'}</p>
+                    <p className="text-sm text-zinc-500">
+                      {isPt
+                        ? `Média de ${trends.length} trend${trends.length !== 1 ? 's' : ''} neste período`
+                        : `Average of ${trends.length} trend${trends.length !== 1 ? 's' : ''} in this period`}
+                    </p>
+                  </div>
+                </div>
 
-            {firstPara && (
-              <p className="prose-taime text-sm leading-relaxed text-zinc-700">{firstPara}</p>
+                {firstPara && (
+                  <p className="prose-taime text-sm leading-relaxed text-zinc-700">{firstPara}</p>
+                )}
+              </>
             )}
           </div>
 
-          {/* Lista de trends com título + score (sem detalhes) */}
-          <div className="bg-white rounded-2xl border border-zinc-200 px-8 py-6">
-            <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-4">
-              {isPt ? `${trends.length} TRENDS NESTE PERÍODO` : `${trends.length} TRENDS IN THIS PERIOD`}
-            </p>
-            <ul className="divide-y divide-zinc-100">
-              {trends.map(trend => {
-                const tTitle = isPt ? trend.title_pt_br : trend.title_en
-                return (
-                  <li key={trend.id} className="flex items-center gap-4 py-3">
-                    <div className={`w-12 h-12 rounded-xl ring-2 shrink-0 flex flex-col items-center justify-center ${scoreRing(trend.taime_score)}`}>
-                      <span className={`text-base font-bold tabular-nums leading-none ${scoreColor(trend.taime_score)}`}>{trend.taime_score}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-zinc-800 leading-snug">{tTitle}</p>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
+          {/* Lista de trends com título + score (apenas quando há preview) */}
+          {!noAccess && (
+            <div className="bg-white rounded-2xl border border-zinc-200 px-8 py-6">
+              <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-4">
+                {isPt ? `${trends.length} TRENDS NESTE PERÍODO` : `${trends.length} TRENDS IN THIS PERIOD`}
+              </p>
+              <ul className="divide-y divide-zinc-100">
+                {trends.map(trend => {
+                  const tTitle = isPt ? trend.title_pt_br : trend.title_en
+                  return (
+                    <li key={trend.id} className="flex items-center gap-4 py-3">
+                      <div className={`w-12 h-12 rounded-xl ring-2 shrink-0 flex flex-col items-center justify-center ${scoreRing(trend.taime_score)}`}>
+                        <span className={`text-base font-bold tabular-nums leading-none ${scoreColor(trend.taime_score)}`}>{trend.taime_score}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-zinc-800 leading-snug">{tTitle}</p>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
 
-          {/* CTA */}
+          {/* CTA contextualizado por reason */}
           <div className="rounded-2xl bg-taime-900 text-white p-8">
-            <p className="text-[10px] font-bold tracking-widest text-white/40 uppercase mb-3">{isPt ? 'PREVIEW' : 'PREVIEW'}</p>
-            <h2 className="text-xl sm:text-2xl font-bold mb-3 leading-snug">{ctaTitle}</h2>
-            <p className="text-sm text-white/60 leading-relaxed mb-6">{ctaSub}</p>
+            <p className="text-[10px] font-bold tracking-widest text-white/40 uppercase mb-3">{cta.label}</p>
+            <h2 className="text-xl sm:text-2xl font-bold mb-3 leading-snug">{cta.title}</h2>
+            <p className="text-sm text-white/60 leading-relaxed mb-6">{cta.sub}</p>
             <Link
-              href={ctaHref}
+              href={cta.href}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white text-taime-900 text-sm font-semibold hover:bg-white/90 transition-colors"
             >
-              {ctaBtn}
+              {cta.btn}
             </Link>
           </div>
         </main>

@@ -2,6 +2,54 @@
 
 ---
 
+## [2026-06-01] — Controle de acesso completo por plano + report_views (free rolling 30d)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] 3 arquivos modificados: `lib/access.ts`, `app/reports/[id]/page.tsx`, `components/ReportClient.tsx`
+
+### Bloco 1 — `lib/access.ts` reescrito
+Nova assinatura `getAccessLevel(params)` recebe objeto rico:
+```ts
+{ plan, reportPeriod, isLoggedIn, freeUnlockCount?, alreadyUnlocked? }
+```
+Retorna `{ canSeePreview, canSeeFullReport, reason }` onde `reason` é um de:
+`'visitor' | 'full' | 'preview_only' | 'free_limit_reached' | 'too_old_for_plan' | 'strategic_only' | 'out_of_range'`.
+
+Regras implementadas:
+- **Visitante**: preview de qualquer relatório
+- **Free**: completos de até 1 ano; 2 desbloqueios ativos por janela rolling de 30 dias; já desbloqueado → completo sem consumir slot; > 1 ano → `out_of_range`
+- **Essential**: completo até 1 ano; preview entre 1-5 anos (`too_old_for_plan`); > 5 anos → `strategic_only` (nem preview)
+- **Strategic**: tudo, sem limite
+
+### Bloco 2 — `app/reports/[id]/page.tsx`
+- Continua sem `redirect('/login')` (visitante recebe preview).
+- Para usuário `free` (ou null), consulta `report_views` via service key com `unlocked_at >= now - 30d`:
+  - `freeUnlockCount` = `Set(report_id)` ativos no período
+  - `alreadyUnlocked` = se este `id` está no Set
+- Chama `getAccessLevel({ plan, reportPeriod, isLoggedIn, freeUnlockCount, alreadyUnlocked })`.
+- **Consome slot do free**: se `plan === 'free' && canSeeFullReport && !alreadyUnlocked`, faz `upsert` em `report_views` com `onConflict: 'user_id,report_id'` e `unlocked_at = now`. Entradas antigas (>30d) renovam para "agora" — efetivamente re-unlock.
+- Passa `accessLevel` e `plan` ao `ReportClient`.
+
+### Bloco 3 — `ReportClient.tsx`
+- Importa `AccessReason` do `lib/access`.
+- `isPreview = accessLevel && !accessLevel.canSeeFullReport` (como antes).
+- **Novo:** `noAccess = !accessLevel?.canSeePreview` — para `strategic_only` e `out_of_range`, o painel oculta score geral, 1º parágrafo do resumo e lista de trends (só mostra período + título + CTA com a mensagem).
+- Tabela `PT` e `EN` indexada por `AccessReason` retorna `{ label, title, sub, btn, href }`. CTA escolhe automaticamente o `href`:
+  - `visitor` → `/login`
+  - todos os outros (free_limit, too_old, strategic_only, out_of_range, preview_only) → `/planos`
+- Mensagens conforme o spec, bilíngues (PT/EN) via `lang` já detectado.
+
+### Tabela `report_views`
+Já existe no banco: `(user_id, report_id, unlocked_at)` com `UNIQUE(user_id, report_id)`. Padrão usado: 1 linha por par. `unlocked_at` é o "início do slot de 30 dias" — renovado em re-unlock após expiração.
+
+### Idempotência
+- Re-carregar a mesma página dentro dos 30 dias: `alreadyUnlocked=true` → não chama upsert, não consome slot, mostra completo.
+- Re-carregar após 30 dias: `alreadyUnlocked=false` → entra na lógica de "tem slot?". Se sim, upsert renova `unlocked_at` para agora.
+- Re-carregar terceiro relatório com slots cheios: `alreadyUnlocked=false`, `freeUnlockCount >= 2` → preview com CTA `free_limit_reached`.
+
+---
+
 ## [2026-06-01] — Fix SEO: canonical por página (não global)
 
 ### Status
