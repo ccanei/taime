@@ -2,6 +2,46 @@
 
 ---
 
+## [2026-06-02] — /radar vira newsletter pública (briefing + inscrição)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Novas rotas no output: `ƒ /api/newsletter/subscribe`
+- [x] 3 arquivos novos: `api/newsletter/subscribe/route.ts`, `components/NewsletterSignup.tsx`, modificada `app/radar/page.tsx`
+
+### Bloco 1 — Briefing do dia no topo
+- `app/radar/page.tsx` agora busca em paralelo (Promise.all): `getSignals()` + `getLatestBriefing()` (`radar_briefings?order=briefing_date.desc&limit=1`).
+- Quando há briefing: seção `bg-taime-900` (fundo dark) acima dos sinais:
+  - Tag `BRIEFING DO DIA` / `TODAY'S BRIEFING` em pill com `ring-white/15`
+  - Data formatada com weekday + dia + mês + ano (`pt-BR` ou `en-US`)
+  - `signal_count` ao lado da data
+  - Título em `text-2xl sm:text-3xl font-bold`
+  - Corpo em **serif (Georgia)** para evocar editorial impresso; parágrafos via `split(/\n{2,}|\n/g)`
+- Sem briefing → seção inteira é omitida (mostra direto os sinais, como antes).
+- Quando há briefing, aparece separador `SINAIS DE HOJE` / `TODAY'S SIGNALS` antes do feed.
+
+### Bloco 2 — `components/NewsletterSignup.tsx`
+- Client component bilíngue via `useLocale` (detecção `t.nav.howItWorks === 'Como funciona'`).
+- 2 variants: `dark` (fundo `bg-taime-900`) e `light` (fundo `bg-zinc-50` com borda).
+- Honeypot escondido `name="website"` no mesmo padrão dos outros forms.
+- Validação email no cliente (`!email.trim()`) + servidor (regex).
+- Estados: `idle` / `loading` / `sent` / `error` com mensagens contextuais PT/EN.
+- Posicionamento em `/radar`: variant `dark` logo após o briefing; variant `light` no fim da página (discreto).
+
+### Bloco 3 — `app/api/newsletter/subscribe/route.ts`
+- POST `{ email, website, locale }`.
+- **Honeypot**: se `website` tem conteúdo, retorna `{ success: true }` imediatamente sem gravar.
+- Valida email com regex (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`); 400 se inválido.
+- Normaliza `locale`: `'en'` permanece; qualquer outra coisa vira `'pt-BR'`.
+- Upsert via REST com `?on_conflict=email` + `Prefer: resolution=merge-duplicates,return=minimal`: `{ email, locale, status: 'active', source: 'radar' }`. Re-inscrição não duplica nem quebra (mesmo email atualiza locale/status).
+- Erro de DB loga + 500 com mensagem genérica `Erro ao inscrever`.
+
+### Bloco 4 — SEO
+- `/radar` já está no sitemap (`priority: 0.7`, `changeFrequency: 'daily'`) e fora do disallow do robots. Sem alteração.
+- Briefing diário adiciona prosa editorial nova todos os dias → conteúdo dinâmico que aumenta a relevância da página para o Google sem inflar custo (apenas 1 chamada Claude/dia no cron).
+
+---
+
 ## [2026-06-02] — Cron diário de briefing editorial do Radar
 
 ### Status
