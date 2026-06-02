@@ -228,11 +228,6 @@ export default async function RadarPage() {
         </section>
       )}
 
-      {/* Newsletter (após briefing — quando há briefing; senão aparece antes dos sinais) */}
-      <section className="max-w-5xl mx-auto px-6 pb-16">
-        <NewsletterSignup variant="dark" />
-      </section>
-
       {/* Sinais */}
       <section className="max-w-5xl mx-auto px-6 pb-20">
         {briefing && (

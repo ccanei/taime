@@ -2,6 +2,20 @@
 
 ---
 
+## [2026-06-02] — /radar: deixa só um NewsletterSignup (no fim)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Único arquivo modificado: `app/radar/page.tsx`
+- [x] `grep NewsletterSignup` no arquivo: 2 ocorrências (1 import + 1 uso, era 3 antes)
+
+### Mudança
+Removida a `<section>` com `NewsletterSignup variant="dark"` que aparecia entre o briefing do dia e os cards de sinais. Mantida apenas a segunda ocorrência (`variant="light"` no fim da página, após o feed de sinais).
+
+Resultado: usuário lê o briefing → vai direto aos sinais → encontra o CTA de inscrição depois de consumir o conteúdo. Menos atrito no topo, conversão no rodapé.
+
+---
+
 ## [2026-06-02] — /radar vira newsletter pública (briefing + inscrição)
 
 ### Status
