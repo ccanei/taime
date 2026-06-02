@@ -1,6 +1,7 @@
 export const pt = {
   nav: {
     howItWorks: 'Como funciona',
+    radar:      'Radar',
     plans:      'Planos',
     about:      'Sobre',
     contact:    'Contato',

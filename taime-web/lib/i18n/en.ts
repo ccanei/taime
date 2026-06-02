@@ -3,6 +3,7 @@ import type { Translations } from './index'
 export const en: Translations = {
   nav: {
     howItWorks: 'How it works',
+    radar:      'Radar',
     plans:      'Plans',
     about:      'About',
     contact:    'Contact',

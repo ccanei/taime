@@ -2,6 +2,43 @@
 
 ---
 
+## [2026-06-01] — Página pública /radar (SEO + topo de funil)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Nova rota `ƒ /radar` no output do build
+- [x] Não tocados: `components/RadarFeed.tsx`, `/api/radar` (mantidos como estão)
+
+### Bloco 1 + 2 — `app/radar/page.tsx` (server component)
+- Server Component → metadata indexável + ISR.
+- Fetch direto ao Supabase REST com service key (sem chamar /api/radar interno):
+  - `?order=collected_at.desc&limit=30`
+  - `next: { revalidate: 60 * 30 }` — ISR de 30 min (cron alimenta 2x/dia)
+- Detecta locale via `cookies()` + `detectLocale` (mesmo padrão de `/sobre`).
+- Layout:
+  - Hero com badge "Inteligência em tempo real" / "Real-time intelligence", H1 "Radar TAIME" / "TAIME Radar" e subtítulo bilíngue
+  - **Agrupamento por dia**: para cada dia, header com data absoluta (`2-digit month long year`) seguido de grid de cards
+  - Card por sinal: badge de categoria colorido (mesma paleta do RadarFeed), `relevance`, título completo, **resumo COMPLETO** (sem truncate, conteúdo rico para SEO), source_category e link "Ler na fonte → / Read at source →" com `target="_blank" rel="noopener noreferrer"`
+- Metadata estática (não depende de locale):
+  - `title`: "Radar TAIME — Sinais de Tecnologia em Tempo Real"
+  - `description`: bilíngue inline (PT + EN no mesmo texto) com keywords IA/cloud/cibersegurança/dados/regulação
+  - `alternates.canonical: 'https://www.taime.tech/radar'`
+  - `openGraph` com url e type
+
+### Bloco 3 — Link "Radar" no Navbar
+- `lib/i18n/pt.ts` e `lib/i18n/en.ts`: adicionada chave `nav.radar: 'Radar'` (igual em ambos os idiomas)
+- `components/Navbar.tsx`: novo item `{ label: t.nav.radar, href: '/radar' }` entre "Como funciona" e "Planos". Aparece em desktop e mobile (NAV_LINKS único para os dois).
+
+### Bloco 4 — Indexação
+- `robots.ts` já permite (`/radar` não está no disallow). Sem alteração.
+- `sitemap.ts` refatorado para suportar `changeFrequency` por rota; adicionado `/radar` com `priority: 0.7` e `changeFrequency: 'daily'`.
+
+### Não tocado (conforme spec)
+- `components/RadarFeed.tsx`: feed da home continua com 4 itens shuffled.
+- `app/api/radar/route.ts`: endpoint público continua servindo o RadarFeed.
+
+---
+
 ## [2026-06-01] — Controle de acesso completo por plano + report_views (free rolling 30d)
 
 ### Status

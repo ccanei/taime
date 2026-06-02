@@ -25,6 +25,7 @@ export default function Navbar() {
 
   const NAV_LINKS = [
     { label: t.nav.howItWorks, href: '/#como-funciona' },
+    { label: t.nav.radar,      href: '/radar'           },
     { label: t.nav.plans,      href: '/planos'          },
     { label: t.nav.about,      href: '/sobre'           },
     { label: t.nav.contact,    href: '/contato'         },
