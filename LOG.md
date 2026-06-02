@@ -2,6 +2,56 @@
 
 ---
 
+## [2026-06-02] — Cron diário de briefing editorial do Radar
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Nova rota `ƒ /api/cron/radar-briefing` no output do build
+- [x] `vercel.json` agenda o cron 1×/dia às 11:00 UTC (= 08:00 BRT)
+
+### Arquivos
+- **Novo:** `app/api/cron/radar-briefing/route.ts`
+- **Modificado:** `vercel.json` (mantém crons existentes do `/api/cron/radar` 10h e 17h UTC)
+
+### Como o cron funciona
+1. **Auth**: header `Authorization: Bearer ${CRON_SECRET}` (mesmo padrão do `/api/cron/radar`). 401 se inválido.
+2. **Idempotência**: GET `radar_briefings?briefing_date=eq.{hoje UTC YYYY-MM-DD}&limit=1`. Se já existe, retorna `{ success: true, skipped: true, reason: 'already_exists' }`.
+3. **Coleta de sinais**: GET `radar_signals?collected_at=gte.{agora-24h ISO}&order=collected_at.desc`. Se 0 sinais, retorna `{ success: true, count: 0, reason: 'no_signals_in_24h' }` sem chamar Claude.
+4. **Claude Sonnet 4.6** (`max_tokens: 4000`) com `SYSTEM_PROMPT` editorial TAIME:
+   - Base estritamente nos sinais (anti-alucinação)
+   - Fontes só por categoria (nunca nomes específicos como Gartner/McKinsey)
+   - Sem em dash, sem valores monetários
+   - Tom executivo, insight-driven (não recap de notícias)
+   - PT e EN nativos (não tradução)
+   - Retorna JSON: `{ title_pt, title_en, body_pt, body_en }`
+5. **Parse seguro**: remove cercas markdown (` ```json ... ``` `) antes do JSON.parse.
+6. **Defesa anti em dash**: pós-processa cada um dos 4 campos com `.replace(/—/g, ':')`. Garante zero travessões mesmo se o modelo ignorar a instrução.
+7. **Insert** em `radar_briefings`: `briefing_date`, `title_pt`, `title_en`, `body_pt`, `body_en`, `signal_count`, `signal_ids` (array de ids).
+8. Retorna `{ success: true, count, briefing_date }`.
+
+### Como forçar manualmente (debug / catch-up)
+```bash
+curl -X GET "https://www.taime.tech/api/cron/radar-briefing" \
+  -H "Authorization: Bearer ${CRON_SECRET}"
+```
+- Se rodar 2× no mesmo dia: o segundo retorna `skipped: true` (idempotência via `briefing_date` único).
+- Se rodar sem sinais nas últimas 24h: retorna `count: 0` sem gerar briefing.
+
+### Schedule (UTC)
+| Cron | Horário | BRT |
+|---|---|---|
+| `/api/cron/radar` | `0 10 * * *` | 07:00 |
+| `/api/cron/radar` | `0 17 * * *` | 14:00 |
+| `/api/cron/radar-briefing` | `0 11 * * *` | **08:00** |
+
+Briefing roda 1h após a primeira coleta do dia, garantindo que tenha sinais frescos para analisar.
+
+### Pré-requisitos (já atendidos)
+- Tabela `radar_briefings` criada com `briefing_date` UNIQUE
+- Env vars: `CRON_SECRET`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `ANTHROPIC_API_KEY`
+
+---
+
 ## [2026-06-02] — Remove em dash de `/radar` (alinha com diretriz editorial)
 
 ### Status
