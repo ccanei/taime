@@ -2,6 +2,32 @@
 
 ---
 
+## [2026-06-02] — Remove em dash de `/radar` (alinha com diretriz editorial)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] `grep "—" app/radar/page.tsx` → nenhum match restante
+- [x] Único arquivo modificado: `app/radar/page.tsx`
+
+### Substituições (7 ocorrências em 6 linhas)
+| Linha | Antes | Depois | Tipo |
+|---|---|---|---|
+| 8  | `Radar TAIME — Sinais...` | `Radar TAIME: Sinais...` | metadata.title |
+| 14 | `Radar TAIME — Sinais` | `Radar TAIME: Sinais` | og.title |
+| 78 | `// ISR: 30 min — cron alimenta` | `// ISR: 30 min, cron alimenta` | comentário |
+| 111 | `fontes globais — pesquisa, ...` | `fontes globais: pesquisa, ...` | subtítulo PT |
+| 112 | `global sources — research, ...` | `global sources: research, ...` | subtítulo EN |
+| 153 | `category ?? '—'` | `category ?? '-'` | placeholder UI |
+| 187 | `source_category ?? '—'` | `source_category ?? '-'` | placeholder UI |
+
+### i18n
+`grep "—"` em `lib/i18n/pt.ts` / `lib/i18n/en.ts` filtrado por palavras-chave do radar (radar/sinais/signals) não retornou nada relacionado. Os títulos do radar estão inline em `app/radar/page.tsx`, não em i18n. Sem alteração necessária.
+
+### Convenção do projeto
+Reforça a diretriz editorial já aplicada no `SYSTEM_PROMPT` do `generate-report.ts` ("EM DASH PROHIBITION") agora também na camada de UI estática. Para campos null em cards, mantido um placeholder visual usando hyphen ASCII.
+
+---
+
 ## [2026-06-02] — Radar cron: histórico permanente via upsert (sem DELETE)
 
 ### Status

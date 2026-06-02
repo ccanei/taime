@@ -5,13 +5,13 @@ import Footer from '@/components/Footer'
 import { detectLocale } from '@/lib/i18n'
 
 export const metadata: Metadata = {
-  title: 'Radar TAIME — Sinais de Tecnologia em Tempo Real',
+  title: 'Radar TAIME: Sinais de Tecnologia em Tempo Real',
   description: 'Sinais de tecnologia coletados de fontes globais e atualizados continuamente. IA, cloud, cibersegurança, dados, regulação e mais. Technology signals from global sources, continuously updated.',
   alternates: {
     canonical: 'https://www.taime.tech/radar',
   },
   openGraph: {
-    title: 'Radar TAIME — Sinais de Tecnologia',
+    title: 'Radar TAIME: Sinais de Tecnologia',
     description: 'Sinais de tecnologia de fontes globais, atualizados continuamente.',
     url:   'https://www.taime.tech/radar',
     type:  'website',
@@ -75,7 +75,7 @@ async function getSignals(): Promise<RadarSignal[]> {
           apikey:        supabaseKey,
           Authorization: `Bearer ${supabaseKey}`,
         },
-        // ISR: revalida a cada 30 min — cron alimenta a tabela 2x/dia,
+        // ISR: revalida a cada 30 min, cron alimenta a tabela 2x/dia
         // mais frescor que isso é desperdício de cache.
         next: { revalidate: 60 * 30 },
       },
@@ -108,8 +108,8 @@ export default async function RadarPage() {
 
   const h1       = isPt ? 'Radar TAIME' : 'TAIME Radar'
   const sub      = isPt
-    ? 'Sinais de tecnologia coletados de fontes globais — pesquisa, consultoria, capital de risco, mídia e órgãos reguladores. Atualizado continuamente.'
-    : 'Technology signals from global sources — research, consulting, venture capital, media, and regulatory bodies. Updated continuously.'
+    ? 'Sinais de tecnologia coletados de fontes globais: pesquisa, consultoria, capital de risco, mídia e órgãos reguladores. Atualizado continuamente.'
+    : 'Technology signals from global sources: research, consulting, venture capital, media, and regulatory bodies. Updated continuously.'
   const label    = isPt ? 'INTELIGÊNCIA EM TEMPO REAL' : 'REAL-TIME INTELLIGENCE'
   const empty    = isPt ? 'Nenhum sinal coletado ainda.' : 'No signals collected yet.'
   const srcLabel = isPt ? 'FONTE' : 'SOURCE'
@@ -150,7 +150,7 @@ export default async function RadarPage() {
                   {items.map(item => {
                     const title   = (isPt ? item.title_pt   : item.title_en)   ?? item.title_en   ?? item.title_pt   ?? ''
                     const summary = (isPt ? item.summary_pt : item.summary_en) ?? item.summary_en ?? item.summary_pt ?? ''
-                    const category = item.category ?? '—'
+                    const category = item.category ?? '-'
                     const catCls   = CATEGORY_COLORS[category] ?? 'bg-zinc-100 text-zinc-600'
                     return (
                       <article
@@ -184,7 +184,7 @@ export default async function RadarPage() {
                             <p className="text-[10px] font-semibold text-zinc-400 tracking-wider uppercase">
                               {srcLabel}
                             </p>
-                            <p className="text-xs text-zinc-600 truncate">{item.source_category ?? '—'}</p>
+                            <p className="text-xs text-zinc-600 truncate">{item.source_category ?? '-'}</p>
                           </div>
                           {item.url && (
                             <a
