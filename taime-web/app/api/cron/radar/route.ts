@@ -132,26 +132,18 @@ Return ONLY the JSON array, no other text.`
       .filter(s => s.relevance === 'high' || s.relevance === 'medium')
       .slice(0, 10)
 
-    // ── 3. Substitui radar_signals: deleta antigos e insere novos ───────────
-    // PostgREST exige um filtro em DELETE para evitar truncate acidental.
-    // `id=not.is.null` cobre todas as linhas.
-    await fetch(`${supabaseUrl}/rest/v1/radar_signals?id=not.is.null`, {
-      method: 'DELETE',
-      headers: {
-        apikey:         serviceKey,
-        Authorization:  `Bearer ${serviceKey}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
+    // ── 3. Upsert em radar_signals com dedupe por url (preserva histórico) ──
+    // A tabela tem UNIQUE(url) → on_conflict=url + merge-duplicates faz com que
+    // sinais já vistos sejam apenas atualizados (novos campos sobrescrevem) e
+    // urls inéditas sejam inseridas. Histórico cresce a cada run.
     if (filtered.length > 0) {
-      await fetch(`${supabaseUrl}/rest/v1/radar_signals`, {
+      await fetch(`${supabaseUrl}/rest/v1/radar_signals?on_conflict=url`, {
         method: 'POST',
         headers: {
           apikey:         serviceKey,
           Authorization:  `Bearer ${serviceKey}`,
           'Content-Type': 'application/json',
-          Prefer:         'return=minimal',
+          Prefer:         'resolution=merge-duplicates,return=minimal',
         },
         body: JSON.stringify(
           filtered.map(s => ({

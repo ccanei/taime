@@ -2,6 +2,40 @@
 
 ---
 
+## [2026-06-02] — Radar cron: histórico permanente via upsert (sem DELETE)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Único arquivo modificado: `app/api/cron/radar/route.ts`
+- [x] Não tocados: Serper, classificação Claude Haiku, filtro high/medium
+
+### Mudança
+Removido o bloco `DELETE radar_signals?id=not.is.null` que apagava TUDO antes do INSERT. Trocado o INSERT por **upsert deduplicado por url**:
+
+```
+POST /rest/v1/radar_signals?on_conflict=url
+Prefer: resolution=merge-duplicates,return=minimal
+```
+
+A constraint `UNIQUE(url)` na tabela (já criada como `radar_signals_url_key`) faz o PostgREST tratar:
+- URL **inédita** → INSERT (entra no histórico)
+- URL **já vista** → UPDATE dos demais campos (não duplica; pode renovar título/resumo se a classificação ficou melhor)
+
+### Impacto
+- Cada execução do cron agora apenas **adiciona** sinais novos. Histórico cresce indefinidamente.
+- O `collected_at` de sinais inéditos continua sendo `new Date().toISOString()` — útil para ordenação cronológica em `/radar` (que usa `order=collected_at.desc`).
+- Para sinais re-visitados (mesma url), `collected_at` é sobrescrito para o run atual via merge-duplicates. Trade-off aceitável: a recência reflete a última coleta, e o INSERT original já marcou o primeiro avistamento.
+
+### Por que isso destrava
+- `/radar` (página pública) agora cresce com o tempo — mais conteúdo indexável, melhor SEO.
+- Permite alimentar **newsletter retroativa**, **backtest** de classificações e **análise temporal** de sinais.
+- `RadarFeed` da home continua mostrando 4 itens shuffled — mas agora puxa de um pool muito maior.
+
+### Pré-requisito (já atendido)
+`UNIQUE(url)` na tabela `radar_signals` — confirmado pelo usuário (`radar_signals_url_key`).
+
+---
+
 ## [2026-06-01] — Página pública /radar (SEO + topo de funil)
 
 ### Status
