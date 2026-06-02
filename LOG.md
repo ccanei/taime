@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-06-02] — Radar 1x/dia com 15 sinais + briefing único
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] 2 arquivos modificados: `app/api/cron/radar/route.ts`, `vercel.json`
+
+### Mudança 1 — Volume de sinais (`app/api/cron/radar/route.ts`)
+| Etapa | Antes | Depois |
+|---|---|---|
+| Serper `num` por query (4 queries) | 5 (= 20 brutos) | **6** (= 24 brutos) |
+| Slice pós-dedupe (input ao Claude) | 8 | **20** |
+| Slice final (high/medium) | 10 | **15** |
+
+`max_tokens: 8000` mantido — folga confortável para classificar 20 artigos.
+
+### Mudança 2 — Schedules (`vercel.json`)
+| Cron | Antes (UTC) | Depois (UTC) | BRT |
+|---|---|---|---|
+| `/api/cron/radar` | `0 10 * * *` + `0 17 * * *` | **`0 10 * * *`** | 07:00 |
+| `/api/cron/radar-briefing` | `0 11 * * *` | `0 11 * * *` (mantido) | 08:00 |
+
+Removido o segundo run do radar às 17h UTC. Fluxo diário agora:
+1. **07h BRT** — coleta 1x do dia (até ~15 sinais classificados em high/medium)
+2. **08h BRT** — briefing analisa todos os sinais das últimas 24h e gera 1 entrada em `radar_briefings`
+
+### Trade-off
+- Menos chamadas a Serper/Claude por dia (~50% redução)
+- Maior densidade no run único (15 vs 10 sinais) compensa a remoção da coleta da tarde
+- `upsert` por url da entrega anterior continua garantindo que sinais já vistos não dupliquem caso a query traga overlap
+
+---
+
 ## [2026-06-02] — /radar: deixa só um NewsletterSignup (no fim)
 
 ### Status

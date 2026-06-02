@@ -52,7 +52,7 @@ export async function GET(request: Request) {
           'X-API-KEY':    serperKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ q, num: 5, tbs: 'qdr:d' }),
+        body: JSON.stringify({ q, num: 6, tbs: 'qdr:d' }),
       })
       if (res.ok) {
         const data = await res.json() as { news?: SerperNewsItem[] }
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       if (!a.link || seen.has(a.link)) return false
       seen.add(a.link)
       return true
-    }).slice(0, 8)
+    }).slice(0, 20)
 
     if (unique.length === 0) {
       return NextResponse.json({ success: true, count: 0 })
@@ -130,7 +130,7 @@ Return ONLY the JSON array, no other text.`
     // Filtra apenas high e medium, top 10
     const filtered = signals
       .filter(s => s.relevance === 'high' || s.relevance === 'medium')
-      .slice(0, 10)
+      .slice(0, 15)
 
     // ── 3. Upsert em radar_signals com dedupe por url (preserva histórico) ──
     // A tabela tem UNIQUE(url) → on_conflict=url + merge-duplicates faz com que
