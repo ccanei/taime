@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { isAdmin } from '@/lib/isAdmin'
 
-const FROM = 'TAIME <noreply@taime.tech>'
+const FROM = 'TAIME | John <johnb@taime.tech>'
 
 const APPROVAL_EMAIL_HTML = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -86,10 +86,11 @@ async function sendApprovalEmail(to: string): Promise<void> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from:    FROM,
+      from:     FROM,
+      reply_to: 'johnb@taime.tech',
       to,
-      subject: 'Your TAIME access is ready',
-      html:    APPROVAL_EMAIL_HTML,
+      subject:  'Your TAIME access is ready',
+      html:     APPROVAL_EMAIL_HTML,
     }),
   }).catch((e) => console.error('Resend approval error:', e))
 }

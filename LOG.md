@@ -2,6 +2,33 @@
 
 ---
 
+## [2026-06-03] — Email deliverability: remetente johnb@taime.tech, reply-to e link de domínio
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Trabalhado no clone limpo (layout aninhado `taime-web/`, igual à produção; Root Directory Vercel = `taime-web`)
+
+### Contexto
+A linha local antiga ("clean deploy", layout plano) tinha história órfã divergente de `origin/main` e um merge abandonado de 27-mai que duplicava a árvore em `taime-web/taime-web/`. Para evitar `--force` e não quebrar o deploy, refizemos a correção sobre um clone limpo de `origin/main` (`f3da1ac`), que é o layout real de produção.
+
+### Mudanças (3 arquivos, `taime-web/app/api/`)
+Corrige os avisos de deliverability do Resend. O domínio `taime.tech` está verificado no Resend e o DMARC já foi configurado.
+
+- `admin/waitlist/route.ts`
+  - `FROM`: `'TAIME <noreply@taime.tech>'` → `'TAIME | John <johnb@taime.tech>'`
+  - `ADMIN_URL`: `'https://taime-xi.vercel.app/admin/waitlist'` → `'https://www.taime.tech/admin/waitlist'`
+  - `+ reply_to: 'johnb@taime.tech'`
+- `admin/approve/route.ts`
+  - `FROM`: `'TAIME <noreply@taime.tech>'` → `'TAIME | John <johnb@taime.tech>'`
+  - `+ reply_to: 'johnb@taime.tech'`
+- `contact/route.ts`
+  - `from`: `'TAIME Contato <onboarding@resend.dev>'` → `'TAIME | John <johnb@taime.tech>'`
+  - `+ reply_to: 'johnb@taime.tech'`
+
+Os três usam `fetch` direto à API do Resend (JSON), portanto o campo é `reply_to` (snake_case). Varredura em `app/` e `lib/` confirmou 0 ocorrências restantes de `noreply@taime.tech`, `onboarding@resend.dev`, `taime-xi.vercel.app` ou `vercel.app`.
+
+---
+
 ## [2026-06-02] — admin/waitlist: mudança de plano para usuários aprovados
 
 ### Status

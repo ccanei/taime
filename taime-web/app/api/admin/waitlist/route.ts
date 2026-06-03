@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'claudineicanei1@gmail.com'
-const FROM        = 'TAIME <noreply@taime.tech>'
-const ADMIN_URL   = 'https://taime-xi.vercel.app/admin/waitlist'
+const FROM        = 'TAIME | John <johnb@taime.tech>'
+const ADMIN_URL   = 'https://www.taime.tech/admin/waitlist'
 
 function escapeHtml(s: string | null | undefined): string {
   if (!s) return ''
@@ -133,6 +133,7 @@ const sendEmail = async (to: string, subject: string, html: string): Promise<voi
     },
     body: JSON.stringify({
       from: FROM,
+      reply_to: 'johnb@taime.tech',
       to,
       subject,
       html,

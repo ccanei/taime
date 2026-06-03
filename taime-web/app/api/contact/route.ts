@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
       'Content-Type':  'application/json',
     },
     body: JSON.stringify({
-      from:    'TAIME Contato <onboarding@resend.dev>',
+      from:     'TAIME | John <johnb@taime.tech>',
+      reply_to: 'johnb@taime.tech',
       to:      ['claudineicanei1@gmail.com'],
       subject: `Nova mensagem de contato — TAIME`,
       html: `
