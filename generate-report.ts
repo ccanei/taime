@@ -660,8 +660,9 @@ async function callClaudeTrend(
   }
 
   const { text, usage } = await anthropicPost({
-    model:      cfg.model,
-    max_tokens: cfg.maxTokens,
+    model:       cfg.model,
+    max_tokens:  cfg.maxTokens,
+    temperature: 0.1,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{
       role: 'user',
@@ -720,8 +721,9 @@ async function callClaudeMetadata(
     `}`;
 
   const { text, usage } = await anthropicPost({
-    model:      cfg.model,
-    max_tokens: 2048,
+    model:       cfg.model,
+    max_tokens:  2048,
+    temperature: 0.1,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: prompt }],
   });

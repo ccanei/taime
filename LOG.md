@@ -2,6 +2,23 @@
 
 ---
 
+## [2026-06-03] — Pipeline: temperature 0.1 para TAIME Scores reprodutíveis
+
+### Status
+- [x] `npx tsc --noEmit`: 0 erros TypeScript (exit 0)
+
+### Problema
+As chamadas ao Claude em `generate-report.ts` não passavam `temperature`, rodando no default da API (`1.0`). Isso introduzia variação aleatória nos TAIME Scores entre execuções, tornando os resultados não-reprodutíveis.
+
+### Mudança (`generate-report.ts`)
+Adicionado `temperature: 0.1` ao body de **ambas** as chamadas `anthropicPost` (`fetch` → `api.anthropic.com/v1/messages`), no mesmo nível de `model`/`max_tokens`/`system`/`messages`:
+- Geração de trend (~linha 665, `max_tokens: cfg.maxTokens`)
+- Geração de metadata (~linha 726, `max_tokens: 2048`)
+
+Confirmado que estas são as únicas 2 chamadas a `anthropicPost` no arquivo (a linha 539 é a definição da função). `temperature: 0.1` (baixa, não 0) reduz a aleatoriedade mantendo alguma margem, deixando os scores praticamente estáveis entre runs.
+
+---
+
 ## [2026-06-03] — Email deliverability: remetente johnb@taime.tech, reply-to e link de domínio
 
 ### Status
