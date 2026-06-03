@@ -60,12 +60,17 @@ export default async function AdminWaitlistPage() {
     <div className="min-h-screen bg-zinc-50">
       <header className="bg-white border-b border-zinc-200">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
               ← Dashboard
             </Link>
             <span className="text-zinc-200">/</span>
             <span className="text-sm font-semibold text-zinc-900">Waitlist</span>
+            <nav className="flex items-center gap-3 ml-4 text-xs text-zinc-400">
+              <Link href="/admin/reports" className="hover:text-zinc-700 transition-colors">Reports</Link>
+              <span className="text-zinc-200">·</span>
+              <Link href="/admin/feedback" className="hover:text-zinc-700 transition-colors">Feedback</Link>
+            </nav>
           </div>
           <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
             Admin

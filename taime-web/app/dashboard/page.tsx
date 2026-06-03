@@ -8,6 +8,7 @@ import DashboardClient from '@/components/DashboardClient'
 import LanguageSelector from '@/components/LanguageSelector'
 import ContinueReadingCard from '@/components/ContinueReadingCard'
 import NextReadsPanel, { type NextRead } from '@/components/NextReadsPanel'
+import FeedbackWidget from '@/components/FeedbackWidget'
 
 async function getReports(): Promise<Report[]> {
   const supabase = createSupabaseService()
@@ -267,6 +268,8 @@ export default async function DashboardPage() {
         </div>
 
       </main>
+
+      <FeedbackWidget />
     </div>
   )
 }

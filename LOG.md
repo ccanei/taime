@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-06-03] — Feedback dos usuários: widget no dashboard + inbox admin
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Trabalhado no clone limpo `taime-CLEAN/taime-web/`
+
+### Contexto
+Falta um canal estruturado para capturar feedback dos usuários autenticados. Email/Discord espalha; precisamos centralizar (sugestões/problemas/elogios) num lugar que o admin consiga revisar. A tabela `feedback` já existia no banco (id, user_id, user_email, type, message, locale, status, created_at) — bastava a interface.
+
+### Mudanças
+
+**Captura (dashboard):**
+- `components/FeedbackWidget.tsx` — botão flutuante discreto (canto inferior direito) que abre um painel lateral (slide-in) com:
+  - Dropdown de tipo (suggestion/problem/praise, rotulado em PT/EN)
+  - Textarea de mensagem
+  - Honeypot `name="website"` (mesmo padrão de `NewsletterSignup` e `/api/contact`)
+  - Estados idle/sending/sent/error, agradecimento ao enviar, opção "Enviar outro"
+  - Fecha com ESC ou clique no overlay
+- `app/dashboard/page.tsx` — `<FeedbackWidget />` integrado fora do `<main>` (overlay fixed positioning)
+- Bilíngue via `useLocale()` (detecção pelo cookie `taime-locale`)
+
+**API:**
+- `app/api/feedback/route.ts` — POST handler com honeypot, validação (`message` obrigatório, `type` em whitelist com fallback `suggestion`), `auth.getUser()` best-effort (grava `user_id`/`user_email` se logado), insert via service key com `status: 'new'`
+
+**Admin:**
+- `app/admin/feedback/page.tsx` — server component, protegido por `isAdmin`, mesmo header pattern de `/admin/waitlist`
+- `app/admin/feedback/FeedbackAdmin.tsx` — lista com badges coloridos por tipo (suggestion=azul, problem=vermelho, praise=verde), filtros Todos/Novos/Revisados, botão "Marcar como revisado" por item
+- `app/api/admin/feedback-review/route.ts` — POST `{ id }`, valida `isAdmin`, PATCH `status='reviewed'` via service key
+- Cross-links de nav adicionados em `/admin/waitlist`, `/admin/reports` e `/admin/feedback` (sem navbar admin compartilhada ainda — segue o estilo dos headers existentes)
+
+---
+
 ## [2026-06-03] — Pipeline: temperature 0.1 para TAIME Scores reprodutíveis
 
 ### Status

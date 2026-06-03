@@ -2,26 +2,25 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import ReportsAdmin from './ReportsAdmin'
-import type { ReportRecord } from './ReportsAdmin'
+import FeedbackAdmin from './FeedbackAdmin'
+import type { FeedbackRecord } from './FeedbackAdmin'
 
-async function getReports(): Promise<ReportRecord[]> {
+async function getFeedback(): Promise<FeedbackRecord[]> {
   const supabase = createSupabaseService()
   const { data } = await supabase
-    .from('reports')
-    .select('id, period, period_label, report_number, status, title_pt_br, validation_verdict, validation_flags, signal_count, created_at, published_at')
-    .order('period', { ascending: false })
-    .order('report_number', { ascending: true })
-  return (data as ReportRecord[]) ?? []
+    .from('feedback')
+    .select('id, user_id, user_email, type, message, locale, status, created_at')
+    .order('created_at', { ascending: false })
+  return (data as FeedbackRecord[]) ?? []
 }
 
-export default async function AdminReportsPage() {
+export default async function AdminFeedbackPage() {
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   if (!await isAdmin(user.email ?? '')) redirect('/')
 
-  const records = await getReports()
+  const records = await getFeedback()
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -32,11 +31,11 @@ export default async function AdminReportsPage() {
               ← Dashboard
             </Link>
             <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Relatórios</span>
+            <span className="text-sm font-semibold text-zinc-900">Feedback</span>
             <nav className="flex items-center gap-3 ml-4 text-xs text-zinc-400">
               <Link href="/admin/waitlist" className="hover:text-zinc-700 transition-colors">Waitlist</Link>
               <span className="text-zinc-200">·</span>
-              <Link href="/admin/feedback" className="hover:text-zinc-700 transition-colors">Feedback</Link>
+              <Link href="/admin/reports" className="hover:text-zinc-700 transition-colors">Reports</Link>
             </nav>
           </div>
           <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
@@ -47,14 +46,13 @@ export default async function AdminReportsPage() {
 
       <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Curadoria de relatórios</h1>
+          <h1 className="text-2xl font-bold text-zinc-900">Feedback dos usuários</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Relatórios validados sem flags são publicados automaticamente. Os sinalizados ficam
-            aqui aguardando sua revisão. Clique em um relatório para ler o conteúdo completo antes de decidir.
+            Sugestões, problemas e elogios enviados pelo dashboard.
           </p>
         </div>
 
-        <ReportsAdmin initialRecords={records} />
+        <FeedbackAdmin initialRecords={records} />
       </main>
     </div>
   )
