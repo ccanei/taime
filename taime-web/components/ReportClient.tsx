@@ -6,16 +6,22 @@ import type { Report, ReportTrend, Lang, TaimeFramework, OrgImplications, ThenNo
 import { formatPeriod, formatPeriodFull, scoreColor, scoreBg, scoreRing } from '@/lib/types'
 import type { AccessLevel, AccessReason, Plan } from '@/lib/access'
 import LanguageSelector from '@/components/LanguageSelector'
+import InfoTooltip from '@/components/InfoTooltip'
 
 // ─── Score gauge ──────────────────────────────────────────────────────────────
 
-function ScoreGauge({ score }: { score: number }) {
+function ScoreGauge({ score, tooltipText }: { score: number; tooltipText?: string }) {
   return (
-    <div className={`flex flex-col items-center justify-center w-20 h-20 rounded-2xl ring-2 shrink-0 ${scoreRing(score)}`}>
+    <div className={`relative flex flex-col items-center justify-center w-20 h-20 rounded-2xl ring-2 shrink-0 ${scoreRing(score)}`}>
       <span className={`text-3xl font-bold tabular-nums leading-none ${scoreColor(score)}`}>
         {score}
       </span>
       <span className="text-[9px] text-zinc-400 font-bold tracking-widest mt-0.5">SCORE</span>
+      {tooltipText && (
+        <div className="absolute top-1 right-1">
+          <InfoTooltip text={tooltipText} position="bottom" width={280} ariaLabel="Sobre o TAIME Score" />
+        </div>
+      )}
     </div>
   )
 }
@@ -263,7 +269,14 @@ function TrendSection({ trend, lang, period }: { trend: ReportTrend; lang: Lang;
     <article className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
       {/* Trend header */}
       <div className="px-8 py-6 border-b border-zinc-100 flex items-start gap-5">
-        <ScoreGauge score={trend.taime_score} />
+        <ScoreGauge
+          score={trend.taime_score}
+          tooltipText={
+            isPt
+              ? 'Os scores TAIME são relativos ao universo global de movimentos tecnológicos monitorados pela plataforma e representam posicionamento comparativo entre tendências, não adoção ou maturidade da sua organização.'
+              : 'TAIME scores are relative to the global universe of technology movements monitored by the platform and represent comparative positioning between trends, not adoption or maturity of your organization.'
+          }
+        />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-zinc-400 tracking-widest mb-1.5">
             TREND {trend.rank}

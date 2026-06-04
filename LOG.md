@@ -2,6 +2,34 @@
 
 ---
 
+## [2026-06-03] — Tooltip explicativo do TAIME Score
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] 2 arquivos: 1 novo (`components/InfoTooltip.tsx`) + 1 modificado (`components/ReportClient.tsx`)
+
+### Novo componente `InfoTooltip.tsx` (reutilizável)
+- Botão `<button>` com ícone SVG (círculo + i), `w-4 h-4`
+- Cores: `text-zinc-400` default, `hover:text-taime-600`; focus ring `taime-200`
+- **Desktop**: `onMouseEnter`/`onMouseLeave` para hover
+- **Mobile**: `onClick` faz toggle; `document.addEventListener('mousedown'|'touchstart')` fecha ao clicar fora
+- Tooltip: `bg-taime-900 text-white text-xs leading-relaxed shadow-lg`, `rounded-lg`, `pointer-events-none`
+- Props: `text`, `position: 'top' | 'bottom'` (default `'top'`), `width` (default 260), `ariaLabel`
+- Acessibilidade: `role="tooltip"`, `aria-label`, `aria-expanded`, ícone com `aria-hidden`
+
+### Integração em `ReportClient.tsx`
+- `ScoreGauge` ganhou prop opcional `tooltipText?: string`
+- Quando passado, renderiza `<InfoTooltip>` em `position: absolute; top-1 right-1` dentro do gauge (canto superior direito do ring)
+- Tooltip aparece **para baixo** (`position="bottom"`, `width: 280`) — evita corte pelo viewport superior já que o gauge fica no header do trend section
+- `TrendSection` passa o texto bilíngue ao `ScoreGauge`, escolhido por `isPt`
+
+### Texto (exato)
+**PT-BR**: "Os scores TAIME são relativos ao universo global de movimentos tecnológicos monitorados pela plataforma e representam posicionamento comparativo entre tendências, não adoção ou maturidade da sua organização."
+
+**EN**: "TAIME scores are relative to the global universe of technology movements monitored by the platform and represent comparative positioning between trends, not adoption or maturity of your organization."
+
+---
+
 ## [2026-06-03] — Feedback dos usuários: widget no dashboard + inbox admin
 
 ### Status
