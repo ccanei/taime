@@ -2,6 +2,47 @@
 
 ---
 
+## [2026-06-04] — Metadata e OG preview em EN por padrão (alcance internacional)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] `title.default`: 51 chars (alvo 50–60)
+- [x] `description`: 149 chars (alvo 110–160)
+
+### Problema
+Os previews de link em WhatsApp, Messenger, LinkedIn e nos resultados do Google saíam em PT-BR porque o `metadata` em `app/layout.tsx` estava hardcoded em português (title default, description, `openGraph.locale: 'pt_BR'`, `<html lang="pt-BR">`). Crawlers não enviam cookies — o sistema de i18n por cookie (`taime-locale`) não tem como influenciar o preview, então o que o crawler vê é o default. Para alcance internacional, o default precisa ser EN; usuários PT continuam vendo o site em PT via cookie.
+
+### Mudanças (`app/layout.tsx`)
+
+**Metadata:**
+- `title.default`: → `'TAIME — Strategic Technology Intelligence Reports'` (51 chars)
+- `title.template`: intacto (`'%s | TAIME'`)
+- `description`: → `'TAIME turns global technology signals into executive decision intelligence: biweekly reports with scoring, a decision framework, and temporal memory.'` (149 chars)
+- `keywords`: reordenadas — termos EN no início do array, PT depois; nenhum termo removido
+- `openGraph`:
+  - `locale: 'pt_BR' → 'en_US'`
+  - `alternateLocale: ['en_US'] → ['pt_BR']`
+  - `title`: EN ("Strategic Technology Intelligence")
+  - `description`: EN
+  - `type`, `url`, `siteName`, `images`: intactos
+- `twitter`:
+  - `title`: EN ("Strategic Technology Intelligence")
+  - `description`: EN, focada em "technology leaders"
+  - `card`, `images`: intactos
+
+**HTML root:** `<html lang="pt-BR"> → <html lang="en">` — declara EN como idioma default da página para crawlers e screen readers anônimos.
+
+### O que NÃO foi tocado
+- Sistema de i18n por cookie (`taime-locale`, `useLocale`, `detectLocale`): intacto. Usuário com cookie PT continua vendo o conteúdo do site em PT.
+- `metadataBase`, `metadata.openGraph.url`, `metadata.openGraph.images`: intactos.
+- Aliases de rotas (`/sobre`/`/about`, `/contato`, `/privacidade`/`/privacy`, `/termos`/`/terms`): intactos.
+
+### Validação manual sugerida (pós-deploy)
+- LinkedIn Post Inspector / WhatsApp Link Preview / Twitter Card Validator com `https://www.taime.tech` para forçar refresh do cache de OG.
+- Google Search Console: o lang do HTML root e o `openGraph.locale` ajudam o Google a indexar o site como EN-default com `pt-BR` como variante.
+
+---
+
 ## [2026-06-04] — Página de conta + logout bilíngue + 404 customizado
 
 ### Status
