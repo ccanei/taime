@@ -2,6 +2,53 @@
 
 ---
 
+## [2026-06-03] — Idioma do perfil por hierarquia (escolha explícita > login > default)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] 5 arquivos: 2 novos (`sql/add-language-set-by-user.sql`, `app/api/account/language/route.ts`, `components/LanguageSettings.tsx`) + 2 modificados (`app/auth/callback/route.ts`, `app/dashboard/page.tsx`)
+
+### Contexto
+`preferred_language` em `public.users` hoje aceita `'pt-BR' | 'en'` (CHECK). O fluxo de aprovação grava `'pt-BR'` por padrão — não distinguíamos "pt-BR herdado do default" de "pt-BR escolhido pela pessoa", então qualquer detecção automática poderia sobrescrever uma escolha consciente. Sem self-signup, nada de tocar nos 18 registros existentes.
+
+### Hierarquia implementada
+1. **Escolha explícita do usuário** (seletor no dashboard) — sempre seta `language_set_by_user=true`
+2. **Detecção no primeiro login** (cookie `taime-locale`) — best-effort, só promove `'pt-BR' → 'en'`, nunca rebaixa, nunca toca registro com flag `true`
+3. **Default `'pt-BR'`** (aprovação)
+
+### Peça 1 — SQL
+- `sql/add-language-set-by-user.sql`: `ALTER TABLE public.users ADD COLUMN IF NOT EXISTS language_set_by_user boolean NOT NULL DEFAULT false`
+- Cabeçalho documenta hierarquia + regras de uso. Apenas criado; não executado.
+
+### Peça 2 — Detecção no callback de login
+- `app/auth/callback/route.ts`: após `exchangeCodeForSession` OK, antes do redirect para `/dashboard`, bloco `try/catch` (jamais bloqueia login):
+  - `supabase.auth.getUser()` → `detectLocale(cookieStore.get('taime-locale')?.value)` (normalizado para schema `'pt-BR' | 'en'`)
+  - SELECT `preferred_language, language_set_by_user` via service key
+  - PATCH `preferred_language='en'` **apenas se**: registro existe, `language_set_by_user === false`, `preferred_language === 'pt-BR'`, `sessionLocale === 'en'`
+  - Não toca `language_set_by_user` (detecção ≠ escolha explícita)
+
+### Peça 3 — Endpoint para escolha explícita
+- `app/api/account/language/route.ts` — POST:
+  - Auth via `createServerClient` + cookies; 401 se não logado
+  - Body `{ language: 'pt-BR' | 'en' }`, valida ou retorna 400
+  - PATCH `public.users` via service key: `preferred_language=<language>, language_set_by_user=true, updated_at=now()`
+  - Retorna `{ ok: true, language }`
+
+### Peça 4 — Seletor no dashboard
+- `components/LanguageSettings.tsx` (client) — toggle PT-BR/EN salvando on-change:
+  - Valor inicial via prop; feedback "Salvo / Saved" ~2s, mensagem discreta em erro
+  - Bilíngue via `useLocale`; reverte UI se POST falhar
+  - **Não** mexe no cookie `taime-locale` (cookie = idioma da sessão atual; `preferred_language` = preferência persistida do perfil — são distintos)
+- `app/dashboard/page.tsx` (server) — busca `preferred_language` do usuário via service key (chave conhecida = `user.id`), passa como `initialLanguage` ao componente; bloco discreto renderizado ao final do `<main>`, após "Reports section"
+
+### Constraints respeitadas
+- Sem self-signup novo
+- Sem alterar 18 registros existentes
+- Sem rota `/conta` nova (usei o dashboard)
+- `app/api/admin/approve` mantém `'pt-BR'` literal (default da hierarquia)
+
+---
+
 ## [2026-06-03] — Tooltip explicativo do TAIME Score
 
 ### Status
