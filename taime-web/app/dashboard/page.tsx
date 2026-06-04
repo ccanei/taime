@@ -173,6 +173,12 @@ export default async function DashboardPage() {
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-zinc-400 hidden sm:block">{user.email}</span>
+            <Link
+              href="/conta"
+              className="text-sm font-medium text-zinc-500 hover:text-taime-700 transition-colors"
+            >
+              {isEn ? 'My Account' : 'Minha Conta'}
+            </Link>
             <LanguageSelector />
             <LogoutButton />
           </div>

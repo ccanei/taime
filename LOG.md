@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-06-04] — Página de conta + logout bilíngue + 404 customizado
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Rotas geradas: `/conta` e `/_not-found` confirmadas no output do build
+
+### Contexto
+Faltava (a) um lugar onde o usuário visse seus próprios dados (nome, empresa, cargo, plano), (b) suporte bilíngue no botão de logout que continuava hardcoded em "Sair", e (c) uma página 404 com identidade — o default do Next é genérico e quebra o tom do produto.
+
+### Mudanças
+
+**`app/conta/page.tsx` (novo, server component):**
+- Auth como o dashboard: `createSupabaseServer + auth.getUser`, redirect para `/login` se anônimo.
+- Busca em paralelo: `public.users` (full_name, email, company, job_title, preferred_language) via service key e `subscriptions` (plan, status) ordenado por `created_at desc` limit 1 — pega a assinatura mais recente.
+- Locale via cookie `taime-locale` (mesmo padrão do dashboard).
+- Renderiza dois cards: **Perfil** (lista de definições com rótulos bilíngues; campo vazio mostra "—" em zinc-300) e **Plano** (label traduzido via map free/essential/strategic, badge de status com `bg-emerald` se ativo, link "Gerenciar plano →" para `/planos`).
+- Header padrão TAIME / Dashboard breadcrumb + LanguageSelector + LogoutButton.
+
+**`components/LogoutButton.tsx`:** agora usa `useLocale()` — "Sair" em PT, "Log out" em EN. Resto da lógica de `signOut` intacto.
+
+**`app/dashboard/page.tsx`:** adicionado link "Minha Conta" / "My Account" no header, entre o email do usuário e o `LanguageSelector`. Usa o `isEn` já computado na página, sem mudanças de estrutura.
+
+**`app/not-found.tsx` (novo, server component):**
+- Lê cookie `taime-locale` para bilíngue (Next 15 App Router permite `cookies()` em `not-found.tsx`).
+- Layout: header minimal com logo TAIME, "404" gigante em gradiente `taime-600 → taime-900` via `bg-clip-text`, mensagem amigável em PT/EN, dois CTAs (`btn-primary` "Voltar ao início" + link secundário "Ver os últimos relatórios → /#reports"), footer com tagline traduzida.
+- Sem dependências de auth — funciona para visitantes anônimos também.
+
+### Por que `/conta` (PT) e não `/account`
+O resto das rotas do site segue PT (`/sobre`, `/contato`, `/planos`, `/privacidade`, `/termos`) com aliases EN só onde já existem (`/about`, `/privacy`, `/terms`). Mantemos esse padrão — uma rota só, bilíngue por cookie. Se quiseres alias `/account` depois, é um redirect trivial.
+
+---
+
 ## [2026-06-04] — TAIME Score: regra de escopo (global por padrão, declara regional/setorial no rationale)
 
 ### Status
