@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-06-04] — Idioma unificado: seletor do topo grava perfil, remove duplicado
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Trabalhado no clone limpo `taime-CLEAN/taime-web/`
+
+### Contexto
+O dashboard tinha **dois** controles de idioma: o seletor PT|EN no header (`LanguageSelector`, escrevia só o cookie) e um card "Settings: idioma do perfil" no fim da página (`LanguageSettings`, escrevia só `public.users.preferred_language`). Resultado: usuário podia ter cookie EN e perfil pt-BR, ou vice-versa, e cada login refazia a confusão. Unificamos num controle só — o do header.
+
+### Mudanças
+
+**`components/LanguageSelector.tsx`** — adicionada gravação best-effort do perfil dentro de `switchLang`, **antes** do `router.refresh()` e do `window.location.reload()`:
+- Mapeia o `Locale` interno (`pt`/`en`) para o valor da coluna (`pt-BR`/`en`).
+- Usa `navigator.sendBeacon('/api/account/language', blob)` em vez de `fetch` — o reload subsequente aborta requests pendentes, mas o beacon é entregue mesmo após a página navegar. O Blob carrega `Content-Type: application/json`, então `req.json()` na rota funciona normalmente.
+- Anônimo → rota responde 401 e o beacon é ignorado (só o cookie vale). Wrap em `try/catch` garante que nada bloqueie a troca de idioma.
+- Cookie, `setLocale`, `router.refresh`, `reload` — tudo intacto. A gravação é um acréscimo.
+
+**`app/dashboard/page.tsx`** — removido:
+- Import `LanguageSettings`
+- Bloco de fetch do `preferred_language` que alimentava só esse componente (~10 linhas)
+- JSX `<LanguageSettings initialLanguage={profileLanguage} />` no fim do `<main>`
+
+**`components/LanguageSettings.tsx`** — deletado (sem outros consumidores; `grep -rn "LanguageSettings"` retornou 0 matches após a remoção).
+
+**Não tocado:** `app/api/account/language/route.ts` (agora é a rota usada pelo `sendBeacon`); auth callback (detecção automática no login para quem nunca usou o seletor segue válida); registros do banco.
+
+### Por que sendBeacon, não fetch
+`switchLang` faz `window.location.reload()` 100ms depois da troca. Um `fetch` em andamento é cancelado pelo reload — chegaria intermitentemente. `sendBeacon` é desenhado exatamente para esse caso: o request é enfileirado pelo browser e entregue mesmo após a navegação. A rota já estava pronta (auth via cookies, que o beacon manda automaticamente em same-origin).
+
+---
+
 ## [2026-06-03] — Idioma do perfil por hierarquia (escolha explícita > login > default)
 
 ### Status

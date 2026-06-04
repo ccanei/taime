@@ -9,7 +9,6 @@ import LanguageSelector from '@/components/LanguageSelector'
 import ContinueReadingCard from '@/components/ContinueReadingCard'
 import NextReadsPanel, { type NextRead } from '@/components/NextReadsPanel'
 import FeedbackWidget from '@/components/FeedbackWidget'
-import LanguageSettings from '@/components/LanguageSettings'
 
 async function getReports(): Promise<Report[]> {
   const supabase = createSupabaseService()
@@ -143,16 +142,6 @@ export default async function DashboardPage() {
     getAdvisorStatus(user.id),
   ])
 
-  // ── Idioma do perfil (persistido em public.users.preferred_language) ────
-  const service = createSupabaseService()
-  const { data: profileRow } = await service
-    .from('users')
-    .select('preferred_language')
-    .eq('id', user.id)
-    .maybeSingle()
-  const profileLanguage: 'pt-BR' | 'en' =
-    profileRow?.preferred_language === 'en' ? 'en' : 'pt-BR'
-
   // ── Reading progress (dado pessoal: cliente autenticado, respeita RLS) ──────
   const { data: progressRows } = await supabase
     .from('reading_progress')
@@ -277,9 +266,6 @@ export default async function DashboardPage() {
             <DashboardClient reports={reports} locale={locale} />
           )}
         </div>
-
-        {/* ── Settings: idioma do perfil ─────────────────────────────── */}
-        <LanguageSettings initialLanguage={profileLanguage} />
 
       </main>
 

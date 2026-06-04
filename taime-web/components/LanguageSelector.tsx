@@ -18,6 +18,16 @@ export default function LanguageSelector() {
     const maxAge = 60 * 60 * 24 * 365
     document.cookie = `taime-locale=${lang}; path=/; max-age=${maxAge}; SameSite=Lax`
     setLocale(lang)
+
+    // Best-effort: persiste a escolha no perfil (public.users.preferred_language).
+    // sendBeacon sobrevive ao window.location.reload() abaixo — um fetch normal
+    // seria abortado. Anônimo recebe 401 e é ignorado: só o cookie vale.
+    const dbLang = lang === 'pt' ? 'pt-BR' : 'en'
+    try {
+      const blob = new Blob([JSON.stringify({ language: dbLang })], { type: 'application/json' })
+      navigator.sendBeacon('/api/account/language', blob)
+    } catch { /* best-effort: nunca bloqueia a troca de idioma */ }
+
     router.refresh()
     setTimeout(() => window.location.reload(), 100)
   }
