@@ -263,6 +263,8 @@ COMPETITIVE LAG RISK   0–30 Window open | 31–60 Gaps forming | 61–85 Costs
 Each dimension: { "score": 0–100, "label": "EVOCATIVE INTERPRETIVE LABEL IN CAPS" }
 Overall score = weighted expert judgment — NOT arithmetic mean.
 
+SCORING SCOPE: Score all dimensions relative to the GLOBAL market by default. When the underlying signals are predominantly regional or sector-specific, score within that scope AND state the scope explicitly in taime_score_rationale (e.g. "maturity assessed within the Brazilian market").
+
 ═══════════════════════════════════════
 TYPE → ACT → IMPACT → MOVE → EXIT
 ═══════════════════════════════════════

@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-06-04] — TAIME Score: regra de escopo (global por padrão, declara regional/setorial no rationale)
+
+### Status
+- [x] `npm run build` (em `taime-web/`): ✓ Compiled successfully, 0 erros
+- [x] `npx tsc --noEmit -p tsconfig.json` (raiz, scripts da pipeline): 0 erros
+
+### Problema
+A rubrica das 5 dimensões do TAIME Score (`MARKET MATURITY`, `COMPETITIVE PRESSURE`, `STRATEGIC IMPACT`, `EXECUTION COMPLEXITY`, `COMPETITIVE LAG RISK`) define os estágios (0–30 / 31–60 / 61–85 / 86–100) mas não fixa o **referencial**. Resultado: um sinal regional ("agentes IA na banca brasileira") podia ser pontuado contra o mercado local — onde está em "Lab" — quando globalmente já está em "Scaling". Os scores ficavam ambíguos: o leitor não sabia se "60" em maturity significava global ou regional.
+
+### Mudança (`generate-report.ts`, SYSTEM_PROMPT, seção TAIME SCORE)
+Adicionado **um único parágrafo** logo após a linha `Overall score = weighted expert judgment — NOT arithmetic mean.`:
+
+```
+SCORING SCOPE: Score all dimensions relative to the GLOBAL market by default.
+When the underlying signals are predominantly regional or sector-specific, score
+within that scope AND state the scope explicitly in taime_score_rationale
+(e.g. "maturity assessed within the Brazilian market").
+```
+
+Comportamento esperado:
+- Trends com sinais globais → score na escala global (default, sem nota extra).
+- Trends com sinais predominantemente regionais/setoriais → score dentro daquele escopo, com a frase de escopo embutida no `taime_score_rationale`.
+
+### O que NÃO foi tocado
+- Rubrica das 5 dimensões (intacta).
+- `temperature: 0.1` (intacta).
+- `enforceScoresFromPt` e lógica de paridade PT=EN (intactas).
+- Nenhuma comparação entre trends nem cohort scoring foi introduzida — a mudança é puramente uma regra no prompt.
+
+---
+
 ## [2026-06-04] — Idioma unificado: seletor do topo grava perfil, remove duplicado
 
 ### Status
