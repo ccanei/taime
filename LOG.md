@@ -2,6 +2,60 @@
 
 ---
 
+## [2026-06-05] — Busca semântica: função SQL + API (não ligada ao frontend)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Rota `/api/search` confirmada no output do build
+- [x] `OPENAI_API_KEY` propagada para `taime-web/.env.local` (gitignored)
+- [ ] **PENDENTE (humano):** rodar `match-reports.sql` no Supabase SQL Editor
+- [ ] **PENDENTE (humano):** adicionar `OPENAI_API_KEY` como env var na Vercel para o deploy de produção
+
+### Contexto
+Fase 2 da busca semântica. Fase 1 foi `generate-embeddings.ts` (53 relatórios já vetorizados em `reports.embedding`). Aqui criamos a infraestrutura de query: a função SQL que faz cosine similarity no banco e a API que recebe texto livre, gera o embedding via OpenAI e devolve os matches. **Não trocamos a busca do frontend** (`HomeSearch`/`DashboardClient` continuam usando o algoritmo de keyword expansion + sinônimos — isso fica para Fase 3).
+
+### Mudanças
+
+**`match-reports.sql` (raiz, novo) — função Postgres:**
+```sql
+CREATE OR REPLACE FUNCTION match_reports(
+  query_embedding vector(1536),
+  match_count int DEFAULT 10
+) RETURNS TABLE (id uuid, title_pt_br text, title_en text, period date, similarity float)
+LANGUAGE sql STABLE AS $$
+  SELECT r.id, r.title_pt_br, r.title_en, r.period,
+         1 - (r.embedding <=> query_embedding) AS similarity
+  FROM reports r
+  WHERE r.status = 'published' AND r.embedding IS NOT NULL
+  ORDER BY r.embedding <=> query_embedding
+  LIMIT match_count;
+$$;
+```
+- Operador `<=>` = cosine distance (pgvector). `1 - distance` normaliza para similarity (1 = idêntico).
+- `STABLE` permite que o planner cacheie o resultado por chamada.
+- Filtra `status = 'published'` e `embedding IS NOT NULL` — vetoriza só o que pode aparecer ao público.
+- **DDL não é rodado por código** — humano roda no SQL Editor.
+
+**`taime-web/app/api/search/route.ts` (novo) — POST handler:**
+- Body `{ query: string, limit?: number }`. Valida não-vazio e `length <= 1000`; `limit` clampado em `[1, 25]`, default 10.
+- Gera embedding via `POST https://api.openai.com/v1/embeddings` (`text-embedding-3-small`).
+- Valida shape: `Array<number>` com `length === 1536`. Erro → 500 + log, não expõe detalhes internos.
+- Chama `supabase.rpc('match_reports', { query_embedding, match_count })` com service key.
+- Retorna `{ results: MatchRow[] }`.
+- Erros: log estruturado + 500. Sem stack trace no body.
+
+**`taime-web/.env.local`:** `OPENAI_API_KEY` adicionada (mesma key do `.env.local` da raiz, copiada via shell). Arquivo é gitignored.
+
+### Por que não estamos ligando isso à UI agora
+Quero validar o ranking semântico isolado antes de quebrar a UX da busca atual. A próxima fase é A/B: comparar resultados de keyword vs vetorial em queries reais de usuário, ver onde cada um ganha, e decidir se substitui ou combina (hybrid: keyword + vetorial com reranking).
+
+### Próximos passos
+1. **Rodar `match-reports.sql` no Supabase SQL Editor** (manual).
+2. **Adicionar `OPENAI_API_KEY` na Vercel** (`Project Settings → Environment Variables`) — sem isso, `/api/search` retorna 500 em produção.
+3. Testar com `curl -X POST https://www.taime.tech/api/search -H 'Content-Type: application/json' -d '{"query":"IA agêntica em produção"}'`.
+
+---
+
 ## [2026-06-04] — Metadata e OG preview em EN por padrão (alcance internacional)
 
 ### Status
