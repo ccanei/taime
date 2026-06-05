@@ -1,5 +1,7 @@
 #!/usr/bin/env npx ts-node
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+dotenv.config(); // fallback para .env
 /**
  * TAIME — Report Embeddings Generator
  *
@@ -161,6 +163,7 @@ async function main(): Promise<void> {
   console.log('║  TAIME — Embeddings Generator    ║');
   console.log('╚══════════════════════════════════╝');
   console.log(`Modelo: ${cfg.model} (1536 dims)`);
+  console.log(`OPENAI key carregada: ${cfg.openaiKey ? 'sim' : 'não'}`);
 
   // Total publicado (referência: quantos já têm embedding)
   const publishedAll = await rest<Array<{ id: string }>>(
