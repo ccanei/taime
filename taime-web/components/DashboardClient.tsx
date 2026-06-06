@@ -75,7 +75,7 @@ function scoreMatch(report: Report, query: string): number {
 
 const UI = {
   pt: {
-    search:      'Buscar por título...',
+    search:      'Buscar por título... (Enter para busca inteligente)',
     allPeriods:  'Todos os períodos',
     allCategories: 'Todas',
     filterCount: (n: number, total: number) => `${n} de ${total} relatório${total !== 1 ? 's' : ''}`,
@@ -88,9 +88,14 @@ const UI = {
     published:   'Publicado',
     dateLang:    'pt-BR' as const,
     periodLang:  'pt-BR' as const,
+    smart:       'Busca inteligente',
+    smartHint:   'Resultados ordenados por relevância semântica.',
+    smartClear:  'Voltar à busca normal',
+    smartLoading: 'Buscando...',
+    smartFailed: 'Busca inteligente indisponível — usando filtro normal.',
   },
   en: {
-    search:      'Search by title...',
+    search:      'Search by title... (Enter for smart search)',
     allPeriods:  'All periods',
     allCategories: 'All',
     filterCount: (n: number, total: number) => `${n} of ${total} report${total !== 1 ? 's' : ''}`,
@@ -103,7 +108,17 @@ const UI = {
     published:   'Published',
     dateLang:    'en-US' as const,
     periodLang:  'en' as const,
+    smart:       'Smart search',
+    smartHint:   'Ranked by semantic relevance.',
+    smartClear:  'Back to normal search',
+    smartLoading: 'Searching...',
+    smartFailed: 'Smart search unavailable — using normal filter.',
   },
+}
+
+interface SemanticMatch {
+  id:         string
+  similarity: number
 }
 
 export default function DashboardClient({
@@ -116,7 +131,38 @@ export default function DashboardClient({
   const [search, setSearch] = useState('')
   const [period, setPeriod] = useState('')
   const [category, setCategory] = useState('')
+  const [semanticMatches, setSemanticMatches] = useState<SemanticMatch[] | null>(null)
+  const [smartLoading,    setSmartLoading]    = useState(false)
+  const [smartError,      setSmartError]      = useState(false)
   const t = UI[locale]
+
+  async function runSmartSearch() {
+    const q = search.trim()
+    if (!q) { setSemanticMatches(null); setSmartError(false); return }
+    setSmartLoading(true); setSmartError(false)
+    try {
+      const res = await fetch('/api/search', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ query: q, limit: 25 }),
+      })
+      if (!res.ok) throw new Error(`status ${res.status}`)
+      const json = await res.json() as { results?: SemanticMatch[] }
+      setSemanticMatches(json.results ?? [])
+    } catch {
+      // Fallback gracioso: limpa o estado semântico e marca o erro.
+      // O filtro client-side por palavra-chave continua valendo.
+      setSemanticMatches(null)
+      setSmartError(true)
+    } finally {
+      setSmartLoading(false)
+    }
+  }
+
+  function clearSmart() {
+    setSemanticMatches(null)
+    setSmartError(false)
+  }
 
   const periods = useMemo(
     () => [...new Set(reports.map(r => r.period))].sort().reverse(),
@@ -139,35 +185,60 @@ export default function DashboardClient({
   }, [reports])
 
   const filtered = useMemo(() => {
+    // Filtros estruturais (período + categoria) sempre se aplicam.
+    function passesStructural(r: Report): boolean {
+      if (period && r.period !== period) return false
+      if (category) {
+        const has = (r.report_trends ?? []).some(
+          tr => (tr as { category?: string | null }).category === category,
+        )
+        if (!has) return false
+      }
+      return true
+    }
+
+    // Modo SEMÂNTICO ativo: reordena pela similaridade vinda da API,
+    // depois aplica os filtros estruturais. Reports fora da resposta
+    // semântica não entram (a API já retornou os top-K por relevância).
+    if (semanticMatches) {
+      const order = new Map(semanticMatches.map((m, i) => [m.id, i]))
+      return reports
+        .filter(r => order.has(r.id) && passesStructural(r))
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+    }
+
+    // Modo NORMAL: filtro instantâneo por palavra-chave (scoreMatch + sinônimos).
     return reports
       .map(r => ({ report: r, score: scoreMatch(r, search) }))
-      .filter(({ report: r, score }) => {
-        if (score <= 0) return false
-        if (period && r.period !== period) return false
-        if (category) {
-          const has = (r.report_trends ?? []).some(
-            tr => (tr as { category?: string | null }).category === category,
-          )
-          if (!has) return false
-        }
-        return true
-      })
+      .filter(({ report: r, score }) => score > 0 && passesStructural(r))
       .sort((a, b) => b.score - a.score)
       .map(({ report: r }) => r)
-  }, [reports, search, period, category])
+  }, [reports, search, period, category, semanticMatches])
 
   return (
     <>
       {/* ── Filtros ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-3">
         <input
           type="text"
           placeholder={t.search}
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => {
+            setSearch(e.target.value)
+            // Mudar o texto invalida o estado semântico — volta ao filtro normal.
+            if (semanticMatches) clearSmart()
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void runSmartSearch()
+            }
+          }}
+          disabled={smartLoading}
           className="flex-1 px-4 py-2.5 text-sm rounded-lg border border-zinc-200 bg-white
                      text-zinc-900 placeholder:text-zinc-400
-                     focus:outline-none focus:ring-2 focus:ring-taime-600 focus:border-transparent"
+                     focus:outline-none focus:ring-2 focus:ring-taime-600 focus:border-transparent
+                     disabled:opacity-60"
         />
         <select
           value={period}
@@ -181,6 +252,42 @@ export default function DashboardClient({
           ))}
         </select>
       </div>
+
+      {/* ── Indicadores da busca inteligente ────────────────────────────── */}
+      {smartLoading && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-zinc-500">
+          <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+            <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          {t.smartLoading}
+        </div>
+      )}
+      {semanticMatches && !smartLoading && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
+                           bg-taime-50 text-taime-700 border border-taime-100">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2l2.39 7.36H22l-6.19 4.5L18.18 22 12 17.5 5.82 22l2.37-8.14L2 9.36h7.61z" />
+            </svg>
+            {t.smart}
+          </span>
+          <span className="text-xs text-zinc-500">{t.smartHint}</span>
+          <button
+            type="button"
+            onClick={clearSmart}
+            className="text-xs text-taime-600 hover:underline ml-1"
+          >
+            {t.smartClear}
+          </button>
+        </div>
+      )}
+      {smartError && (
+        <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          {t.smartFailed}
+        </div>
+      )}
 
       {/* ── Chips de categoria ──────────────────────────────────────────── */}
       {categories.length > 0 && (
@@ -224,7 +331,7 @@ export default function DashboardClient({
         <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
           <p className="text-zinc-400 mb-2">{t.empty}</p>
           <button
-            onClick={() => { setSearch(''); setPeriod(''); setCategory('') }}
+            onClick={() => { setSearch(''); setPeriod(''); setCategory(''); clearSmart() }}
             className="text-xs text-taime-600 hover:underline"
           >
             {t.clearFilter}

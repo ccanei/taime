@@ -2,6 +2,63 @@
 
 ---
 
+## [2026-06-06] — Busca semântica híbrida (Fase 3): filtro instantâneo + Enter para "Busca inteligente"
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Aplicado em `components/DashboardClient.tsx` e `components/HomeSearch.tsx`
+- [ ] **PENDENTE (humano):** confirmar `OPENAI_API_KEY` nas env vars da Vercel (sem isso `/api/search` retorna 500 em produção e o fallback gracioso assume o controle)
+
+### Contexto
+Fase 1 (`generate-embeddings.ts`) e Fase 2 (`match-reports.sql` + `/api/search`) entregaram a infraestrutura. Aqui ligamos no frontend, mas em modo HÍBRIDO: o filtro client-side por keyword + sinônimos continua disparando no `onChange` (instantâneo, sem latência); a busca semântica só dispara ao apertar **Enter**, reordenando a lista pelos top-K do banco.
+
+### Design da UX híbrida
+
+| Ação | Comportamento |
+|---|---|
+| Digitar no input | Filtro client-side instantâneo (`scoreMatch` + `SYNONYMS` no Dashboard; `includes()` no Home). Zero latência, zero custo. |
+| Apertar **Enter** | Dispara `POST /api/search`. Spinner "Buscando...". Resultado reordena a lista pela ordem de similaridade vinda da API. Selo "Busca inteligente" / "Smart search" aparece com botão "Voltar à busca normal". |
+| Editar o texto após Enter | Limpa automaticamente o estado semântico e volta ao filtro instantâneo. |
+| API falha (rede, 500, OPENAI key ausente) | Estado semântico fica `null`, banner âmbar discreto "Busca inteligente indisponível — usando filtro normal" aparece, o filtro client-side assume sem quebrar nada. |
+| Filtros estruturais (período / categoria) | Aplicam-se nos dois modos. No modo semântico, primeiro a API decide o conjunto top-K relevante, depois período/categoria filtram dentro dele. |
+
+### Mudanças
+
+**`components/DashboardClient.tsx`:**
+- Novo estado: `semanticMatches: SemanticMatch[] | null`, `smartLoading`, `smartError`.
+- `runSmartSearch()`: chama `/api/search` com `{ query, limit: 25 }`, salva `[{ id, similarity }]`.
+- `clearSmart()`: zera o estado semântico.
+- `input.onKeyDown`: se `Enter`, `e.preventDefault()` e chama `runSmartSearch()`.
+- `input.onChange`: se já houver `semanticMatches`, limpa (o texto novo invalida a query semântica).
+- `useMemo` do `filtered`: quando `semanticMatches` está populado, reordena pela `Map<id, index>` da API e aplica os filtros estruturais (período/categoria). Quando `null`, mantém o `scoreMatch` + ordenação por keyword score original.
+- UI: spinner enquanto carrega; selo "Busca inteligente" com hint e botão "Voltar à busca normal"; banner de erro âmbar quando a API falha.
+- Placeholder do input agora inclui "(Enter para busca inteligente)" / "(Enter for smart search)".
+- "Limpar filtros" também chama `clearSmart()`.
+
+**`components/HomeSearch.tsx`:**
+- Mesma máquina de estado e mesmo padrão de UI.
+- `HomeSearch` opera sobre **trends** (não reports). Quando entra no modo semântico, filtra as trends cujo `report_id` está no top-K da API e mantém a ordem do report. Múltiplas trends do mesmo report mantêm a posição do report.
+- O resto (link condicional para `/reports/<id>` ou `/login`, ranking visual, snapshot truncado) intacto.
+
+### O que NÃO foi removido (de propósito)
+- `SYNONYMS` e `scoreMatch` no `DashboardClient`: continuam servindo o filtro instantâneo. **Manter os dois é o ponto do híbrido.**
+- O filtro `includes()` no `HomeSearch`: idem.
+- `/api/account/language`, `/api/feedback`, `/api/account/update`, etc.: nada disso foi tocado.
+
+### Fallback gracioso — por que existe
+Cenários esperados de falha:
+1. `OPENAI_API_KEY` ausente na Vercel → `/api/search` 500
+2. Rate limit da OpenAI → 429
+3. Função `match_reports` não rodada no Supabase → erro PostgREST
+4. Timeout de rede
+
+Em qualquer um, o usuário não vê erro técnico — vê o banner âmbar e a busca continua funcionando com o algoritmo client-side. Sem regressão de UX.
+
+### Custo operacional
+Cada Enter custa **1 embedding** (`text-embedding-3-small`, ~$0.00002 por query típica). Filtro instantâneo continua grátis. Se quisermos cap de uso, futuro: throttle por sessão ou rate-limit no `/api/search`.
+
+---
+
 ## [2026-06-05] — Página /conta editável (empresa, cargo, idioma)
 
 ### Status
