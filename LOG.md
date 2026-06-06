@@ -2,6 +2,45 @@
 
 ---
 
+## [2026-06-05] — Página /conta editável (empresa, cargo, idioma)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Rota `/api/account/update` confirmada no output do build
+
+### Contexto
+A página `/conta` era read-only — usuário via os dados mas não conseguia corrigir nada. Pedido: tornar editável os campos não-críticos (empresa, cargo, idioma) e manter nome + email travados (mudança de identidade exige fluxo de verificação separado, fora de escopo aqui).
+
+### Mudanças
+
+**`app/api/account/update/route.ts` (novo) — POST handler:**
+- Auth via `createSupabaseServer + auth.getUser`. Sem sessão → 401.
+- **Defesa em profundidade:** o handler só lê `company`, `job_title` e `preferred_language` do body. Qualquer outra chave (`email`, `full_name`, `is_admin`, etc.) é silenciosamente ignorada — não fazemos `{ ...body }`.
+- `trimOrNull()` para os textos, cap em 200 chars.
+- `preferred_language` validado em `['pt-BR', 'en']` — fora disso, omitido do PATCH (mantém valor atual).
+- Quando `preferred_language` muda, também grava `language_set_by_user = true` para blindar contra a detecção automática do callback de login (mesma lógica de `/api/account/language`).
+- PATCH via service key em `public.users` com `updated_at = now()`.
+- Erros: log + 500 sem expor detalhes do DB.
+
+**`components/AccountForm.tsx` (novo, client) — formulário com 2 campos travados + 3 editáveis:**
+- `LockedField`: input desabilitado com badge "não editável" / "not editable" + ícone de cadeado, fundo zinc-50, texto zinc-500. Aplicado a Nome e Email.
+- Inputs editáveis para Empresa e Cargo (max 200 chars).
+- Select para idioma (Português / English).
+- Bilíngue via `useLocale()` — copies em PT/EN no mesmo padrão dos outros forms.
+- Estados `idle / saving / saved / error` com feedback inline (check verde em "Alterações salvas." que some após 2.5s).
+- Disclaimer "Para alterar nome ou email, fale com o suporte." abaixo do form.
+- **Se o idioma mudar:** após salvar, escreve cookie `taime-locale` e `window.location.reload()` (mesmo padrão do `LanguageSelector`) — assim o resto do site aplica o idioma novo imediatamente.
+
+**`app/conta/page.tsx`:** server component buscando os dados iniciais (intacto), agora passa `{ full_name, email, company, job_title, preferred_language }` como prop `initial` para `<AccountForm />`. Removida a renderização read-only (`ProfileRow`, `emptyOr`) — substituída pelo form. Card de Plano e header (`LogoutButton`/`LanguageSelector`) intactos.
+
+### O que NÃO foi tocado
+- Auth callback / login flow.
+- `LanguageSelector` do header (continua gravando perfil via `sendBeacon`).
+- Tabela `users` schema.
+- Rota `/api/account/language` (continua existindo como atalho do `LanguageSelector`).
+
+---
+
 ## [2026-06-05] — Busca semântica: função SQL + API (não ligada ao frontend)
 
 ### Status

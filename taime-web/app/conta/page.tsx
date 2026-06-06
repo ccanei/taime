@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import LogoutButton from '@/components/LogoutButton'
 import LanguageSelector from '@/components/LanguageSelector'
+import AccountForm from '@/components/AccountForm'
 
 type Locale = 'pt' | 'en'
 
@@ -28,10 +29,6 @@ const PLAN_LABELS: Record<Locale, Record<string, string>> = {
 const STATUS_LABELS: Record<Locale, Record<string, string>> = {
   pt: { active: 'Ativo', pending: 'Pendente', canceled: 'Cancelado', expired: 'Expirado' },
   en: { active: 'Active', pending: 'Pending', canceled: 'Canceled', expired: 'Expired'   },
-}
-
-function emptyOr(value: string | null | undefined): string {
-  return value && value.trim().length > 0 ? value : '—'
 }
 
 export default async function AccountPage() {
@@ -71,37 +68,26 @@ export default async function AccountPage() {
   const statusKey = (subRow.status ?? '').toLowerCase()
   const statusLabel = STATUS_LABELS[locale][statusKey] ?? null
 
+  const preferredLanguage: 'pt-BR' | 'en' =
+    profileRow.preferred_language === 'en' ? 'en' : 'pt-BR'
+
   const t = isEn
     ? {
         title:       'My Account',
         subtitle:    'Your profile and subscription details.',
         back:        '← Dashboard',
-        profileLbl:  'Profile',
-        nameLbl:     'Name',
-        emailLbl:    'Email',
-        companyLbl:  'Company',
-        roleLbl:     'Job title',
         planLbl:     'Plan',
         currentPlan: 'Current plan',
         statusLbl:   'Status',
-        langLbl:     'Preferred language',
-        langValue:   profileRow.preferred_language === 'en' ? 'English' : 'Português',
         upgrade:     'Manage plan',
       }
     : {
         title:       'Minha Conta',
         subtitle:    'Seu perfil e detalhes da assinatura.',
         back:        '← Dashboard',
-        profileLbl:  'Perfil',
-        nameLbl:     'Nome',
-        emailLbl:    'Email',
-        companyLbl:  'Empresa',
-        roleLbl:     'Cargo',
         planLbl:     'Plano',
         currentPlan: 'Plano atual',
         statusLbl:   'Status',
-        langLbl:     'Idioma preferido',
-        langValue:   profileRow.preferred_language === 'en' ? 'English' : 'Português',
         upgrade:     'Gerenciar plano',
       }
 
@@ -132,19 +118,16 @@ export default async function AccountPage() {
           <p className="mt-1 text-sm text-zinc-500">{t.subtitle}</p>
         </div>
 
-        {/* Profile card */}
-        <section className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
-          <header className="px-6 py-4 border-b border-zinc-100">
-            <h2 className="text-sm font-bold text-zinc-900">{t.profileLbl}</h2>
-          </header>
-          <dl className="divide-y divide-zinc-100">
-            <ProfileRow label={t.nameLbl}    value={emptyOr(profileRow.full_name)} />
-            <ProfileRow label={t.emailLbl}   value={emptyOr(profileRow.email ?? user.email ?? null)} />
-            <ProfileRow label={t.companyLbl} value={emptyOr(profileRow.company)} />
-            <ProfileRow label={t.roleLbl}    value={emptyOr(profileRow.job_title)} />
-            <ProfileRow label={t.langLbl}    value={t.langValue} />
-          </dl>
-        </section>
+        {/* Profile card (editável) */}
+        <AccountForm
+          initial={{
+            full_name:          profileRow.full_name,
+            email:              profileRow.email ?? user.email ?? null,
+            company:            profileRow.company,
+            job_title:          profileRow.job_title,
+            preferred_language: preferredLanguage,
+          }}
+        />
 
         {/* Plan card */}
         <section className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
@@ -176,15 +159,3 @@ export default async function AccountPage() {
   )
 }
 
-function ProfileRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="px-6 py-3.5 flex items-baseline justify-between gap-4">
-      <dt className="text-xs text-zinc-500 font-medium tracking-wide uppercase shrink-0">
-        {label}
-      </dt>
-      <dd className={`text-sm text-right ${value === '—' ? 'text-zinc-300' : 'text-zinc-900 font-medium'}`}>
-        {value}
-      </dd>
-    </div>
-  )
-}
