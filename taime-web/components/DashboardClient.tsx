@@ -165,7 +165,8 @@ export default function DashboardClient({
   }
 
   const periods = useMemo(
-    () => [...new Set(reports.map(r => r.period))].sort().reverse(),
+    // Dedup por ANO-MÊS ('2026-05'): meses com 2 quinzenas aparecem 1× só.
+    () => [...new Set(reports.map(r => r.period.slice(0, 7)))].sort().reverse(),
     [reports],
   )
 
@@ -187,7 +188,9 @@ export default function DashboardClient({
   const filtered = useMemo(() => {
     // Filtros estruturais (período + categoria) sempre se aplicam.
     function passesStructural(r: Report): boolean {
-      if (period && r.period !== period) return false
+      // `period` agora guarda ano-mês ('2026-05'); um relatório de qualquer
+      // quinzena do mês passa pelo filtro.
+      if (period && r.period.slice(0, 7) !== period) return false
       if (category) {
         const has = (r.report_trends ?? []).some(
           tr => (tr as { category?: string | null }).category === category,
@@ -248,7 +251,7 @@ export default function DashboardClient({
         >
           <option value="">{t.allPeriods}</option>
           {periods.map(p => (
-            <option key={p} value={p}>{formatPeriod(p, t.periodLang === 'en' ? 'en' : 'pt-BR')}</option>
+            <option key={p} value={p}>{formatPeriod(p + '-01', t.periodLang === 'en' ? 'en' : 'pt-BR')}</option>
           ))}
         </select>
       </div>
@@ -321,7 +324,7 @@ export default function DashboardClient({
         <p className="text-xs text-zinc-400 mb-4">
           {t.filterCount(filtered.length, reports.length)}
           {search && <> · {t.filterSearch(search)}</>}
-          {period && <> · {t.filterPeriod(formatPeriod(period, t.periodLang === 'en' ? 'en' : 'pt-BR'))}</>}
+          {period && <> · {t.filterPeriod(formatPeriod(period + '-01', t.periodLang === 'en' ? 'en' : 'pt-BR'))}</>}
           {category && <> · {t.filterCategory(category)}</>}
         </p>
       )}

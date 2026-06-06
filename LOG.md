@@ -2,6 +2,36 @@
 
 ---
 
+## [2026-06-06] — Dashboard: dropdown de período agrupa por mês (sem duplicatas)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+
+### Problema
+A partir de 2015, cada mês tem 2 relatórios (quinzena dia 01 e quinzena dia 16). O dropdown de filtro de período do dashboard estava deduplicando por data completa, então maio/2026 aparecia duas vezes ("Maio 2026" e "Maio 2026"), sem distinção visual entre as quinzenas. Confuso.
+
+### Decisão
+Agrupar o dropdown por mês — "Maio 2026" aparece **uma vez**, e selecionar filtra os dois relatórios do mês (dia 01 e dia 16). A coluna `period` no banco continua sendo data completa (`2026-05-01` e `2026-05-16`); só a chave do dropdown e o filtro client-side passam a comparar por ano-mês (`2026-05`). Os cards continuam mostrando o `period_label` da quinzena completa.
+
+### Mudanças (`components/DashboardClient.tsx`)
+
+| Linha | Antes | Depois |
+|---|---|---|
+| **168** | `new Set(reports.map(r => r.period))` | `new Set(reports.map(r => r.period.slice(0, 7)))` |
+| **190** | `if (period && r.period !== period) return false` | `if (period && r.period.slice(0, 7) !== period) return false` |
+| **251** | `formatPeriod(p, …)` | `formatPeriod(p + '-01', …)` |
+| **324** | `formatPeriod(period, …)` | `formatPeriod(period + '-01', …)` |
+
+Verificado via `grep -n "period"` que nenhuma outra comparação de igualdade contra data completa restou: as referências remanescentes são uso do state (`value={period}`), o array dedeplicado, e o agrupamento `[reports, search, period, category, semanticMatches]` do `useMemo`.
+
+### O que NÃO mudou
+- `lib/types.ts → formatPeriod`: intacta. Como ela espera data completa (`new Date(period + 'T12:00:00Z')`), sempre passamos `ano-mês + '-01'`.
+- Card de cada relatório (`formatPeriodFull` em ~358-359): continua mostrando a quinzena exata (`1ª Quinzena de Maio de 2026`).
+- Estado inicial do filtro (`period = ''` = todos): igual.
+- Resto do dashboard: filtros de categoria, busca, busca semântica híbrida — nenhum efeito colateral.
+
+---
+
 ## [2026-06-06] — Busca semântica híbrida (Fase 3): filtro instantâneo + Enter para "Busca inteligente"
 
 ### Status
