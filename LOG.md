@@ -2,6 +2,58 @@
 
 ---
 
+## [2026-06-09] — `scoreText` permissivo: aceita termos curtos ("IA"/"ML") e hits só no snapshot
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Fix afeta os dois consumidores compartilhados: filtro instantâneo do Dashboard (via `scoreMatchReport`) e da HomeSearch (via `scoreText` direto).
+
+### Problema
+A função `scoreText` em `lib/searchMatch.ts` tinha dois limiares agressivos que escondiam matches relevantes:
+
+1. **Filtro de comprimento:** `t.length > 2` descartava siglas como "IA", "ML", "AI" — termos curtos que o usuário tipicamente digita. A `expandQuery` até trazia os sinônimos longos ("inteligência artificial", "agentic", etc.), mas a raiz da query sumia.
+2. **`minScore` exigia peso 3:** o cálculo era `Math.max(1, floor(terms * 0.4)) * 3` — multiplicado por 3 forçava o match a estar no **título** (peso 3). Trends com o termo só no `executive_snapshot` (peso 2) nunca atingiam o limiar e o score virava 0. Resultado: "soberania" não achava nada apesar de aparecer no resumo de várias trends de dados.
+
+### Correção (`lib/searchMatch.ts`)
+
+```ts
+// Antes
+const terms = raw.filter(t => t.length > 2 && !STOPWORDS.has(t))
+// ...
+const minScore = Math.max(1, Math.floor(terms.length * 0.4)) * 3
+return score >= minScore ? score : 0
+```
+
+```ts
+// Depois
+const terms = raw.filter(t => t.length >= 2 && !STOPWORDS.has(t))
+// ...
+return score   // ranquear, não filtrar
+```
+
+**Mudança 1:** `length >= 2` aceita siglas (2 chars) mas ainda corta ruído de 1 char e stopwords.
+
+**Mudança 2:** removido o `minScore`. A função passa a **ranquear** (devolve o score bruto) em vez de **filtrar** agressivamente. Qualquer match em qualquer campo (peso 2 ou 3) já basta para o item aparecer; a ordenação decrescente por score que cada caller já faz coloca os mais relevantes no topo.
+
+### Trace de validação (mental)
+
+| Query | Termos após filtro | Resultado antes | Resultado depois |
+|---|---|---|---|
+| `"IA"` | `["ia", "inteligencia artificial", "agentic", ...]` | `"ia"` cortado por `length > 2`; só os sinônimos longos sobreviviam | `"ia"` mantido → encontra "IA" no título direto |
+| `"soberania"` | `["soberania", "dados", "data", ...]` | match no snapshot dá score 2; minScore 6 → retorna **0** (some) | score 2 → aparece, ranqueado por relevância |
+| `"agente IA"` | `["agente", "ia", "agentic", ...]` | "ia" cortado, match parcial pode não bater minScore | aceita "ia" e ranqueia normalmente |
+
+### O que NÃO mudou
+- `normalize`, `SYNONYMS`, `expandQuery`, `STOPWORDS`: idênticos.
+- `scoreMatchReport` (atalho do Dashboard): mantém a assinatura, só chama o novo `scoreText` internamente.
+- Busca semântica via Enter (`/api/search`): nada — é um caminho separado.
+- A ordenação que cada caller já fazia (`.sort((a,b) => b.score - a.score)` no Dashboard e na HomeSearch): inalterada — agora ela é o **único** mecanismo de relevância.
+
+### Efeito esperado
+O número de resultados aparentes vai aumentar — em troca, o usuário precisa do scrolling/sort para chegar nos top picks. Isso casa com a UX híbrida: o filtro instantâneo serve para **descoberta** (vê tudo que parece relevante); o Enter (busca semântica) serve para **precisão** (top-K reordenado por embedding).
+
+---
+
 ## [2026-06-09] — Locale auto-detection: EN por padrão, PT para navegadores em português
 
 ### Status

@@ -57,7 +57,10 @@ export interface SearchField {
 export function scoreText(fields: SearchField[], query: string): number {
   if (!query.trim()) return 1
   const raw   = expandQuery(query)
-  const terms = raw.filter(t => t.length > 2 && !STOPWORDS.has(t))
+  // Aceita termos de 2+ caracteres (siglas como "IA", "ML", "AI") e
+  // exclui stopwords + ruído de 1 char. Antes era `> 2`, o que matava
+  // queries curtas e relevantes.
+  const terms = raw.filter(t => t.length >= 2 && !STOPWORDS.has(t))
   if (terms.length === 0) return 1
 
   let score = 0
@@ -67,10 +70,11 @@ export function scoreText(fields: SearchField[], query: string): number {
     }
   }
 
-  // Exige cobertura mínima: ~40% dos termos significativos precisam
-  // bater em pelo menos um campo de peso 3.
-  const minScore = Math.max(1, Math.floor(terms.length * 0.4)) * 3
-  return score >= minScore ? score : 0
+  // Ranquear, não filtrar. Qualquer match em qualquer campo (peso 2 OU 3)
+  // já basta para o item aparecer; a ordenação decrescente por score
+  // resolve a relevância. Removido o limiar antigo que exigia match em
+  // título (peso 3) e descartava hits apenas no executive_snapshot.
+  return score
 }
 
 /**
