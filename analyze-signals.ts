@@ -1,5 +1,7 @@
 #!/usr/bin/env npx ts-node
 import 'dotenv/config';
+import { parsePeriod } from './period-utils';
+import { isSignalWithinPeriod } from './date-check';
 /**
  * TAIME — Signal Analyzer
  * Agrupa sinais do período em 4-12 clusters temáticos via Claude Sonnet 4.6
@@ -260,9 +262,45 @@ async function main(): Promise<void> {
     console.log('  ✓ Todos os índices resolvidos para UUIDs válidos.');
   }
 
-  // Persiste clusters
-  console.log(`\nSalvando ${clusters.length} cluster(s)...`);
+  // ── Validação cruzada por data: segunda camada (a Fase 1 filtra na coleta).
+  // Para cada cluster, conta sinais com data ABSOLUTA claramente fora da
+  // janela. Datas null/relativas/inválidas contam como "dentro" (conservador).
+  // Se >50% do cluster está fora → descarta o cluster antes de virar trend.
+  const { start: periodStart, end: periodEnd } = parsePeriod(PERIOD);
+  const dateById = new Map<string, string | null | undefined>(
+    signals.map(s => [s.id, s.metadata?.published_date]),
+  );
+
+  const kept: ClusterOutput[] = [];
+  let clustersDiscarded = 0;
   for (const cluster of clusters) {
+    const total = cluster.signal_ids.length;
+    if (total === 0) {
+      clustersDiscarded++;
+      console.log(`  ⚠ Cluster "${cluster.name}" descartado: 0 sinais resolvidos`);
+      continue;
+    }
+    const outside = cluster.signal_ids.reduce((n, id) => {
+      const date = dateById.get(id);
+      return isSignalWithinPeriod(date, periodStart, periodEnd) ? n : n + 1;
+    }, 0);
+    if (outside * 2 > total) {                  // >50%
+      clustersDiscarded++;
+      console.log(`  ⚠ Cluster "${cluster.name}" descartado: ${outside}/${total} sinais fora do período`);
+      continue;
+    }
+    kept.push(cluster);
+  }
+
+  if (kept.length === 0) {
+    console.error(`\n✗ Todos os ${clusters.length} cluster(s) foram descartados por validação de data.`);
+    console.error('  Verifique se a coleta trouxe sinais do período correto.\n');
+    process.exit(1);
+  }
+
+  // Persiste clusters
+  console.log(`\nSalvando ${kept.length} cluster(s)...`);
+  for (const cluster of kept) {
     await dbPost('signal_clusters', {
       period:        PERIOD,
       name:          cluster.name,
@@ -273,13 +311,16 @@ async function main(): Promise<void> {
     console.log(`  ✓ "${cluster.name}" — ${cluster.signal_ids.length} sinais`);
   }
 
-  const covered   = new Set(clusters.flatMap(c => c.signal_ids));
+  const covered   = new Set(kept.flatMap(c => c.signal_ids));
   const uncovered = signals.length - covered.size;
 
   console.log('\n' + '─'.repeat(50));
-  console.log(`✓ Clusters:        ${clusters.length}`);
-  console.log(`✓ Sinais cobertos: ${covered.size} / ${signals.length}`);
-  if (uncovered > 0) console.log(`~ Sem cluster:     ${uncovered} (ruído descartado)`);
+  console.log(`✓ Clusters formados:   ${clusters.length}`);
+  if (clustersDiscarded > 0)
+    console.log(`⚠ Descartados por data: ${clustersDiscarded}`);
+  console.log(`✓ Clusters salvos:     ${kept.length}`);
+  console.log(`✓ Sinais cobertos:     ${covered.size} / ${signals.length}`);
+  if (uncovered > 0) console.log(`~ Sem cluster:         ${uncovered} (ruído descartado)`);
   console.log(`\nPróximo: npx ts-node generate-report.ts\n`);
 }
 

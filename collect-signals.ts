@@ -11,6 +11,7 @@ import 'dotenv/config';
  */
 
 import { parsePeriod, isHistorical, toSerperDate } from './period-utils';
+import { isSignalWithinPeriod } from './date-check';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ interface SourceResult {
   collected:  number;
   duplicates: number;
   errors:     number;
+  outOfPeriod: number;
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -206,7 +208,7 @@ async function urlExists(url: string): Promise<boolean> {
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 async function collectSource(source: Source): Promise<SourceResult> {
-  let collected = 0, duplicates = 0, errors = 0;
+  let collected = 0, duplicates = 0, errors = 0, outOfPeriod = 0;
   const query   = buildQuery(source);
 
   let results: SerperOrganic[];
@@ -214,11 +216,21 @@ async function collectSource(source: Source): Promise<SourceResult> {
     results = await searchSerper(query);
   } catch (err) {
     console.error(`  ✗ Serper falhou: ${err}`);
-    return { collected: 0, duplicates: 0, errors: 1 };
+    return { collected: 0, duplicates: 0, errors: 1, outOfPeriod: 0 };
   }
 
   for (const item of results) {
     if (!item.link) continue;
+
+    // Filtro cruzado de data: se conseguimos provar que o sinal está
+    // claramente fora da janela do período, descarta. Conservador.
+    if (!isSignalWithinPeriod(item.date, periodInfo.start, periodInfo.end)) {
+      const shortTitle = (item.title ?? '').slice(0, 60);
+      console.log(`    ⏭ fora do período: ${item.date} — ${shortTitle}`);
+      outOfPeriod++;
+      continue;
+    }
+
     try {
       if (await urlExists(item.link)) { duplicates++; continue; }
 
@@ -252,7 +264,7 @@ async function collectSource(source: Source): Promise<SourceResult> {
     }
   }
 
-  return { collected, duplicates, errors };
+  return { collected, duplicates, errors, outOfPeriod };
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -290,7 +302,7 @@ async function main(): Promise<void> {
   console.log(`Fontes ativas: ${sources.length}`);
   console.log('─'.repeat(50));
 
-  let totalCollected = 0, totalDuplicates = 0, totalErrors = 0;
+  let totalCollected = 0, totalDuplicates = 0, totalErrors = 0, totalOutOfPeriod = 0;
 
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
@@ -298,14 +310,16 @@ async function main(): Promise<void> {
     process.stdout.write(`${label.padEnd(45, '.')} `);
 
     const result = await collectSource(source);
-    totalCollected  += result.collected;
-    totalDuplicates += result.duplicates;
-    totalErrors     += result.errors;
+    totalCollected   += result.collected;
+    totalDuplicates  += result.duplicates;
+    totalErrors      += result.errors;
+    totalOutOfPeriod += result.outOfPeriod;
 
     const parts = [
       `+${result.collected} novo${result.collected !== 1 ? 's' : ''}`,
-      result.duplicates > 0 ? `${result.duplicates} dup` : null,
-      result.errors     > 0 ? `${result.errors} erro${result.errors !== 1 ? 's' : ''}` : null,
+      result.duplicates  > 0 ? `${result.duplicates} dup` : null,
+      result.outOfPeriod > 0 ? `${result.outOfPeriod} fora` : null,
+      result.errors      > 0 ? `${result.errors} erro${result.errors !== 1 ? 's' : ''}` : null,
     ].filter(Boolean).join(' | ');
 
     console.log(parts);
@@ -316,6 +330,7 @@ async function main(): Promise<void> {
   console.log('─'.repeat(50));
   console.log(`\n✓ Sinais coletados:  ${totalCollected}`);
   console.log(`~ Duplicatas:        ${totalDuplicates}`);
+  console.log(`⏭ Fora do período:   ${totalOutOfPeriod}`);
   if (totalErrors > 0) console.log(`✗ Erros:             ${totalErrors}`);
   console.log(`\nPeríodo: ${periodInfo.key} (${periodInfo.labelPt})`);
   console.log('Próximo passo: npx ts-node analyze-signals.ts\n');
