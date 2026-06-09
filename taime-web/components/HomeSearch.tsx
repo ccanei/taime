@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { scoreColor } from '@/lib/types'
 import type { TaimeFramework } from '@/lib/types'
+import { normalize, scoreText } from '@/lib/searchMatch'
 
 interface HomeTrend {
   report_id: string
@@ -102,13 +103,23 @@ export default function HomeSearch({
         .sort((a, b) => (order.get(a.report_id) ?? 0) - (order.get(b.report_id) ?? 0))
     }
     if (!query.trim()) return trends
-    const q = query.toLowerCase()
-    return trends.filter(t =>
-      t.title_pt_br.toLowerCase().includes(q) ||
-      t.title_en.toLowerCase().includes(q) ||
-      t.taime_framework_pt_br?.executive_snapshot?.toLowerCase().includes(q) ||
-      t.taime_framework_en?.executive_snapshot?.toLowerCase().includes(q),
-    )
+    // Mesmo motor do Dashboard: normalização de acentos, sinônimos
+    // (IA → agentic, nuvem → cloud, etc.) e scoring ponderado.
+    return trends
+      .map(t => {
+        const fields = [
+          { text: normalize((t.title_pt_br ?? '') + ' ' + (t.title_en ?? '')), weight: 3 },
+          { text: normalize(
+              (t.taime_framework_pt_br?.executive_snapshot ?? '') + ' ' +
+              (t.taime_framework_en?.executive_snapshot ?? ''),
+            ), weight: 2,
+          },
+        ]
+        return { t, score: scoreText(fields, query) }
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ t }) => t)
   }, [trends, query, semanticMatches])
 
   return (

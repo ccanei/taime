@@ -16,6 +16,7 @@ import FaqAccordion from '@/components/FaqAccordion'
 import RadarFeed from '@/components/RadarFeed'
 import Footer from '@/components/Footer'
 import HomeSearch from '@/components/HomeSearch'
+import { ScoreGauge, ScoreDimensionsPanel, ThenNowNextPanel } from '@/components/ReportVisuals'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ interface TopTrend {
   taime_framework_en:    TaimeFramework | null
   then_now_next_pt_br:   ThenNowNext | null
   then_now_next_en:      ThenNowNext | null
+  // Embedido via PostgREST `reports(period)` para alimentar o ThenNowNextPanel.
+  reports:               { period: string } | null
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -113,6 +116,20 @@ export default async function LandingPage() {
   const [reports, topTrends] = await Promise.all([getLatestReports(), getTopTrends()])
   const report      = reports[0] ?? null
   const isEn        = locale === 'en'
+  const lang        = isEn ? 'en' : 'pt-BR'
+
+  // ── Showcase: trend de maior score com dados completos no idioma ativo. ─
+  // Fallback: vai descendo a lista até achar uma com framework.score_dimensions
+  // + then_now_next + period embedidos. Se nada bater, a seção não renderiza.
+  const showcase = topTrends.find(tr => {
+    const fw  = isEn ? tr.taime_framework_en : tr.taime_framework_pt_br
+    const tnn = isEn ? tr.then_now_next_en   : tr.then_now_next_pt_br
+    return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next && !!tr.reports?.period
+  }) ?? null
+  const showcaseFw     = showcase ? (isEn ? showcase.taime_framework_en : showcase.taime_framework_pt_br) : null
+  const showcaseTnn    = showcase ? (isEn ? showcase.then_now_next_en   : showcase.then_now_next_pt_br)   : null
+  const showcaseTitle  = showcase ? (isEn ? showcase.title_en           : showcase.title_pt_br)           : ''
+  const showcaseHref   = showcase ? (isLoggedIn ? `/reports/${showcase.report_id}` : '/login')            : '/login'
 
   // Mockup data: top trend by score (rank 1 da query)
   const firstTrend    = topTrends[0] ?? null
@@ -422,6 +439,71 @@ export default async function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* ── SEÇÃO 8b: TAIME EM AÇÃO (exemplo real) ─────────────────────── */}
+      {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
+        <section className="py-24 border-t border-zinc-100">
+          <div className="max-w-5xl mx-auto px-6">
+            <p className="section-label mb-3">
+              {isEn ? 'Live example' : 'Exemplo real'}
+            </p>
+            <h2 className="text-3xl font-bold text-zinc-900 mb-3">
+              {isEn ? 'See TAIME in action' : 'Veja o TAIME em ação'}
+            </h2>
+            <p className="text-sm text-zinc-500 max-w-2xl mb-10 leading-relaxed">
+              {isEn
+                ? 'Each trend gets a TAIME Score broken into 5 dimensions and a THEN / NOW / NEXT temporal reading. Below is the highest-scored trend from our published reports — exactly as a paying customer sees it.'
+                : 'Cada tendência recebe um TAIME Score em 5 dimensões e uma leitura temporal THEN / NOW / NEXT. Abaixo está a tendência de maior score dos relatórios publicados — exatamente como o assinante vê.'}
+            </p>
+
+            <Link
+              href={showcaseHref}
+              className="block rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8
+                         hover:border-taime-200 hover:shadow-sm transition-all group"
+            >
+              {/* Título + gauge */}
+              <div className="flex items-start gap-5 mb-6">
+                <ScoreGauge score={showcase.taime_score} />
+                <div className="flex-1 min-w-0 pt-1">
+                  <p className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mb-2">
+                    {isEn ? 'Featured trend' : 'Tendência em destaque'}
+                  </p>
+                  <h3 className="text-lg sm:text-xl font-bold text-zinc-900 leading-snug
+                                 group-hover:text-taime-700 transition-colors">
+                    {showcaseTitle}
+                  </h3>
+                </div>
+              </div>
+
+              {/* 5 dimensões */}
+              <div className="mb-6">
+                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
+                  {isEn ? '5 dimensions' : '5 dimensões'}
+                </p>
+                <ScoreDimensionsPanel dims={showcaseFw.score_dimensions} lang={lang} />
+              </div>
+
+              {/* THEN / NOW / NEXT */}
+              <div>
+                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
+                  Then · Now · Next
+                </p>
+                <ThenNowNextPanel
+                  tnn={showcaseTnn}
+                  period={showcase.reports.period}
+                  lang={lang}
+                />
+              </div>
+
+              <p className="mt-6 text-xs font-semibold text-taime-600 group-hover:text-taime-700 transition-colors">
+                {isLoggedIn
+                  ? (isEn ? 'Read the full report →' : 'Ler o relatório completo →')
+                  : (isEn ? 'Sign in to read the full report →' : 'Entrar para ler o relatório completo →')}
+              </p>
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* ── SEÇÃO 9: TRENDS EM DESTAQUE ───────────────────────────────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-24">

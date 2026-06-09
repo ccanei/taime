@@ -2,6 +2,61 @@
 
 ---
 
+## [2026-06-09] — Home: busca instantânea igualada ao Dashboard + seção "Veja o TAIME em ação" com exemplo real
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] HomeSearch agora usa `lib/searchMatch` (mesmo motor do Dashboard)
+- [x] Showcase carregado: trend de maior score (89) — "Corrida Armamentista de IA em Cibersegurança" (report período `2026-04-16`)
+
+### Contexto
+
+**(A)** O filtro instantâneo da HomeSearch era `includes()` simples — fraco. Digitar "Inte" não achava "Inteligência Artificial"; "soberania" não bateu em "soberania de dados" (sinônimo). O Dashboard já tinha um motor mais forte (`normalize` + `SYNONYMS` + `scoreMatch`). Em vez de duplicar, extraí para um módulo compartilhado.
+
+**(B)** Visitante chegando na home não tem como inspecionar o produto — só lê descrições. O paywall ofusca o que ele está prestes a comprar. Solução: usar UM relatório real publicado como amostra, com a UI completa de score + 5 dimensões + THEN/NOW/NEXT. O usuário vê exatamente o que vai receber, e o card inteiro linka para o relatório (logado) ou login.
+
+### Mudanças
+
+**Busca compartilhada — `lib/searchMatch.ts` (novo):**
+- `normalize(text)`, `SYNONYMS`, `expandQuery`, `STOPWORDS` — copiados verbatim do `DashboardClient.tsx` (mesma lógica).
+- `scoreText(fields, query)` — versão genérica que aceita `Array<{ text, weight }>` em vez de assumir o shape de `Report`. Permite reuso em qualquer tipo (Report, Trend, etc.).
+- `scoreMatchReport(report, query)` — atalho com a assinatura antiga do Dashboard para zero-changes no call site.
+
+**`components/DashboardClient.tsx`:** removidos `normalize`/`SYNONYMS`/`expandQuery`/`STOPWORDS`/`scoreMatch` locais; agora importa `scoreMatchReport` de `lib/searchMatch`. Comportamento idêntico (verificado por build limpa).
+
+**`components/HomeSearch.tsx`:** troca o filtro `includes()` por `scoreText(fields, query)` com pesos `3` no título (PT+EN concatenados) e `2` no `executive_snapshot` (PT+EN). Resultado é ordenado por score decrescente. O modo semântico via Enter (Fase 3) continua intacto — só o filtro instantâneo mudou.
+
+**Visuais compartilhados — `components/ReportVisuals.tsx` (novo):**
+- `ScoreGauge` — gauge circular com score + tooltip opcional.
+- `ScoreDimensionsPanel` — 5 cards (Maturidade, Pressão, Impacto, Complexidade, Risco) com barra colorida (verde/âmbar/laranja) e label interpretivo.
+- `ThenNowNextPanel` — 3 colunas Then/Now/Next com `PERIOD_LABEL` extraído do then, e labels temporais derivados do `period`.
+- Helpers privados que andam junto: `DIMENSION_NAMES`, `DIMENSION_KEYS`, `dimensionBarColor`, `dimensionTextColor`, `extractThenLabel`.
+
+**`components/ReportClient.tsx`:** removidas as definições locais dos 3 componentes (lines 13–152) e respectivos helpers; agora importa de `@/components/ReportVisuals`. Import de `InfoTooltip` também removido (não usado mais aqui). Visual do relatório intacto.
+
+**`app/api/trends/top/route.ts`:** select estendido com `reports(period)` — PostgREST embed via FK. Necessário para alimentar o `period` que o `ThenNowNextPanel` usa nos labels temporais. **Não é invenção** — é a coluna real do report do trend.
+
+**`app/page.tsx`:**
+- `TopTrend` interface ganha `reports: { period: string } | null`.
+- Lógica `pickShowcase`: percorre os top trends e pega o primeiro que tem, no idioma ativo: `taime_framework.score_dimensions` + `then_now_next` completo + `reports.period`. Se nada bate, a seção não renderiza (graceful).
+- Nova **seção 8b** antes da seção 9 (Trends em destaque):
+  - Title bilíngue "Veja o TAIME em ação" / "See TAIME in action".
+  - Subtítulo explicando o modelo (5 dimensões + THEN/NOW/NEXT).
+  - Card único clicável (rounded-2xl, border-zinc-200, hover-taime-200) contendo `ScoreGauge` + título da trend + `ScoreDimensionsPanel` + `ThenNowNextPanel` reais.
+  - Link condicional: logado → `/reports/<id>`, anônimo → `/login` ("Entrar para ler o relatório completo").
+
+### Qual trend está sendo exibida hoje
+
+Score **89** — *"Corrida Armamentista de IA em Cibersegurança Redefine Superfície de Ri…"* — do relatório do período **2026-04-16**. É o trend de maior score atualmente publicado, com todos os dados completos em ambos idiomas. Se um trend de score mais alto for publicado depois, ele substitui automaticamente (a query sempre pega o top com dados completos).
+
+### O que NÃO foi tocado
+- Modo semântico (Enter) da HomeSearch e DashboardClient: idêntico.
+- Filtros de período/categoria, paywall, plano: nada mudou.
+- Schema do banco: nada mudou.
+- Aparência do `/reports/<id>`: nada mudou — só houve refactor (extração) sem alteração visual.
+
+---
+
 ## [2026-06-09] — Redirect 308 das rotas legadas `/pt` e `/en` para `/` (evita 404 nos indexados)
 
 ### Status

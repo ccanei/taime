@@ -4,74 +4,9 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { formatPeriod, formatPeriodFull, avgScore, scoreColor, scoreRing } from '@/lib/types'
 import type { Report } from '@/lib/types'
+import { scoreMatchReport } from '@/lib/searchMatch'
 
 type Locale = 'pt' | 'en'
-
-// ─── Search helpers ───────────────────────────────────────────────────────────
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-const SYNONYMS: Record<string, string[]> = {
-  'ia':        ['inteligencia artificial', 'artificial intelligence', 'agentic', 'agentica', 'agente', 'agentes', 'machine learning', 'ml', 'llm'],
-  'agente':    ['agentic', 'agentica', 'ia', 'ai'],
-  'agentes':   ['agentic', 'agentica', 'agents', 'ia agentica'],
-  'nuvem':     ['cloud', 'hibrida', 'hybrid'],
-  'cloud':     ['nuvem', 'infraestrutura', 'infrastructure'],
-  'seguranca': ['cybersecurity', 'ciberseguranca', 'security', 'ameaca', 'threat'],
-  'dados':     ['data', 'soberania', 'sovereignty', 'semanticos'],
-  'fintech':   ['financeiro', 'finance', 'stablecoin', 'capital'],
-  'automacao': ['automation', 'agentes', 'workflows'],
-}
-
-function expandQuery(query: string): string[] {
-  const norm = normalize(query)
-  const terms = [norm]
-  for (const [key, synonyms] of Object.entries(SYNONYMS)) {
-    if (norm.includes(key)) terms.push(...synonyms)
-    if (synonyms.some(s => norm.includes(s))) terms.push(key, ...synonyms)
-  }
-  return [...new Set(terms)]
-}
-
-const STOPWORDS = new Set([
-  'de','do','da','dos','das','em','no','na','nos','nas',
-  'e','o','a','os','as','um','uma','que','para','com','se',
-  'the','of','in','and','to','an','for','with','is','are',
-])
-
-function scoreMatch(report: Report, query: string): number {
-  if (!query.trim()) return 1
-  const raw   = expandQuery(query)
-  const terms = raw.filter(t => t.length > 2 && !STOPWORDS.has(t))
-  if (terms.length === 0) return 1
-  const fields = [
-    { text: normalize((report.title_pt_br ?? '') + ' ' + (report.title_en ?? '')), weight: 3 },
-    {
-      text: normalize(
-        ((report as unknown as { executive_summary_pt_br?: string }).executive_summary_pt_br ?? '') +
-        ' ' +
-        ((report as unknown as { executive_summary_en?: string }).executive_summary_en ?? '')
-      ),
-      weight: 2,
-    },
-  ]
-  let score = 0
-  for (const term of terms) {
-    for (const field of fields) {
-      if (field.text.includes(term)) score += field.weight
-    }
-  }
-  const minScore = Math.max(1, Math.floor(terms.length * 0.4)) * 3
-  return score >= minScore ? score : 0
-}
 
 const UI = {
   pt: {
@@ -212,7 +147,7 @@ export default function DashboardClient({
 
     // Modo NORMAL: filtro instantâneo por palavra-chave (scoreMatch + sinônimos).
     return reports
-      .map(r => ({ report: r, score: scoreMatch(r, search) }))
+      .map(r => ({ report: r, score: scoreMatchReport(r, search) }))
       .filter(({ report: r, score }) => score > 0 && passesStructural(r))
       .sort((a, b) => b.score - a.score)
       .map(({ report: r }) => r)
