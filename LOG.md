@@ -2,6 +2,81 @@
 
 ---
 
+## [2026-06-09] — Rota pública `/r/[id]`: amostra de relatório com uma trend liberada
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Rota `ƒ /r/[id]` registrada no output do build
+- [x] `app/reports/[id]/page.tsx` e `components/ReportClient.tsx` em modo paywall: **inalterados em comportamento** (callers sem `publicUnlock` rodam o branch antigo)
+- [ ] **PENDENTE (humano):** rodar `add-public-reports.sql` no Supabase SQL Editor
+- [ ] **PENDENTE (humano):** marcar manualmente `UPDATE reports SET is_public = true, public_unlocked_rank = 3 WHERE id = '...'` para os reports que vão virar amostra
+
+### Contexto
+Para campanha em LinkedIn / outras redes, precisamos de uma URL pública que mostre **um pedaço real** do produto: resumo executivo completo + uma trend específica liberada + as demais trends borradas com CTA. A rota `/reports/[id]` existente protege paywall (paid only) e o ReportClient já tinha modo `isPreview`, mas era tudo-ou-nada (resumo curto + paywall full screen). Aqui criamos um modo NOVO sem mexer no fluxo de paywall.
+
+### Mudanças
+
+**`add-public-reports.sql` (raiz, novo):**
+```sql
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS public_unlocked_rank int;
+```
+- `is_public = false` por default em TODOS os reports — nada vira público sem decisão explícita.
+- `public_unlocked_rank` decide qual trend fica liberada (1, 2, 3, ...). Null → handler usa 1.
+
+**`components/ReportClient.tsx` — nova prop `publicUnlock`:**
+```ts
+publicUnlock?: { unlockedRank: number; lockedStubs: LockedTrendStub[] } | null
+```
+- Quando ausente (chamadores existentes): comportamento idêntico — paywall, reading-progress, restore-scroll, isPreview, tudo intacto.
+- Quando presente:
+  - `isPreview` é forçado a `false` (não cai no fluxo de paywall full-screen).
+  - useEffects de `reading-progress` e `scroll-restore` early-return (são features de usuário logado, fora de escopo).
+  - Header sticky: logo aponta para `/` em vez de `/dashboard`; em vez do `LanguageSelector` mostra um botão "Assinar / Subscribe →" linkando para `/planos`.
+  - Resumo executivo completo renderiza normal.
+  - **Trends:** interleava `trends` (que vêm já filtradas — só o unlocked) com `lockedStubs` (stubs mínimos do server), em ordem de rank. Cada locked → componente `LockedTrendTeaser`.
+  - Banner final "AMOSTRA PÚBLICA / PUBLIC SAMPLE" com CTA para `/planos`.
+
+**Novo componente `LockedTrendTeaser`:**
+- Header da trend visível: gauge com score real + título da trend + "TREND N".
+- Corpo: skeleton de 4 blocos (barras `bg-zinc-100/200` em alturas 2.5/3) com `filter: blur-[3px]` + `pointer-events-none` + `select-none` + `aria-hidden`.
+- Overlay centralizado: ícone de cadeado, texto "Conteúdo exclusivo de assinantes" + CTA `/planos`.
+- Bilíngue PT/EN.
+
+**`app/r/[id]/page.tsx` (novo, server component):**
+- `getPublicReport(id)`: query com `.eq('status','published').eq('is_public', true)`. Se não bate → `notFound()`. Garante que só os reports marcados como públicos abrem aqui; paywall não fura.
+- Lê `report.public_unlocked_rank ?? 1`.
+- **Sanitização server-side:** separa `unlocked = trends.filter(t => t.rank === unlockedRank)` e cria `lockedStubs` mapeando as outras trends para `{ rank, title_pt_br, title_en, taime_score }` — **o conteúdo real das trends bloqueadas nunca sai do servidor**. Não dá pra extrair via DevTools / View Source.
+- Passa `trends={unlocked}` (1 item) e `publicUnlock={{ unlockedRank, lockedStubs }}` para `ReportClient`.
+- **NÃO checa auth** — rota pública.
+- `generateMetadata()`: título + descrição extraídos do report; OG image padrão; lang decidido pelo cookie `taime-locale` (EN default para crawlers).
+
+**Proxy / matcher:** verificado — `/r/...` não bate em nenhuma `PROTECTED_PATH` (`['/dashboard', '/reports', '/admin']`), e o matcher do proxy aceita `/r/[id]`. Anônimo entra sem redirect, só locale-detection roda.
+
+### Garantia de não-vazamento
+
+O conteúdo das trends bloqueadas (then_now_next, frameworks, dimensões, recomendações) **não é enviado ao cliente**. O server filtra antes de passar para o ReportClient. O que chega no DOM é apenas `{ rank, title_pt_br, title_en, taime_score }` por stub. View Source / DevTools mostram apenas isso para as bloqueadas.
+
+### Como ativar um report como amostra (manual, pós-SQL)
+```sql
+UPDATE reports
+   SET is_public = true,
+       public_unlocked_rank = 3
+ WHERE id = '<UUID-DO-RELATORIO>';
+```
+Para reverter:
+```sql
+UPDATE reports SET is_public = false WHERE id = '<UUID>';
+```
+
+### O que NÃO foi tocado
+- `app/reports/[id]/page.tsx`: intacto.
+- Branch `isPreview` em `ReportClient.tsx`: intacto. Callers existentes não passam `publicUnlock` e o comportamento é idêntico.
+- `lib/access.ts`, `PROTECTED_PATHS` do proxy, auth gate: intactos.
+- Tabela `reports` schema: só **adição** de colunas (com `IF NOT EXISTS`), nada destrutivo.
+
+---
+
 ## [2026-06-09] — Home: showcase usa relatório diferente do mockup "O que é o TAIME"
 
 ### Status
