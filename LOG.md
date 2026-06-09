@@ -2,6 +2,47 @@
 
 ---
 
+## [2026-06-09] — Home: showcase usa relatório diferente do mockup "O que é o TAIME"
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Mockup e showcase confirmados em reports distintos (`6d19be8e…` vs `bdcca547…`)
+
+### Problema
+Tanto o card "O que é o TAIME" (mockup, usa `firstTrend = topTrends[0]`) quanto a seção "Veja o TAIME em ação" (showcase, adicionada hoje) pegavam **a trend de maior score**. Resultado: duas seções da landing apontando para o mesmo relatório, perdendo a oportunidade de mostrar diversidade.
+
+### Mudança (`app/page.tsx`, definição do `showcase`)
+
+```ts
+// Antes
+const showcase = topTrends.find(tr => { ... }) ?? null
+
+// Depois
+const showcase = topTrends.find((tr, idx) => {
+  if (idx === 0) return false  // pula a trend do mockup (topTrends[0])
+  ...
+}) ?? null
+```
+
+Mockup permanece **inalterado** — `firstTrend = topTrends[0]` continua sendo o de maior score, exatamente como estava. O showcase passa a procurar a partir do índice 1, pegando a próxima trend com dados completos no idioma ativo (`taime_framework.score_dimensions` + `then_now_next` + `reports.period`). Se ninguém além do primeiro tiver dados completos, `showcase` fica `null` e a seção "Veja o TAIME em ação" simplesmente não renderiza (graceful fallback que já existia).
+
+### Distribuição atual
+
+| Seção | Trend | Score | Período |
+|---|---|---|---|
+| **Mockup "O que é o TAIME"** | Corrida Armamentista de IA em Cibersegurança Redefine Superfície de Risco | 89 | 2026-04-16 |
+| **Showcase "Veja o TAIME em ação"** | Ameaças Cibernéticas Contra IA e Nuvem Exigem Postura de Segurança Fundamentada | 88 | 2025-02-16 |
+
+Ambas trends são sobre cibersegurança de IA (`/api/trends/top` traz top 3 absolutos por score), mas agora vêm de **relatórios diferentes**, em períodos diferentes — o visitante consegue inspecionar duas amostras distintas do produto.
+
+### O que NÃO mudou
+- Mockup / `firstTrend` / card "O que é o TAIME": intacto.
+- Estrutura visual do showcase, dados embutidos, locale-awareness: intacto.
+- Comportamento graceful quando nada bate (seção não renderiza): intacto.
+- `/api/trends/top` (continua retornando top 3 por score): intacto.
+
+---
+
 ## [2026-06-09] — `scoreText` permissivo: aceita termos curtos ("IA"/"ML") e hits só no snapshot
 
 ### Status

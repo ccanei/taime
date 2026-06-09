@@ -121,7 +121,11 @@ export default async function LandingPage() {
   // ── Showcase: trend de maior score com dados completos no idioma ativo. ─
   // Fallback: vai descendo a lista até achar uma com framework.score_dimensions
   // + then_now_next + period embedidos. Se nada bater, a seção não renderiza.
-  const showcase = topTrends.find(tr => {
+  // Pula topTrends[0] — essa é a trend usada pelo mockup "O que é o TAIME".
+  // O showcase pega a próxima com dados completos no idioma ativo, para
+  // que o visitante veja DUAS trends diferentes na home.
+  const showcase = topTrends.find((tr, idx) => {
+    if (idx === 0) return false
     const fw  = isEn ? tr.taime_framework_en : tr.taime_framework_pt_br
     const tnn = isEn ? tr.then_now_next_en   : tr.then_now_next_pt_br
     return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next && !!tr.reports?.period
