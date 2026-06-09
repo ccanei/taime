@@ -2,6 +2,46 @@
 
 ---
 
+## [2026-06-09] — Redirect 308 das rotas legadas `/pt` e `/en` para `/` (evita 404 nos indexados)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+
+### Contexto
+Versões anteriores da landing serviam idiomas em rotas separadas (`/pt`, `/en`, e subcaminhos `/pt/about`, `/en/reports/…`). O Google ainda tem essas URLs indexadas. Hoje o site usa i18n por cookie (`taime-locale`) numa única árvore de rotas, então qualquer hit em `/pt` ou `/en` cai em 404 — ruim para SEO e para o usuário que clica no resultado da pesquisa.
+
+### Decisão
+Redirect permanente (HTTP 308) na camada do Next.js. 308 é o sinal certo para o Google atualizar o índice e transferir authority para a URL nova. Catch-all com `:path*` cobre subcaminhos.
+
+**Redirect de domínio (apex `taime.tech` → `www.taime.tech`) continua na Vercel — não tocado.** Aqui é só rota dentro da app.
+
+### Mudança (`taime-web/next.config.mjs`)
+
+```js
+async redirects() {
+  return [
+    { source: '/pt',        destination: '/', permanent: true },
+    { source: '/en',        destination: '/', permanent: true },
+    { source: '/pt/:path*', destination: '/', permanent: true },
+    { source: '/en/:path*', destination: '/', permanent: true },
+  ]
+}
+```
+
+`permanent: true` → 308. Tudo aponta para `/` (home) — o usuário aterrissa na landing atual e o cookie de locale decide o idioma. Optei por não tentar mapear `/pt/reports/<id>` → `/reports/<id>` porque os IDs do banco antigo provavelmente não casam com os atuais, e a home tem busca + dashboard onde o usuário acha o que procura.
+
+### O que NÃO foi tocado
+- `vercel.json` (redirect de apex → www continua na Vercel).
+- Rotas existentes `/sobre`/`/about`, `/contato`, `/privacidade`/`/privacy`, `/termos`/`/terms`: intactas.
+- Sistema de i18n por cookie (`taime-locale`): intacto.
+
+### Validação pós-deploy sugerida
+- `curl -sI https://www.taime.tech/pt` → `HTTP/2 308` + `location: /`
+- `curl -sI https://www.taime.tech/en/about` → `HTTP/2 308` + `location: /`
+- Google Search Console: solicitar reindexação das URLs antigas que ainda aparecerem em "Cobertura → Não encontrada (404)".
+
+---
+
 ## [2026-06-06] — Dashboard: dropdown de período agrupa por mês (sem duplicatas)
 
 ### Status
