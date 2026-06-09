@@ -2,6 +2,64 @@
 
 ---
 
+## [2026-06-09] — Locale auto-detection: EN por padrão, PT para navegadores em português
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] `ƒ Proxy (Middleware)` confirmado no output do build (Next.js 16 usa `proxy.ts` como convenção)
+
+### Contexto
+O default era PT (`detectLocale` retornava `'pt'` quando o cookie estava ausente). Para alcance internacional, EN tem que ser o default — mas brasileiros chegando direto na home não deveriam ter que clicar no seletor para virar PT. Solução clássica: detecta no Accept-Language do navegador na primeira visita, grava cookie, respeita depois.
+
+### Mudanças
+
+**`proxy.ts` (middleware Next 16) — `taime-locale` auto-detection:**
+- Lê o cookie `taime-locale` do request. Se já existe com valor válido (`'pt'` ou `'en'`), respeita e não toca.
+- Se não existe (ou tem valor inválido): lê `accept-language`, pega a primeira preferência (`pt-BR,pt;q=0.9,en-US;q=0.8` → `pt-br`), e se começar com `pt` grava cookie `pt`. Caso contrário grava `en`.
+- Cookie: `path: '/'`, `maxAge: 1 ano`, `sameSite: 'lax'`.
+- Auth gate (`PROTECTED_PATHS = ['/dashboard', '/reports', '/admin']`) ficou **condicional ao path**: `supabase.auth.getUser()` só roda nas protegidas. Antes a auth rodava em toda chamada do matcher; agora rotas públicas têm zero overhead de rede além da leitura de cookie + header.
+- Matcher reescrito para cobrir páginas públicas **sem** custo em assets/api:
+  ```
+  /((?!api/|_next/|favicon\.ico|robots\.txt|sitemap\.xml|.*\.[a-zA-Z0-9]+$).*)
+  ```
+  Bate em `/`, `/sobre`, `/login`, `/dashboard/*`, etc. Pula `/api/*`, `/_next/*`, e qualquer URL com extensão de arquivo (`.png`, `.svg`, `.woff2`, etc.).
+
+**`lib/i18n/index.ts`:**
+```ts
+export function detectLocale(cookieValue: string | undefined): Locale {
+  return cookieValue === 'pt' ? 'pt' : 'en'  // antes: 'en' ? 'en' : 'pt'
+}
+```
+Fallback EN. Como o proxy seta o cookie na primeira visita, esse fallback raramente é exercitado em prática — só pega se o cookie sumiu (DevTools clear) ou veio com valor inválido.
+
+**`lib/useLocale.ts`:** initial state do `useState<Locale>` mudou de `'pt'` para `'en'` para alinhar com o novo default. Evita flash de PT na primeira render em browsers EN (o useEffect lê o cookie depois e ajusta se necessário).
+
+### Fluxo por tipo de usuário
+
+| Cenário | Resultado |
+|---|---|
+| Visitante novo, browser `Accept-Language: pt-BR,...` | Proxy grava cookie `pt` → site em PT |
+| Visitante novo, browser `Accept-Language: en-US,...` | Proxy grava cookie `en` → site em EN |
+| Visitante novo, browser `Accept-Language: es-ES,...` | Proxy grava cookie `en` → site em EN (default) |
+| Visitante recorrente, cookie `taime-locale=pt` | Mantém PT |
+| Usuário trocou no `LanguageSelector` para EN | Cookie `en` persiste, proxy respeita |
+| Crawler do Google sem cookie | Proxy detecta Accept-Language (vazio na maioria) → grava EN. Metadata `<html lang="en">` já está alinhado (mudança anterior). |
+
+### O que NÃO foi tocado
+- Lógica de auth (`PROTECTED_PATHS`, supabase setup, `auth.getUser`, redirect para `/login`): intacta. Só foi **gated por path** para não rodar em público.
+- `LanguageSelector` (cookie + sendBeacon para perfil): intacto.
+- `/api/account/language`: intacto.
+- Metadata do `app/layout.tsx` (já estava EN-default desde 2026-06-04).
+- Tradutoras `getTranslations`, dicionários `pt`/`en`: intactos.
+
+### Validação manual pós-deploy
+- Limpar cookies de `www.taime.tech` no DevTools.
+- Configurar Chrome para preferir EN como primeira língua → recarregar → site em EN.
+- Trocar Chrome para PT → recarregar → site em PT.
+- Após escolher manualmente o oposto no seletor, deve **manter** a escolha mesmo após reload.
+
+---
+
 ## [2026-06-09] — Home: busca instantânea igualada ao Dashboard + seção "Veja o TAIME em ação" com exemplo real
 
 ### Status

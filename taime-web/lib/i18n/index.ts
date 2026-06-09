@@ -19,5 +19,9 @@ export function getTranslations(locale: Locale): Translations {
 }
 
 export function detectLocale(cookieValue: string | undefined): Locale {
-  return cookieValue === 'en' ? 'en' : 'pt'
+  // EN é o padrão internacional. O proxy.ts decide PT vs EN na primeira
+  // visita (via Accept-Language) e grava o cookie; quando aqui chegamos,
+  // o cookie já existe. O fallback EN só pega se o cookie sumiu ou veio
+  // com valor inválido.
+  return cookieValue === 'pt' ? 'pt' : 'en'
 }
