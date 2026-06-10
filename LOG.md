@@ -2,6 +2,86 @@
 
 ---
 
+## [2026-06-10] — Home Fase 1: redesign visual (hero escuro + mockup de produto, cards de benefício, passos com ícones, banner final)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Copy nova do hero ("Você precisa decidir...") preservada
+- [x] Tailwind palette `taime` estendida: shades 200/300/400/500 adicionadas
+- [x] Sem novas libs; SVGs inline; texturas via `bg-gradient` e `radial-gradient`
+
+### Contexto
+Fase visual seguindo a reescrita narrativa de ontem. O hero estava com fundo claro, palette zinc, sem produto à vista. Não havia razão visual para clicar. Aqui: hero escuro navy com mockup do produto à direita (dados reais), nova seção "Veja o que você recebe" com 4 cards de benefício, restyling da seção "Como funciona" (ícones circulares numerados + setas), e banner final escuro com CTA de conversão.
+
+### Mudanças
+
+**`tailwind.config.ts`:** adicionadas as shades intermediárias `taime-200/300/400/500` à palette `taime`. As shades existentes (50/100/600/700/900) intactas. Sem isso, classes `bg-taime-500`, `text-taime-400` etc. ficariam silenciosamente sem efeito.
+
+**`app/page.tsx` — preparação de dados:**
+- Novos `heroDims` (`[label, value][]`) com 4 dimensões REAIS do `firstTrend.taime_framework.score_dimensions`: Pressão Competitiva, Impacto Estratégico, Risco de Atraso, Maturidade.
+- Novo `heroMove`: `firstTrend.taime_framework.move` recortado em 14 palavras (1 linha compacta).
+- Fallbacks bilíngues quando o trend não tem framework.
+
+**Hero (Seção 1) — totalmente redesenhado:**
+- Fundo `bg-taime-900` com textura sutil de pontos (`radial-gradient` inline em opacity-[0.08]) + glow azul `bg-taime-600/30 blur-3xl` no canto superior direito.
+- Layout 2 colunas (`lg:grid-cols-2`):
+  - **Esquerda:** badge "Sinais globais · Inteligência executiva · Desde 2000" com dot animado + h1 branco com 3 linhas (a última, "O TAIME lê por você." / "TAIME reads it for you.", em `text-taime-400`) + `heroBody` em `text-white/70` + 2 CTAs lado a lado:
+    1. Primário **azul preenchido** (`bg-taime-500 hover:bg-taime-400`, sombra azul): "Criar conta gratuita →" (atual rota).
+    2. Secundário **outline branco** (`border-white/20 hover:bg-white/10`): "Ver um relatório exemplo ▶" com ícone de play, linkando para `/r/${PUBLIC_SAMPLE_REPORT_ID}`.
+  - Micro-texto `text-white/50`: "Grátis: 2 relatórios completos por mês. Sem cartão."
+  - **Direita:** mockup de produto construído em HTML/Tailwind (sem imagem), exibindo:
+    - Chrome de janela: 3 dots coloridos + barra com URL `taime.tech/dashboard`.
+    - Sidebar (escondida em mobile): logo TAIME + 4 itens de nav (Dashboard, Relatórios [ativo, com bg `bg-taime-500/15` e texto `text-taime-300`], Advisor, Conta).
+    - Main:
+      - Label "RELATÓRIO EXECUTIVO" + título REAL do `firstTrend` (line-clamp-2).
+      - "DIMENSÕES DE SCORE" + grade 2×2 com 4 mini-cards: cada um mostra label, número grande colorido (verde/âmbar/laranja por threshold), e barra de progresso. Os números são REAIS, vindos de `score_dimensions`.
+      - "MOVIMENTO RECOMENDADO" em bloco destacado `bg-taime-500/10 border-taime-500/30` com 1 linha REAL do framework.
+      - "THEN · NOW · NEXT" em grade 3 colunas com excerto real de cada janela temporal.
+    - **Score gauge flutuante** absoluto (`-top-3 -right-3`): badge azul circular com o `mockupScore` real + label "SCORE".
+- No mobile, o mockup empilha abaixo do texto.
+
+**Nova Seção 1b — "Veja o que você recebe":**
+- Logo após o hero, fundo claro, padding `py-20`.
+- Título bilíngue, grid `sm:grid-cols-2 lg:grid-cols-4`.
+- 4 cards, cada um com ícone SVG inline em `w-10 h-10 bg-taime-50` + título + descrição. Conteúdo:
+  1. Score Estratégico (target SVG) — Strategic Score
+  2. Movimento Recomendado (compass SVG)
+  3. Riscos Competitivos (shield SVG)
+  4. Plano de Ação (clipboard-check SVG) com badge pequeno "EM BREVE" / "SOON" em `bg-taime-50 text-taime-600`.
+
+**Seção 4 (Como funciona) — restyling visual:**
+- Badge numerado virou círculo `w-12 h-12 rounded-2xl bg-taime-500 text-white ring-4 ring-white` em vez do número gigante zinc-100 antigo.
+- O número usa apenas o dígito (sem zero à esquerda).
+- Adicionadas setas chevron-right entre os passos no desktop (`lg:flex absolute top-6 -right-2`).
+- Copy dos 4 passos (Pergunte / Veja o resumo da época / Entenda a trajetória / Decida com clareza) e o `howAdvisorNote`: **mantidos**.
+
+**Novo Banner final escuro (antes do `<Footer />`):**
+- Mesmo padrão visual do hero: `bg-taime-900` + textura de pontos + glow azul (agora bottom-left).
+- Centrado: h2 grande branco ("Comece gratuitamente e veja o valor na prática." / "Start free and see the value in practice."), parágrafo `text-white/70`, CTA azul (`bg-taime-500`), micro-texto "Não é necessário cartão de crédito." / "No credit card required."
+- O CTA leva para `/dashboard` (logado) ou `/login` (anônimo).
+
+### O que NÃO mudou
+- Seções 2 (Pains), 3 (O que é), 5 (Showcase), 6 (Para quem), 7 (Memória 25 anos), 8 (Relatórios recentes), 9 (Categorias), 10 (Trends/HomeSearch), 11 (Timeline), 12 (FAQ), 13 (Planos), RadarFeed, Navbar, Footer: **zero alteração**.
+- i18n PT/EN do hero/howSteps/howAdvisorNote: mantidos da reescrita anterior.
+- Componentes visuais (`ScoreGauge`, `ScoreDimensionsPanel`, `ThenNowNextPanel`): intactos.
+
+### Veracidade dos dados no mockup
+Tudo no painel à direita do hero vem de `topTrends[0]` (a trend de maior score real, hoje a de Cibersegurança/IA score 89):
+- `mockupTitle` ← `firstTrend.title_pt_br/en`
+- 4 valores em `heroDims` ← `firstTrend.taime_framework.score_dimensions.{competitive_pressure,strategic_impact,competitive_lag_risk,market_maturity}.score`
+- `heroMove` ← `firstTrend.taime_framework.move` (recortado em 14 palavras)
+- THEN/NOW/NEXT ← `firstTrend.then_now_next.{then,now,next}` (recortado em 6 palavras cada)
+- Score gauge ← `firstTrend.taime_score`
+
+Fallbacks bilíngues neutros foram mantidos como rede de segurança para casos onde o trend pode não ter framework, mas em produção atual TODOS os campos têm dados reais. Nenhum dado inventado.
+
+### O que sobrou para Fase 2 (futuro)
+- Recolorir secções claras intermediárias para "respirar" o ritmo claro/escuro/claro do design system.
+- Trocar emoji da seção "Categorias" por ícones SVG.
+- Eventualmente reposicionar/condensar seções (memória + timeline são meio redundantes hoje).
+
+---
+
 ## [2026-06-10] — Home: narrativa focada em outcome (hero novo, jornada de 4 passos, showcase reconectado à amostra pública)
 
 ### Status

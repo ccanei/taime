@@ -22,6 +22,10 @@ const config: Config = {
         taime: {
           50:  '#f0f4ff',
           100: '#dce7ff',
+          200: '#c5d6ff',
+          300: '#93b0ff',
+          400: '#5479ff',
+          500: '#2f5cf5',
           600: '#1D4ED8',
           700: '#1e40af',
           900: '#0f1a3d',

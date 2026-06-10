@@ -188,34 +188,291 @@ export default async function LandingPage() {
         { label: 'NEXT', val: isEn ? 'Market standard'       : 'Padrão de mercado' },
       ]
 
+  // 4 mini-cards de dimensão para o mockup do hero (dados reais quando há)
+  const heroDimLabels = isEn
+    ? { cp: 'Competitive Pressure', si: 'Strategic Impact', lr: 'Lag Risk',           mm: 'Market Maturity' }
+    : { cp: 'Pressão Competitiva',  si: 'Impacto Estratégico', lr: 'Risco de Atraso', mm: 'Maturidade' }
+
+  const heroDims: [string, number][] = fwMockup?.score_dimensions
+    ? [
+        [heroDimLabels.cp, fwMockup.score_dimensions.competitive_pressure.score],
+        [heroDimLabels.si, fwMockup.score_dimensions.strategic_impact.score],
+        [heroDimLabels.lr, fwMockup.score_dimensions.competitive_lag_risk.score],
+        [heroDimLabels.mm, fwMockup.score_dimensions.market_maturity.score],
+      ]
+    : [
+        [heroDimLabels.cp, 87],
+        [heroDimLabels.si, 92],
+        [heroDimLabels.lr, 84],
+        [heroDimLabels.mm, 79],
+      ]
+
+  // Movimento recomendado: 1 frase compacta do framework real
+  const heroMove = fwMockup?.move
+    ? firstWords(fwMockup.move, 14)
+    : (isEn
+        ? 'Appoint a PM with a 90-day mandate to deploy production agents.'
+        : 'Nomeie um PM com mandato de 90 dias para colocar agentes em produção.')
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
 
-      {/* ── SEÇÃO 1: HERO ─────────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-6 pt-24 pb-20">
-        <div className="max-w-3xl">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold
-                           bg-taime-50 text-taime-600 ring-1 ring-taime-100 mb-8">
-            {h.badge}
-          </span>
+      {/* ── SEÇÃO 1: HERO ESCURO COM MOCKUP DE PRODUTO ─────────────────── */}
+      <section className="relative bg-taime-900 overflow-hidden">
+        {/* Textura sutil de pontos */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 opacity-[0.08] pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+            backgroundSize: '24px 24px',
+          }}
+        />
+        {/* Glow azul no topo direito */}
+        <div
+          aria-hidden="true"
+          className="absolute -top-32 -right-32 w-[420px] h-[420px] rounded-full
+                     bg-taime-600/30 blur-3xl pointer-events-none"
+        />
 
-          <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-zinc-900 leading-[1.08] mb-6">
-            {h.hero[0]}<br />
-            <span className="text-taime-600">{h.hero[1]}</span><br />
-            {h.hero[2]}
-          </h1>
+        <div className="relative max-w-7xl mx-auto px-6 pt-20 pb-24 lg:py-28">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            {/* ── Coluna esquerda: copy + CTAs ─────────────────────────── */}
+            <div>
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold
+                               bg-taime-700/40 text-taime-200 ring-1 ring-taime-700 backdrop-blur-sm mb-8">
+                <span className="w-1.5 h-1.5 rounded-full bg-taime-300" />
+                {h.badge}
+              </span>
 
-          <p className="text-xl text-zinc-500 leading-relaxed mb-10 max-w-2xl">{h.heroBody}</p>
+              <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold tracking-tight text-white leading-[1.08] mb-6">
+                {h.hero[0]}<br />
+                {h.hero[1]}<br />
+                <span className="text-taime-400">{h.hero[2]}</span>
+              </h1>
 
-          <div className="flex flex-col items-start gap-3">
-            <Link
-              href={isLoggedIn ? '/dashboard' : '/login'}
-              className="btn-primary text-base px-7 py-3"
-            >
-              {h.ctaPrimary}
-            </Link>
-            <p className="text-xs text-zinc-500 font-medium">{h.heroSub}</p>
+              <p className="text-lg text-white/70 leading-relaxed mb-10 max-w-xl">{h.heroBody}</p>
+
+              <div className="flex flex-col sm:flex-row gap-3 mb-5">
+                <Link
+                  href={isLoggedIn ? '/dashboard' : '/login'}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg
+                             bg-taime-500 text-white text-sm font-semibold
+                             hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
+                >
+                  {h.ctaPrimary}
+                </Link>
+                <Link
+                  href={`/r/${PUBLIC_SAMPLE_REPORT_ID}`}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg
+                             text-white text-sm font-semibold border border-white/20
+                             hover:bg-white/10 transition-colors"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  {isEn ? 'See a sample report' : 'Ver um relatório exemplo'}
+                </Link>
+              </div>
+              <p className="text-xs text-white/50 font-medium">{h.heroSub}</p>
+            </div>
+
+            {/* ── Coluna direita: mockup do produto ─────────────────────── */}
+            <div className="relative lg:pl-4">
+              <div className="rounded-2xl bg-zinc-900 border border-zinc-700/80 shadow-2xl overflow-hidden
+                              ring-1 ring-white/5">
+                {/* Chrome de janela */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-700/80 bg-zinc-900">
+                  <div className="flex gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/70" />
+                  </div>
+                  <p className="ml-auto text-[10px] text-zinc-500 font-mono">taime.tech/dashboard</p>
+                </div>
+
+                <div className="flex">
+                  {/* Sidebar */}
+                  <aside className="w-32 sm:w-36 shrink-0 border-r border-zinc-800 bg-zinc-950/40
+                                    py-4 px-3 hidden sm:block">
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-3 px-1">TAIME</p>
+                    {[
+                      { label: isEn ? 'Dashboard' : 'Dashboard', active: false },
+                      { label: isEn ? 'Reports'   : 'Relatórios', active: true  },
+                      { label: 'Advisor',           active: false },
+                      { label: isEn ? 'Account'   : 'Conta',      active: false },
+                    ].map(it => (
+                      <div
+                        key={it.label}
+                        className={`text-[11px] py-1.5 px-2 rounded mb-0.5
+                          ${it.active
+                            ? 'bg-taime-500/15 text-taime-300 font-semibold'
+                            : 'text-zinc-400'}`}
+                      >
+                        {it.label}
+                      </div>
+                    ))}
+                  </aside>
+
+                  {/* Main */}
+                  <div className="flex-1 p-4 sm:p-5 min-w-0">
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
+                      {isEn ? 'EXECUTIVE REPORT' : 'RELATÓRIO EXECUTIVO'}
+                    </p>
+                    <h3 className="text-sm font-bold text-white leading-snug mb-4 line-clamp-2">
+                      {mockupTitle}
+                    </h3>
+
+                    {/* Score dimensions — 4 mini-cards */}
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
+                      {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {heroDims.map(([label, val]) => (
+                        <div key={label} className="rounded-lg bg-zinc-800/60 border border-zinc-700/50 p-2.5">
+                          <p className="text-[8px] text-zinc-400 tracking-wide uppercase leading-tight mb-1.5
+                                        line-clamp-1">{label}</p>
+                          <div className="flex items-baseline gap-2">
+                            <span className={`text-lg font-bold tabular-nums leading-none
+                              ${val >= 80 ? 'text-emerald-400'
+                                : val >= 60 ? 'text-amber-400'
+                                : 'text-orange-400'}`}>
+                              {val}
+                            </span>
+                            <div className="flex-1 h-1 rounded-full bg-zinc-700 overflow-hidden">
+                              <div
+                                className={`h-full ${val >= 80 ? 'bg-emerald-400' : val >= 60 ? 'bg-amber-400' : 'bg-orange-400'}`}
+                                style={{ width: `${val}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Movimento recomendado */}
+                    <div className="rounded-lg bg-taime-500/10 border border-taime-500/30 p-3 mb-4">
+                      <p className="text-[9px] font-bold tracking-widest text-taime-300 mb-1.5">
+                        {isEn ? 'RECOMMENDED MOVE' : 'MOVIMENTO RECOMENDADO'}
+                      </p>
+                      <p className="text-[11px] text-white/90 leading-snug line-clamp-2">{heroMove}</p>
+                    </div>
+
+                    {/* Then · Now · Next */}
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
+                      THEN · NOW · NEXT
+                    </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {mockupTnn.map(({ label, val }) => (
+                        <div key={label} className="rounded-md bg-zinc-800/40 border border-zinc-700/50 p-2">
+                          <p className="text-[8px] font-bold tracking-widest text-zinc-500 mb-1">{label}</p>
+                          <p className="text-[10px] text-white/80 leading-tight line-clamp-3">{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* Score gauge flutuante */}
+              <div className="absolute -top-3 -right-3 sm:-right-5 w-16 h-16 rounded-2xl
+                              bg-taime-500 text-white shadow-xl shadow-taime-500/30
+                              flex flex-col items-center justify-center
+                              ring-4 ring-taime-900">
+                <span className="text-2xl font-bold leading-none">{mockupScore}</span>
+                <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SEÇÃO 1b: VEJA O QUE VOCÊ RECEBE ──────────────────────────── */}
+      <section className="border-t border-zinc-100 py-20">
+        <div className="max-w-5xl mx-auto px-6">
+          <p className="section-label mb-3">{isEn ? 'What you get' : 'O que você recebe'}</p>
+          <h2 className="text-3xl font-bold text-zinc-900 mb-10 max-w-2xl leading-snug">
+            {isEn ? 'See what you get with TAIME' : 'Veja o que você recebe com o TAIME'}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
+                  </svg>
+                ),
+                title: isEn ? 'Strategic Score' : 'Score Estratégico',
+                desc:  isEn
+                  ? 'Understand maturity, competitive pressure, impact and risk for each technology trend.'
+                  : 'Entenda a maturidade, pressão competitiva, impacto e risco de cada tendência tecnológica.',
+                soon: false,
+              },
+              {
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                  </svg>
+                ),
+                title: isEn ? 'Recommended Move' : 'Movimento Recomendado',
+                desc:  isEn
+                  ? 'Know the next step for your organization based on the TAIME framework.'
+                  : 'Saiba o próximo passo para sua organização com base no framework TAIME.',
+                soon: false,
+              },
+              {
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                ),
+                title: isEn ? 'Competitive Risks' : 'Riscos Competitivos',
+                desc:  isEn
+                  ? 'Spot threats, windows of opportunity and the cost of not acting in time.'
+                  : 'Identifique ameaças, janelas de oportunidade e o custo de não agir a tempo.',
+                soon: false,
+              },
+              {
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8"  y1="2" x2="8"  y2="6" />
+                    <line x1="3"  y1="10" x2="21" y2="10" />
+                    <path d="M9 16l2 2 4-4" />
+                  </svg>
+                ),
+                title: isEn ? 'Action Plan' : 'Plano de Ação',
+                desc:  isEn
+                  ? 'Coming soon with the Executive Advisor: turn insights into a roadmap with priorities.'
+                  : 'Em breve com o Executive Advisor: transforme insights em um roadmap com prioridades.',
+                soon: true,
+              },
+            ].map(({ icon, title, desc, soon }) => (
+              <div key={title} className="bg-white rounded-xl border border-zinc-200 p-6
+                                          hover:border-taime-200 hover:shadow-sm transition-all">
+                <div className="w-10 h-10 rounded-xl bg-taime-50 text-taime-600
+                                flex items-center justify-center mb-4">
+                  {icon}
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-base font-bold text-zinc-900">{title}</h3>
+                  {soon && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide
+                                     bg-taime-50 text-taime-600 border border-taime-100">
+                      {isEn ? 'SOON' : 'EM BREVE'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -334,17 +591,39 @@ export default async function LandingPage() {
       <section id="como-funciona" className="bg-zinc-50 border-t border-zinc-100 py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.howLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-12">{h.howTitle}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {h.howSteps.map(({ num, title, desc }) => (
-              <div key={num}>
-                <div className="text-5xl font-bold text-zinc-100 tabular-nums mb-4 leading-none select-none">{num}</div>
-                <h3 className="text-lg font-bold text-zinc-900 mb-2">{title}</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
+          <h2 className="text-3xl font-bold text-zinc-900 mb-14">{h.howTitle}</h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-2 relative">
+            {h.howSteps.map(({ num, title, desc }, i) => (
+              <div key={num} className="relative">
+                {/* Conteúdo do passo */}
+                <div className="lg:px-3">
+                  <div className="relative inline-flex w-12 h-12 rounded-2xl
+                                  bg-taime-500 text-white items-center justify-center
+                                  shadow-lg shadow-taime-500/20 mb-5
+                                  ring-4 ring-white">
+                    <span className="text-base font-bold tabular-nums">{num.replace(/^0/, '')}</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-zinc-900 mb-2">{title}</h3>
+                  <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
+                </div>
+
+                {/* Seta entre passos (só desktop, exceto no último) */}
+                {i < h.howSteps.length - 1 && (
+                  <div aria-hidden="true"
+                       className="hidden lg:flex absolute top-6 -right-2 items-center justify-center
+                                  text-taime-300">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <p className="mt-12 text-sm text-zinc-600 leading-relaxed max-w-3xl border-l-2 border-taime-200 pl-4 italic">
+
+          <p className="mt-14 text-sm text-zinc-600 leading-relaxed max-w-3xl border-l-2 border-taime-200 pl-4 italic">
             {h.howAdvisorNote}
           </p>
         </div>
@@ -606,6 +885,46 @@ export default async function LandingPage() {
             ))}
           </div>
           <p className="text-center text-xs text-zinc-400">{h.plansNote}</p>
+        </div>
+      </section>
+
+      {/* ── BANNER FINAL ESCURO (CTA) ────────────────────────────────── */}
+      <section className="relative bg-taime-900 overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 opacity-[0.08] pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+            backgroundSize: '24px 24px',
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-32 -left-32 w-[420px] h-[420px] rounded-full
+                     bg-taime-600/30 blur-3xl pointer-events-none"
+        />
+        <div className="relative max-w-4xl mx-auto px-6 py-24 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white leading-snug mb-4">
+            {isEn
+              ? 'Start free and see the value in practice.'
+              : 'Comece gratuitamente e veja o valor na prática.'}
+          </h2>
+          <p className="text-lg text-white/70 leading-relaxed max-w-2xl mx-auto mb-10">
+            {isEn
+              ? 'Access full reports and discover how TAIME can transform your strategic decisions.'
+              : 'Acesse relatórios completos e descubra como o TAIME pode transformar suas decisões estratégicas.'}
+          </p>
+          <Link
+            href={isLoggedIn ? '/dashboard' : '/login'}
+            className="inline-flex items-center gap-2 px-7 py-3 rounded-lg
+                       bg-taime-500 text-white text-sm font-semibold
+                       hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
+          >
+            {h.ctaPrimary}
+          </Link>
+          <p className="mt-5 text-xs text-white/50 font-medium">
+            {isEn ? 'No credit card required.' : 'Não é necessário cartão de crédito.'}
+          </p>
         </div>
       </section>
 
