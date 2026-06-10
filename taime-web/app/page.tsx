@@ -9,28 +9,12 @@ export const metadata: Metadata = {
   },
 }
 import { getTranslations, detectLocale } from '@/lib/i18n'
-import { formatPeriod, scoreColor } from '@/lib/types'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import Navbar from '@/components/Navbar'
-import FaqAccordion from '@/components/FaqAccordion'
-import RadarFeed from '@/components/RadarFeed'
 import Footer from '@/components/Footer'
 import HomeSearch from '@/components/HomeSearch'
-import { ScoreGauge, ScoreDimensionsPanel, ThenNowNextPanel } from '@/components/ReportVisuals'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface LandingReport {
-  id: string
-  period: string
-  period_label: string | null
-  period_type:  string | null
-  title_pt_br: string
-  title_en: string
-  executive_summary_pt_br: string
-  executive_summary_en: string
-  published_at: string
-}
 
 interface TopTrend {
   id: string
@@ -47,6 +31,15 @@ interface TopTrend {
   reports:               { period: string } | null
 }
 
+interface RadarBriefing {
+  id:             string
+  briefing_date:  string
+  title_pt:       string
+  title_en:       string | null
+  body_pt:        string | null
+  body_en:        string | null
+}
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
@@ -56,18 +49,32 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 // para /login, abre direto a amostra (resumo completo + 1 trend liberada).
 const PUBLIC_SAMPLE_REPORT_ID = '48c29bb6-6dee-46a1-987b-bb08bd775ab0'
 
-async function getLatestReports(): Promise<LandingReport[]> {
-  try {
-    const res = await fetch(`${SITE_URL}/api/reports/latest`, { cache: 'no-store' })
-    return await res.json()
-  } catch { return [] }
-}
-
 async function getTopTrends(): Promise<TopTrend[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/trends/top`, { cache: 'no-store' })
     return await res.json()
   } catch { return [] }
+}
+
+async function getLatestBriefing(): Promise<RadarBriefing | null> {
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '')
+    .replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY
+    ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+  if (!supabaseUrl || !supabaseKey) return null
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/radar_briefings?order=briefing_date.desc&limit=1` +
+        `&select=id,briefing_date,title_pt,title_en,body_pt,body_en`,
+      {
+        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+        next:    { revalidate: 60 * 30 }, // ISR 30 min
+      },
+    )
+    if (!res.ok) return null
+    const rows = await res.json() as RadarBriefing[]
+    return rows[0] ?? null
+  } catch { return null }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -88,20 +95,6 @@ function stripPeriodLabel(text: string | null | undefined): string {
   return text
 }
 
-function scoreBadgeLabel(score: number, isEn: boolean): string {
-  if (score >= 80) return isEn ? 'Executive Priority'  : 'Prioridade Executiva'
-  if (score >= 60) return isEn ? 'High Relevance'      : 'Alta Relevância'
-  if (score >= 40) return isEn ? 'Active Monitoring'   : 'Monitoramento Ativo'
-  return isEn ? 'Early Signal' : 'Sinal Inicial'
-}
-
-function scoreRingCls(score: number): string {
-  if (score >= 85) return 'ring-emerald-200 bg-emerald-50'
-  if (score >= 70) return 'ring-taime-200 bg-taime-50'
-  if (score >= 50) return 'ring-amber-200 bg-amber-50'
-  return 'ring-zinc-200 bg-zinc-50'
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function LandingPage() {
@@ -118,10 +111,8 @@ export default async function LandingPage() {
     isLoggedIn = false
   }
 
-  const [reports, topTrends] = await Promise.all([getLatestReports(), getTopTrends()])
-  const report      = reports[0] ?? null
-  const isEn        = locale === 'en'
-  const lang        = isEn ? 'en' : 'pt-BR'
+  const [topTrends, latestBriefing] = await Promise.all([getTopTrends(), getLatestBriefing()])
+  const isEn = locale === 'en'
 
   // ── Showcase: trend de maior score com dados completos no idioma ativo. ─
   // Fallback: vai descendo a lista até achar uma com framework.score_dimensions
@@ -213,38 +204,6 @@ export default async function LandingPage() {
     : (isEn
         ? 'Appoint a PM with a 90-day mandate to deploy production agents.'
         : 'Nomeie um PM com mandato de 90 dias para colocar agentes em produção.')
-
-  // ── Terceira trend para a seção "O que é o TAIME" ──────────────────────────
-  // Distinta da do hero (topTrends[0]) E da do showcase. Se nenhuma sobrar com
-  // dados completos, degrada para o showcase ou para a do hero.
-  const whatIsTrend = topTrends.find((tr, idx) => {
-    if (idx === 0) return false                                    // hero
-    if (showcase && tr.id === showcase.id) return false            // showcase
-    const fw  = isEn ? tr.taime_framework_en : tr.taime_framework_pt_br
-    const tnn = isEn ? tr.then_now_next_en   : tr.then_now_next_pt_br
-    return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next
-  }) ?? showcase ?? firstTrend
-
-  const whatIsFw    = whatIsTrend ? (isEn ? whatIsTrend.taime_framework_en : whatIsTrend.taime_framework_pt_br) : null
-  const whatIsTitle = whatIsTrend ? (isEn ? whatIsTrend.title_en           : whatIsTrend.title_pt_br) : ''
-  const whatIsScore = whatIsTrend?.taime_score ?? 0
-
-  const whatIsDims: [string, number][] = whatIsFw?.score_dimensions
-    ? [
-        [heroDimLabels.cp, whatIsFw.score_dimensions.competitive_pressure.score],
-        [heroDimLabels.si, whatIsFw.score_dimensions.strategic_impact.score],
-        [heroDimLabels.lr, whatIsFw.score_dimensions.competitive_lag_risk.score],
-        [heroDimLabels.mm, whatIsFw.score_dimensions.market_maturity.score],
-      ]
-    : []
-
-  const whatIsMove = whatIsFw?.move
-    ? firstWords(whatIsFw.move, 16)
-    : ''
-
-  const whatIsHref = whatIsTrend
-    ? (isLoggedIn ? `/reports/${whatIsTrend.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`)
-    : '/login'
 
   return (
     <div className="min-h-screen bg-white">
@@ -639,123 +598,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 3: O QUE É ──────────────────────────────────────────── */}
-      <section className="py-24">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div>
-              <p className="section-label mb-3">{h.whatLabel}</p>
-              <h2 className="text-3xl font-bold text-zinc-900 mb-6 leading-snug">
-                {h.whatTitle.split('\n').map((line, i) => (
-                  <span key={i}>{line}{i < h.whatTitle.split('\n').length - 1 && <br />}</span>
-                ))}
-              </h2>
-              <p className="text-zinc-500 text-base leading-relaxed mb-6">{h.whatBody}</p>
-              <ul className="space-y-3">
-                {h.whatPoints.map((item, i) => (
-                  <li key={i} className="flex items-start gap-3 text-sm text-zinc-700">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-taime-50 text-taime-600
-                                     flex items-center justify-center mt-0.5">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" strokeWidth="3"
-                           strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 13l4 4L19 7" />
-                      </svg>
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Card escuro estilo "produto" — terceira trend distinta */}
-            {whatIsTrend && whatIsDims.length > 0 && (
-              <Link
-                href={whatIsHref}
-                className="relative block group"
-              >
-                <div className="rounded-2xl bg-taime-900 border border-zinc-700/40
-                                shadow-2xl overflow-hidden ring-1 ring-white/5
-                                p-6 sm:p-7
-                                hover:ring-taime-500/40 transition-all">
-                  {/* Texture sutil */}
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 opacity-[0.06] pointer-events-none"
-                    style={{
-                      backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-                      backgroundSize: '20px 20px',
-                    }}
-                  />
-
-                  <div className="relative">
-                    {/* Header com label + título */}
-                    <p className="text-[10px] font-bold tracking-widest text-taime-300 mb-3">
-                      {isEn ? 'TAIME · EXECUTIVE REPORT' : 'TAIME · RELATÓRIO EXECUTIVO'}
-                    </p>
-                    <h3 className="text-base sm:text-lg font-bold text-white leading-snug
-                                   mb-6 line-clamp-3 pr-20">
-                      {whatIsTitle}
-                    </h3>
-
-                    {/* Score gauge flutuante */}
-                    <div className="absolute -top-1 right-0 w-16 h-16 rounded-2xl
-                                    bg-taime-500 text-white
-                                    flex flex-col items-center justify-center
-                                    ring-4 ring-taime-900 shadow-lg shadow-taime-500/30">
-                      <span className="text-2xl font-bold leading-none">{whatIsScore}</span>
-                      <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
-                    </div>
-
-                    {/* 4 dimensões reais */}
-                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
-                      {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
-                    </p>
-                    <div className="grid grid-cols-2 gap-2 mb-5">
-                      {whatIsDims.map(([label, val]) => (
-                        <div key={label} className="rounded-lg bg-white/[0.04] border border-white/10 p-2.5">
-                          <p className="text-[8px] text-zinc-400 tracking-wide uppercase leading-tight mb-1.5
-                                        line-clamp-1">{label}</p>
-                          <div className="flex items-baseline gap-2">
-                            <span className={`text-base font-bold tabular-nums leading-none
-                              ${val >= 80 ? 'text-emerald-400'
-                                : val >= 60 ? 'text-amber-400'
-                                : 'text-orange-400'}`}>
-                              {val}
-                            </span>
-                            <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                              <div
-                                className={`h-full ${val >= 80 ? 'bg-emerald-400' : val >= 60 ? 'bg-amber-400' : 'bg-orange-400'}`}
-                                style={{ width: `${val}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Movimento recomendado real */}
-                    {whatIsMove && (
-                      <div className="rounded-lg bg-taime-500/10 border border-taime-500/30 p-3 mb-4">
-                        <p className="text-[9px] font-bold tracking-widest text-taime-300 mb-1.5">
-                          {isEn ? 'RECOMMENDED MOVE' : 'MOVIMENTO RECOMENDADO'}
-                        </p>
-                        <p className="text-xs text-white/90 leading-snug">{whatIsMove}</p>
-                      </div>
-                    )}
-
-                    <p className="text-xs font-semibold text-taime-300 group-hover:text-taime-200 transition-colors">
-                      {isEn ? 'Read the full analysis →' : 'Ler a análise completa →'}
-                    </p>
-                  </div>
-                </div>
-              </Link>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SEÇÃO 4: COMO FUNCIONA (4 passos) ──────────────────────────── */}
+      {/* ── SEÇÃO 3: COMO FUNCIONA (4 passos) ──────────────────────────── */}
       <section id="como-funciona" className="bg-zinc-50 border-t border-zinc-100 py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.howLabel}</p>
@@ -797,9 +640,9 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 5: É ASSIM QUE A RESPOSTA SE PARECE (showcase) ──────── */}
+      {/* ── SEÇÃO 4: É ASSIM QUE A RESPOSTA SE PARECE (showcase) ──────── */}
       {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
-        <section className="py-24 border-t border-zinc-100">
+        <section className="py-24 border-t border-zinc-100 bg-white">
           <div className="max-w-5xl mx-auto px-6">
             <p className="section-label mb-3">
               {isEn ? 'This is what the answer looks like' : 'É assim que a resposta se parece'}
@@ -813,162 +656,119 @@ export default async function LandingPage() {
                 : 'Clique e leia a análise completa: esta é aberta para você experimentar.'}
             </p>
 
-            <Link
-              href={showcaseHref}
-              className="block rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8
-                         hover:border-taime-200 hover:shadow-sm transition-all group"
-            >
-              {/* Título + gauge */}
-              <div className="flex items-start gap-5 mb-6">
-                <ScoreGauge score={showcase.taime_score} />
-                <div className="flex-1 min-w-0 pt-1">
-                  <p className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mb-2">
-                    {isEn ? 'Featured trend' : 'Tendência em destaque'}
+            <Link href={showcaseHref} className="relative block group">
+              <div className="relative rounded-2xl bg-taime-900 border border-zinc-700/40
+                              shadow-2xl overflow-hidden ring-1 ring-white/5
+                              hover:ring-taime-500/40 transition-all">
+                {/* Textura sutil */}
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 opacity-[0.06] pointer-events-none"
+                  style={{
+                    backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                    backgroundSize: '20px 20px',
+                  }}
+                />
+
+                {/* Header tipo "tab" */}
+                <div className="relative flex items-center gap-3 px-6 py-4 border-b border-white/5">
+                  <p className="text-[10px] font-bold tracking-widest text-taime-300">
+                    {isEn ? 'TAIME · EXECUTIVE REPORT' : 'TAIME · RELATÓRIO EXECUTIVO'}
                   </p>
-                  <h3 className="text-lg sm:text-xl font-bold text-zinc-900 leading-snug
-                                 group-hover:text-taime-700 transition-colors">
-                    {showcaseTitle}
-                  </h3>
+                  <p className="ml-auto text-[10px] text-white/40 font-mono">
+                    {showcase.reports.period}
+                  </p>
+                </div>
+
+                <div className="relative p-6 sm:p-8">
+                  {/* Título + gauge flutuante */}
+                  <div className="flex items-start gap-5 mb-7">
+                    <div className="w-16 h-16 rounded-2xl bg-taime-500 text-white
+                                    flex flex-col items-center justify-center shrink-0
+                                    ring-4 ring-taime-900 shadow-lg shadow-taime-500/30">
+                      <span className="text-2xl font-bold leading-none">{showcase.taime_score}</span>
+                      <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
+                    </div>
+                    <h3 className="flex-1 min-w-0 text-lg sm:text-xl font-bold text-white leading-snug
+                                   group-hover:text-taime-200 transition-colors pt-1">
+                      {showcaseTitle}
+                    </h3>
+                  </div>
+
+                  {/* 5 dimensões — versão dark */}
+                  <div className="mb-7">
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-3">
+                      {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {(() => {
+                        const dims = showcaseFw.score_dimensions!
+                        return (Object.keys(dims) as Array<keyof typeof dims>).map(key => {
+                          const dim = dims[key]
+                          const labelMap: Record<string, { pt: string; en: string }> = {
+                            market_maturity:      { pt: 'Maturidade',  en: 'Maturity' },
+                            competitive_pressure: { pt: 'Pressão',     en: 'Pressure' },
+                            strategic_impact:     { pt: 'Impacto',     en: 'Impact' },
+                            execution_complexity: { pt: 'Complexidade',en: 'Complexity' },
+                            competitive_lag_risk: { pt: 'Risco',       en: 'Risk' },
+                          }
+                          const label = isEn ? labelMap[key as string]?.en : labelMap[key as string]?.pt
+                          return (
+                            <div key={key as string} className="rounded-lg bg-white/[0.04] border border-white/10 p-2.5">
+                              <p className="text-[9px] text-zinc-400 uppercase tracking-wide leading-tight mb-1.5">
+                                {label}
+                              </p>
+                              <div className="flex items-baseline gap-2">
+                                <span className={`text-base font-bold tabular-nums leading-none
+                                  ${dim.score >= 80 ? 'text-emerald-400'
+                                    : dim.score >= 60 ? 'text-amber-400'
+                                    : 'text-orange-400'}`}>
+                                  {dim.score}
+                                </span>
+                                <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+                                  <div
+                                    className={`h-full ${dim.score >= 80 ? 'bg-emerald-400' : dim.score >= 60 ? 'bg-amber-400' : 'bg-orange-400'}`}
+                                    style={{ width: `${dim.score}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* THEN / NOW / NEXT — versão dark */}
+                  <div>
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-3">
+                      THEN · NOW · NEXT
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        { label: 'THEN', val: stripPeriodLabel(showcaseTnn.then), tone: 'bg-zinc-800/40' },
+                        { label: 'NOW',  val: showcaseTnn.now,                    tone: 'bg-zinc-800/60' },
+                        { label: 'NEXT', val: showcaseTnn.next,                   tone: 'bg-taime-500/10 border-taime-500/30' },
+                      ].map(({ label, val, tone }) => (
+                        <div key={label} className={`rounded-lg border border-white/10 ${tone} p-4`}>
+                          <p className="text-[10px] font-bold tracking-widest text-zinc-400 mb-2">{label}</p>
+                          <p className="text-xs text-white/85 leading-relaxed line-clamp-4">{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="mt-7 text-xs font-semibold text-taime-300 group-hover:text-taime-200 transition-colors">
+                    {isEn ? 'Read the full analysis →' : 'Ler a análise completa →'}
+                  </p>
                 </div>
               </div>
-
-              {/* 5 dimensões */}
-              <div className="mb-6">
-                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
-                  {isEn ? '5 dimensions' : '5 dimensões'}
-                </p>
-                <ScoreDimensionsPanel dims={showcaseFw.score_dimensions} lang={lang} />
-              </div>
-
-              {/* THEN / NOW / NEXT */}
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
-                  Then · Now · Next
-                </p>
-                <ThenNowNextPanel
-                  tnn={showcaseTnn}
-                  period={showcase.reports.period}
-                  lang={lang}
-                />
-              </div>
-
-              <p className="mt-6 text-xs font-semibold text-taime-600 group-hover:text-taime-700 transition-colors">
-                {isEn ? 'Read the full analysis →' : 'Ler a análise completa →'}
-              </p>
             </Link>
           </div>
         </section>
       )}
 
-      {/* ── SEÇÃO 6: PARA QUEM ────────────────────────────────────────── */}
-      <section className="bg-zinc-50 border-t border-zinc-100 py-20">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-3">{h.forWhoLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.forWhoTitle}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {h.personas.map(({ role, desc }) => (
-              <div key={role} className="bg-white rounded-xl border border-zinc-200 p-6">
-                <h3 className="text-base font-bold text-zinc-900 mb-2">{role}</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SEÇÃO 7: MEMÓRIA 25 ANOS ──────────────────────────────────── */}
-      <section className="bg-taime-900 py-28">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="text-xs font-bold tracking-widest text-white/30 mb-4 uppercase">{h.memBadge}</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-5 leading-snug">{h.memTitle}</h2>
-          <p className="text-white/60 text-lg leading-relaxed mb-12 max-w-2xl">{h.memBody}</p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            {h.memCards.map(({ badge, title, subtitle, desc }) => (
-              <div key={title} className="bg-white/5 border border-white/10 rounded-2xl p-8 sm:p-10 flex flex-col gap-4">
-                <p className="text-[11px] font-bold tracking-widest text-taime-600 uppercase">{badge}</p>
-                <h3 className="text-3xl sm:text-4xl font-bold text-white leading-tight tabular-nums">{title}</h3>
-                <p className="text-base text-white/60 leading-snug">{subtitle}</p>
-                <div className="h-px bg-white/10 my-1" />
-                <p className="text-sm text-white/55 leading-relaxed">{desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <Link href={isLoggedIn ? '/dashboard' : '/login'} className="inline-flex items-center gap-2 px-6 py-3 rounded-lg
-                                         bg-white/10 text-white text-sm font-medium
-                                         hover:bg-white/20 transition-colors border border-white/20">
-            {h.memCta}
-          </Link>
-        </div>
-      </section>
-
-      {/* ── SEÇÃO 8: RELATÓRIOS RECENTES ──────────────────────────────── */}
-      <section id="preview" className="py-24">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-6">
-            {reports.length <= 1
-              ? (isEn ? 'Latest published report' : 'Último relatório publicado')
-              : (isEn ? 'Latest published reports' : 'Últimos relatórios publicados')}
-          </p>
-          {reports.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              {reports.map(r => {
-                const rTitle   = isEn ? (r.title_en ?? r.title_pt_br) : r.title_pt_br
-                const rSummary = isEn ? (r.executive_summary_en ?? r.executive_summary_pt_br) : r.executive_summary_pt_br
-                const rPreview = rSummary.length > 160 ? rSummary.slice(0, 160).trimEnd() + '...' : rSummary
-                const rHref    = isLoggedIn ? `/reports/${r.id}` : '/login'
-                return (
-                  <div key={r.id} className="rounded-2xl border border-zinc-200 bg-white overflow-hidden flex flex-col">
-                    <div className="bg-taime-900 px-6 py-5">
-                      <p className="text-xs font-bold text-white/30 tracking-widest mb-2 uppercase">
-                        {formatPeriod(r.period, isEn ? 'en' : 'pt-BR')}
-                      </p>
-                      <h3 className="text-sm font-bold text-white leading-snug line-clamp-3">
-                        {rTitle}
-                      </h3>
-                    </div>
-                    <div className="px-6 py-5 flex flex-col gap-4 flex-1">
-                      {rPreview && (
-                        <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3 flex-1">{rPreview}</p>
-                      )}
-                      <Link
-                        href={rHref}
-                        className="text-xs font-semibold text-taime-600 hover:text-taime-700 transition-colors"
-                      >
-                        {isEn ? 'Access full analysis →' : 'Acessar análise completa →'}
-                      </Link>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-zinc-200 p-12 text-center text-zinc-400">
-              {h.previewEmpty}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── SEÇÃO 9: CATEGORIAS ───────────────────────────────────────── */}
-      <section className="py-24">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-3">{h.catLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.catTitle}</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {h.categories.map(({ icon, name }) => (
-              <div key={name} className="bg-white rounded-xl border border-zinc-200 p-5 flex flex-col
-                                         items-start gap-3 hover:border-taime-200 hover:bg-taime-50/30 transition-colors">
-                <span className="text-2xl leading-none">{icon}</span>
-                <p className="text-sm font-semibold text-zinc-800 leading-snug">{name}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SEÇÃO 10: TRENDS EM DESTAQUE ───────────────────────────────── */}
+      {/* ── SEÇÃO 5: TENDÊNCIAS EM DESTAQUE + BUSCA ────────────────────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.trendsLabel}</p>
@@ -977,45 +777,53 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 11: LINHA DO TEMPO ───────────────────────────────────── */}
-      <section className="py-24 overflow-hidden">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-3">{h.tlLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-12">{h.tlTitle}</h2>
-          <div className="relative">
-            <div className="absolute top-[22px] left-0 right-0 h-0.5 bg-zinc-200 hidden sm:block" />
-            <div className="grid grid-cols-1 sm:grid-cols-6 gap-6 sm:gap-4">
-              {h.milestones.map(({ year, label }, i) => (
-                <div key={year} className="flex sm:flex-col items-start sm:items-start gap-4 sm:gap-2">
-                  <div className="relative flex items-center justify-center shrink-0">
-                    <div className={`w-11 h-11 rounded-full border-2 flex items-center justify-center z-10 bg-white
-                                    ${i === 5 ? 'border-taime-600 bg-taime-50' : 'border-zinc-300'}`}>
-                      <span className={`text-[10px] font-bold tabular-nums ${i === 5 ? 'text-taime-600' : 'text-zinc-500'}`}>
-                        {year}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-zinc-500 leading-relaxed sm:mt-2">{label}</p>
-                </div>
-              ))}
-            </div>
+      {/* ── SEÇÃO 6: FAIXA DO RADAR ────────────────────────────────────── */}
+      <section className="bg-zinc-50 border-y border-zinc-100">
+        <div className="max-w-5xl mx-auto px-6 py-10 flex items-center gap-6 flex-wrap sm:flex-nowrap">
+          <div className="shrink-0 hidden sm:flex w-12 h-12 rounded-xl bg-taime-50 text-taime-600
+                          items-center justify-center">
+            {/* Antena / radar icon */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="2" />
+              <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
+              <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              <path d="M4.93 19.07a10 10 0 0 1 0-14.14" />
+            </svg>
           </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mb-1">
+              {isEn ? 'RADAR · TODAY’S BRIEFING' : 'RADAR · BRIEFING DE HOJE'}
+            </p>
+            {latestBriefing ? (
+              <>
+                <p className="text-base font-bold text-zinc-900 leading-snug line-clamp-1">
+                  {isEn ? (latestBriefing.title_en ?? latestBriefing.title_pt) : latestBriefing.title_pt}
+                </p>
+                <p className="text-sm text-zinc-500 leading-snug line-clamp-1 mt-1">
+                  {(isEn ? (latestBriefing.body_en ?? latestBriefing.body_pt) : latestBriefing.body_pt) ?? ''}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">
+                {isEn
+                  ? 'New daily signals on AI, cloud, security and more.'
+                  : 'Novos sinais diários sobre IA, cloud, segurança e mais.'}
+              </p>
+            )}
+          </div>
+          <Link
+            href="/radar"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold
+                       bg-taime-600 text-white hover:bg-taime-700 transition-colors shrink-0"
+          >
+            {isEn ? 'See full Radar →' : 'Ver o Radar completo →'}
+          </Link>
         </div>
       </section>
 
-      {/* ── SEÇÃO 12: FAQ ─────────────────────────────────────────────── */}
-      <section className="bg-zinc-50 border-t border-zinc-100 py-24">
-        <div className="max-w-3xl mx-auto px-6">
-          <p className="section-label mb-3">{h.faqLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.faqTitle}</h2>
-          <FaqAccordion items={t.faq.items as unknown as { q: string; a: string }[]} />
-        </div>
-      </section>
-
-      {/* ── RADAR TAIME ───────────────────────────────────────────────── */}
-      <RadarFeed />
-
-      {/* ── SEÇÃO 13: PLANOS ──────────────────────────────────────────── */}
+      {/* ── SEÇÃO 7: PLANOS ──────────────────────────────────────────── */}
       <section id="planos" className="py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.plansLabel}</p>

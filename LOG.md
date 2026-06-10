@@ -2,6 +2,99 @@
 
 ---
 
+## [2026-06-10] — Home Fase 3: poda estratégica, página /faq, faixa do Radar
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Topo (hero escuro, "Veja o que você recebe", infográfico do caos, 4 passos): **intocado**
+- [x] 6 seções removidas da home; 1 nova página `/faq`
+- [x] Hero e Showcase usam relatórios diferentes (verificado via DB)
+- [x] Faixa do Radar populando com o briefing real de 2026-06-10
+
+### Contexto
+A home estava com 13 seções, várias com visual antigo (claro/genérico), repetições narrativas (showcase + "O que é" mostravam relatórios), e promessas que ainda não temos como cumprir ("memória de 25 anos", timeline 2000→hoje). Aqui: poda, modernização do que ficou, e relocação da FAQ para página própria.
+
+### Removidas da home
+
+| Seção (numeração antiga) | Por quê |
+|---|---|
+| 3 "O que é o TAIME" | Infográfico do caos já cumpre esse papel narrativo. |
+| 6 "Para quem é o TAIME" | Personas genéricas, não decisivas para conversão. |
+| 7 "Memória 25 anos" | Promete acervo que não está integralmente disponível. |
+| 8 "Últimos relatórios publicados" | Showcase + busca já dão amostra concreta. |
+| 9 "Cobertura temática" (Categorias) | Dispersão visual sem decisão clara. |
+| 11 "Linha do tempo" | Reforçava "desde 2000", mesma razão de #7. |
+| 12 FAQ (na home) | Movido para `/faq` (página dedicada). |
+| RadarFeed (4 cards) | Substituído por faixa compacta. |
+
+### Nova página `/faq`
+- `app/faq/page.tsx` — server component, `Navbar` + `Footer`, reusa `FaqAccordion` e os itens já existentes em `t.faq.items`. Bilíngue automático via cookie (a FAQ menciona "histórico desde 2000" — escopo limitado à home conforme instrução; FAQ mantém o conteúdo original).
+- Footer (`lib/i18n/pt.ts` + `lib/i18n/en.ts`): adicionado `{ label: 'FAQ', href: '/faq' }` em `footerLinks` (entre Planos e Sobre).
+
+### Modernizações no que ficou
+
+**Showcase (Seção 4, antes "O que é a resposta"):**
+- Card claro antigo substituído por **card escuro navy** no mesmo idioma do hero (`bg-taime-900`, textura de pontos, ring-1 ring-white/5, shadow-2xl, hover ring-taime-500/40).
+- Header "tab" com label "TAIME · RELATÓRIO EXECUTIVO" + período do report em font-mono.
+- Score gauge `bg-taime-500` 16×16 com ring-4 ring-taime-900 (mesmo padrão visual do hero).
+- 5 dimensões (todas, não 4) em grid `sm:grid-cols-5` com mini-cards `bg-white/[0.04]`, valores coloridos por threshold + barras de progresso.
+- THEN/NOW/NEXT em grid 3-col, NEXT destacado com `bg-taime-500/10 border-taime-500/30`.
+- CTA "Ler a análise completa →" em `text-taime-300`.
+- Lógica de seleção: `topTrends.find((tr, idx) => idx >= 1 && data completa)` — garante distinção do hero (que usa `topTrends[0]`).
+
+**HomeSearch (`components/HomeSearch.tsx`) — cards modernizados:**
+- Grid `lg:grid-cols-3` (era 3-col fixo) — mais respirável.
+- Cada card agora é um `<Link>` (era `<div>` com Link interno) — área clicável aumentada.
+- **Hover:** `border-taime-300` + `shadow-md` + `-translate-y-0.5` + `transition-all duration-200`. Elevação suave.
+- **Score badge moderno:** `bg-emerald-50` / `bg-amber-50` / `bg-orange-50` conforme threshold, em vez do ring antigo.
+- Hierarquia tipográfica melhor: título com `group-hover:text-taime-700`, snapshot `line-clamp-4`.
+- Funcionalidade da busca (instantânea + Enter semântica) **inalterada**.
+
+**Faixa do Radar (substituiu `<RadarFeed />`):**
+- Server-side: novo `getLatestBriefing()` fetch direto em `radar_briefings?order=briefing_date.desc&limit=1` com ISR 30 min.
+- Visual: faixa única horizontal `bg-zinc-50 border-y border-zinc-100 py-10`, ícone de antena `bg-taime-50` à esquerda, label "RADAR · BRIEFING DE HOJE" / "RADAR · TODAY'S BRIEFING", título do briefing (line-clamp-1), 1 linha do corpo (line-clamp-1), e CTA `bg-taime-600` "Ver o Radar completo →" / "See full Radar →" à direita.
+- Fallback bilíngue se `latestBriefing === null`.
+
+### Limpeza de código (`app/page.tsx`)
+- Imports removidos: `formatPeriod`, `scoreColor`, `FaqAccordion`, `RadarFeed`, `ScoreGauge`, `ScoreDimensionsPanel`, `ThenNowNextPanel` (nenhum tinha mais consumidor).
+- Funções helper removidas: `getLatestReports()`, `scoreBadgeLabel()`, `scoreRingCls()`.
+- Interface `LandingReport`: removida.
+- Vars removidas: `reports`, `report`, `lang`, e todo o bloco `whatIs*` (trend para "O que é" extinta).
+- Novo: `interface RadarBriefing`, `async function getLatestBriefing()`.
+
+### Distribuição atual das trends em 3 lugares
+
+Hero, Showcase e o briefing do Radar agora puxam de fontes distintas:
+
+| Slot | Conteúdo | Fonte real |
+|---|---|---|
+| **Hero mockup** (Seção 1) | Corrida Armamentista de IA em Cibersegurança, score 89, 2026-04-16 | `topTrends[0]` |
+| **Showcase** (Seção 4) | Ameaças Cibernéticas Contra IA e Nuvem, score 88, 2025-02-16 | `topTrends.find(idx≥1, complete)` |
+| **Faixa do Radar** (Seção 6) | "A IA Chegou à Escala: Agora o Gargalo É Tudo que Está ao Redor Dela", briefing de 2026-06-10 | `radar_briefings` order desc |
+
+### Ordem final da home
+1. Hero escuro
+2. Veja o que você recebe (4 cards)
+3. Do caos à decisão (infográfico)
+4. Da dúvida à decisão, em 4 passos (Como funciona)
+5. É assim que a resposta se parece (Showcase, card navy modernizado)
+6. Tendências em destaque + busca (HomeSearch, cards modernizados)
+7. Faixa do Radar (compacta, 1 briefing real)
+8. Planos
+9. Banner final escuro (CTA)
++ Footer (com link FAQ)
+
+### Lembrete (humano)
+- Página `/faq` referenciada no footer. Confirmar que abre em produção após o deploy.
+- A FAQ ainda contém a pergunta "O histórico desde 2000 já está disponível?" — a remoção das menções "desde 2000" foi escopada à HOME conforme instrução, então fica. Se quiser limpar isso depois, é um ajuste de i18n simples.
+
+### O que NÃO foi tocado
+- Hero escuro (1), "Veja o que você recebe" (1b), Infográfico do caos (2), Como funciona (3): **intactos** (topo aprovado).
+- Banner final escuro, Footer, Navbar, `RadarFeed.tsx` (componente continua existindo, só não é mais usado na home), página `/radar`: intactos.
+- Tipos i18n, paywall, `/reports/[id]`, `/r/[id]`, busca semântica via Enter.
+
+---
+
 ## [2026-06-10] — Home Fase 2: "Do caos à decisão" como infográfico de fluxo + "O que é" com card escuro e terceira trend
 
 ### Status

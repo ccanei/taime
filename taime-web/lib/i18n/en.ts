@@ -146,6 +146,7 @@ export const en: Translations = {
       { label: 'Reports',      href: '/dashboard' },
       { label: 'How it works', href: '/#como-funciona' },
       { label: 'Plans',        href: '/planos' },
+      { label: 'FAQ',          href: '/faq' },
       { label: 'About',        href: '/sobre' },
       { label: 'Contact',      href: '/contato' },
       { label: 'Privacy',      href: '/privacy' },

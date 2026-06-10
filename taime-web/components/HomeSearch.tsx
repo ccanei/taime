@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { scoreColor } from '@/lib/types'
 import type { TaimeFramework } from '@/lib/types'
 import { normalize, scoreText } from '@/lib/searchMatch'
 
@@ -18,13 +17,6 @@ interface HomeTrend {
 interface SemanticMatch {
   id:         string
   similarity: number
-}
-
-function scoreRingCls(score: number): string {
-  if (score >= 85) return 'ring-emerald-200 bg-emerald-50'
-  if (score >= 70) return 'ring-taime-200 bg-taime-50'
-  if (score >= 50) return 'ring-amber-200 bg-amber-50'
-  return 'ring-zinc-200 bg-zinc-50'
 }
 
 export default function HomeSearch({
@@ -183,31 +175,47 @@ export default function HomeSearch({
       )}
 
       {visible.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {visible.map((trend, i) => {
             const title = isEn ? trend.title_en : trend.title_pt_br
             const fw    = isEn ? trend.taime_framework_en : trend.taime_framework_pt_br
             const snap  = fw?.executive_snapshot ?? ''
-            const prev  = snap.length > 120 ? snap.slice(0, 120).trimEnd() + '...' : snap
+            const prev  = snap.length > 140 ? snap.slice(0, 140).trimEnd() + '...' : snap
             const href  = isLoggedIn ? `/reports/${trend.report_id}` : '/login'
+            const scoreText = trend.taime_score >= 80 ? 'text-emerald-600'
+              : trend.taime_score >= 60 ? 'text-amber-600'
+              : 'text-orange-600'
+            const scoreBg = trend.taime_score >= 80 ? 'bg-emerald-50 border-emerald-100'
+              : trend.taime_score >= 60 ? 'bg-amber-50 border-amber-100'
+              : 'bg-orange-50 border-orange-100'
             return (
-              <div key={i} className="bg-white rounded-xl border border-zinc-200 p-6 flex flex-col gap-4
-                                       hover:border-taime-200 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center
-                                  shrink-0 ring-2 ${scoreRingCls(trend.taime_score)}`}>
-                    <span className={`font-bold text-xl tabular-nums leading-none ${scoreColor(trend.taime_score)}`}>
+              <Link
+                key={i}
+                href={href}
+                className="group relative flex flex-col gap-4 p-6 rounded-2xl
+                           bg-white border border-zinc-200
+                           hover:border-taime-300 hover:shadow-md hover:-translate-y-0.5
+                           transition-all duration-200"
+              >
+                <div className="flex items-start gap-4">
+                  <div className={`shrink-0 rounded-xl ${scoreBg} border px-2.5 py-1.5 text-center min-w-[48px]`}>
+                    <p className={`font-bold text-lg tabular-nums leading-none ${scoreText}`}>
                       {trend.taime_score}
-                    </span>
-                    <span className="text-[8px] text-zinc-400 font-bold tracking-wide">SCORE</span>
+                    </p>
+                    <p className="text-[8px] text-zinc-400 font-bold tracking-widest mt-0.5">SCORE</p>
                   </div>
-                  <p className="text-sm font-bold text-zinc-900 leading-snug">{title}</p>
+                  <h3 className="flex-1 min-w-0 text-sm font-bold text-zinc-900 leading-snug
+                                 group-hover:text-taime-700 transition-colors line-clamp-3">
+                    {title}
+                  </h3>
                 </div>
-                {prev && <p className="text-xs text-zinc-500 leading-relaxed flex-1">{prev}</p>}
-                <Link href={href} className="text-xs font-semibold text-taime-600 hover:text-taime-700 transition-colors">
+                {prev && (
+                  <p className="text-xs text-zinc-500 leading-relaxed flex-1 line-clamp-4">{prev}</p>
+                )}
+                <span className="text-xs font-semibold text-taime-600 group-hover:text-taime-700 transition-colors">
                   {trendsCta}
-                </Link>
-              </div>
+                </span>
+              </Link>
             )
           })}
         </div>

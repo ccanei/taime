@@ -144,6 +144,7 @@ export const pt = {
       { label: 'Relatórios',   href: '/dashboard' },
       { label: 'Como funciona',href: '/#como-funciona' },
       { label: 'Planos',       href: '/planos' },
+      { label: 'FAQ',          href: '/faq' },
       { label: 'Sobre',        href: '/sobre' },
       { label: 'Contato',      href: '/contato' },
       { label: 'Privacidade',  href: '/privacidade' },
