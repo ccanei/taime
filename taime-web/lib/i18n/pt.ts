@@ -12,10 +12,10 @@ export const pt = {
 
   home: {
     badge:      'Sinais globais · Inteligência executiva · Desde 2000',
-    hero:       ['Do sinal à decisão.', 'Inteligência estratégica', 'em tecnologia.'],
-    heroBody:   'O TAIME transforma o volume de informação tecnológica global em inteligência estruturada, com scoring, análise temporal e orientação de movimento para quem decide.',
-    heroSub:    'Para líderes, gestores, consultores e empreendedores.',
-    ctaPrimary: 'Ver último relatório',
+    hero:       ['Você precisa decidir sobre IA, cloud, segurança.', 'Ninguém consegue ler tudo.', 'O TAIME lê por você.'],
+    heroBody:   'Cada relatório resume um período da tecnologia: fatos, tendências e sinais, pontuados e traduzidos em um movimento recomendado. Você entende o passado, o presente e o que vem aí. E decide com clareza.',
+    heroSub:    'Grátis: leia 2 relatórios completos por mês. Sem cartão.',
+    ctaPrimary: 'Criar conta gratuita →',
     ctaSecondary: 'Solicitar acesso →',
 
     painsLabel: 'O problema que o TAIME resolve',
@@ -72,12 +72,14 @@ export const pt = {
     previewEmpty:      'Primeiro relatório em breve.',
 
     howLabel: 'Como funciona',
-    howTitle: 'De sinais brutos a decisões estratégicas.',
+    howTitle: 'Da dúvida à decisão, em 4 passos.',
     howSteps: [
-      { num: '01', title: 'Monitoramos', desc: 'Fontes globais validadas de pesquisa, consultoria e inovação tecnológica, monitoradas continuamente.' },
-      { num: '02', title: 'Estruturamos', desc: 'Sinais em clusters temáticos, scoring em 5 dimensões e framework TAIME de decisão.' },
-      { num: '03', title: 'Você decide',  desc: 'Inteligência estruturada com contexto histórico, orientação de movimento e critérios de ação.' },
+      { num: '01', title: 'Pergunte',              desc: 'Busque qualquer tecnologia: IA, cloud, quantum, segurança. A busca inteligente encontra tudo o que importa.' },
+      { num: '02', title: 'Veja o resumo da época', desc: 'Cada relatório condensa fatos, tendências e sinais de um período: o que você levaria semanas para ler.' },
+      { num: '03', title: 'Entenda a trajetória',   desc: 'THEN / NOW / NEXT: o que a tecnologia era, o que é hoje e para onde os sinais apontam.' },
+      { num: '04', title: 'Decida com clareza',     desc: 'O TAIME Score e o movimento recomendado dizem se é hora de agir, esperar ou deixar pra lá.' },
     ],
+    howAdvisorNote: 'Com o Executive Advisor (em breve), você informa suas iniciativas e recebe um plano estratégico de ação: o que priorizar e o que deixar pra lá.',
 
     catLabel: 'Cobertura temática',
     catTitle: 'Inteligência em todas as frentes da tecnologia.',

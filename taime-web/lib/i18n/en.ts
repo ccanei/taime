@@ -14,10 +14,10 @@ export const en: Translations = {
 
   home: {
     badge:      'Global signals · Executive intelligence · Since 2000',
-    hero:       ['From signal to decision.', 'Strategic intelligence', 'in technology.'],
-    heroBody:   'TAIME transforms the global technology information overload into structured intelligence, with scoring, temporal analysis, and decision guidance for leaders.',
-    heroSub:    'For executives, managers, consultants, and entrepreneurs.',
-    ctaPrimary: 'View latest report',
+    hero:       ['You need to decide on AI, cloud, security.', 'No one can read everything.', 'TAIME reads it for you.'],
+    heroBody:   'Each report condenses a period of technology: facts, trends and signals, scored and translated into a recommended move. You understand the past, the present and what comes next. And decide with clarity.',
+    heroSub:    'Free: read 2 full reports per month. No card required.',
+    ctaPrimary: 'Create free account →',
     ctaSecondary: 'Request access →',
 
     painsLabel: 'The problem TAIME solves',
@@ -74,12 +74,14 @@ export const en: Translations = {
     previewEmpty:   'First report coming soon.',
 
     howLabel: 'How it works',
-    howTitle: 'From raw signals to strategic decisions.',
+    howTitle: 'From doubt to decision, in 4 steps.',
     howSteps: [
-      { num: '01', title: 'We monitor',    desc: 'Validated global sources in research, consulting, and technology innovation, tracked continuously.' },
-      { num: '02', title: 'We structure',  desc: 'Signals into thematic clusters, scored across 5 dimensions with the TAIME decision framework.' },
-      { num: '03', title: 'You decide',    desc: 'Structured intelligence with historical context, movement guidance, and clear action criteria.' },
+      { num: '01', title: 'Ask',                  desc: 'Search any technology: AI, cloud, quantum, security. Smart search finds everything that matters.' },
+      { num: '02', title: 'See the period digest', desc: 'Each report condenses the facts, trends and signals of a period: what would take you weeks to read.' },
+      { num: '03', title: 'Understand the trajectory', desc: 'THEN / NOW / NEXT: what the technology was, what it is today and where the signals point.' },
+      { num: '04', title: 'Decide with clarity',  desc: 'The TAIME Score and the recommended move tell you whether to act, wait or let it go.' },
     ],
+    howAdvisorNote: 'With the Executive Advisor (coming soon), you share your initiatives and get a strategic action plan: what to prioritize and what to let go.',
 
     catLabel: 'Coverage',
     catTitle: 'Intelligence across every technology frontier.',

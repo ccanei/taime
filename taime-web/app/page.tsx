@@ -51,6 +51,11 @@ interface TopTrend {
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
+// Relatório marcado is_public=true no Supabase, exposto pela rota /r/[id].
+// Usado como link do showcase para visitantes anônimos: em vez de mandá-los
+// para /login, abre direto a amostra (resumo completo + 1 trend liberada).
+const PUBLIC_SAMPLE_REPORT_ID = '48c29bb6-6dee-46a1-987b-bb08bd775ab0'
+
 async function getLatestReports(): Promise<LandingReport[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/reports/latest`, { cache: 'no-store' })
@@ -133,7 +138,9 @@ export default async function LandingPage() {
   const showcaseFw     = showcase ? (isEn ? showcase.taime_framework_en : showcase.taime_framework_pt_br) : null
   const showcaseTnn    = showcase ? (isEn ? showcase.then_now_next_en   : showcase.then_now_next_pt_br)   : null
   const showcaseTitle  = showcase ? (isEn ? showcase.title_en           : showcase.title_pt_br)           : ''
-  const showcaseHref   = showcase ? (isLoggedIn ? `/reports/${showcase.report_id}` : '/login')            : '/login'
+  const showcaseHref   = showcase
+    ? (isLoggedIn ? `/reports/${showcase.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`)
+    : '/login'
 
   // Mockup data: top trend by score (rank 1 da query)
   const firstTrend    = topTrends[0] ?? null
@@ -199,12 +206,16 @@ export default async function LandingPage() {
             {h.hero[2]}
           </h1>
 
-          <p className="text-xl text-zinc-500 leading-relaxed mb-4 max-w-2xl">{h.heroBody}</p>
-          <p className="text-sm text-zinc-400 mb-10 font-medium">{h.heroSub}</p>
+          <p className="text-xl text-zinc-500 leading-relaxed mb-10 max-w-2xl">{h.heroBody}</p>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <a href="#preview" className="btn-primary text-base px-7 py-3">{h.ctaPrimary}</a>
-            <Link href={isLoggedIn ? '/dashboard' : '/login'} className="btn-secondary text-base px-7 py-3">{h.ctaSecondary}</Link>
+          <div className="flex flex-col items-start gap-3">
+            <Link
+              href={isLoggedIn ? '/dashboard' : '/login'}
+              className="btn-primary text-base px-7 py-3"
+            >
+              {h.ctaPrimary}
+            </Link>
+            <p className="text-xs text-zinc-500 font-medium">{h.heroSub}</p>
           </div>
         </div>
       </section>
@@ -319,7 +330,90 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 4: PARA QUEM ────────────────────────────────────────── */}
+      {/* ── SEÇÃO 4: COMO FUNCIONA (4 passos) ──────────────────────────── */}
+      <section id="como-funciona" className="bg-zinc-50 border-t border-zinc-100 py-24">
+        <div className="max-w-5xl mx-auto px-6">
+          <p className="section-label mb-3">{h.howLabel}</p>
+          <h2 className="text-3xl font-bold text-zinc-900 mb-12">{h.howTitle}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {h.howSteps.map(({ num, title, desc }) => (
+              <div key={num}>
+                <div className="text-5xl font-bold text-zinc-100 tabular-nums mb-4 leading-none select-none">{num}</div>
+                <h3 className="text-lg font-bold text-zinc-900 mb-2">{title}</h3>
+                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-12 text-sm text-zinc-600 leading-relaxed max-w-3xl border-l-2 border-taime-200 pl-4 italic">
+            {h.howAdvisorNote}
+          </p>
+        </div>
+      </section>
+
+      {/* ── SEÇÃO 5: É ASSIM QUE A RESPOSTA SE PARECE (showcase) ──────── */}
+      {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
+        <section className="py-24 border-t border-zinc-100">
+          <div className="max-w-5xl mx-auto px-6">
+            <p className="section-label mb-3">
+              {isEn ? 'This is what the answer looks like' : 'É assim que a resposta se parece'}
+            </p>
+            <h2 className="text-3xl font-bold text-zinc-900 mb-3">
+              {isEn ? 'A real trend, analyzed by TAIME' : 'Uma tendência real, analisada pelo TAIME'}
+            </h2>
+            <p className="text-sm text-zinc-500 max-w-2xl mb-10 leading-relaxed">
+              {isEn
+                ? 'Click and read the full analysis: this one is open for you to try.'
+                : 'Clique e leia a análise completa: esta é aberta para você experimentar.'}
+            </p>
+
+            <Link
+              href={showcaseHref}
+              className="block rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8
+                         hover:border-taime-200 hover:shadow-sm transition-all group"
+            >
+              {/* Título + gauge */}
+              <div className="flex items-start gap-5 mb-6">
+                <ScoreGauge score={showcase.taime_score} />
+                <div className="flex-1 min-w-0 pt-1">
+                  <p className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mb-2">
+                    {isEn ? 'Featured trend' : 'Tendência em destaque'}
+                  </p>
+                  <h3 className="text-lg sm:text-xl font-bold text-zinc-900 leading-snug
+                                 group-hover:text-taime-700 transition-colors">
+                    {showcaseTitle}
+                  </h3>
+                </div>
+              </div>
+
+              {/* 5 dimensões */}
+              <div className="mb-6">
+                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
+                  {isEn ? '5 dimensions' : '5 dimensões'}
+                </p>
+                <ScoreDimensionsPanel dims={showcaseFw.score_dimensions} lang={lang} />
+              </div>
+
+              {/* THEN / NOW / NEXT */}
+              <div>
+                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
+                  Then · Now · Next
+                </p>
+                <ThenNowNextPanel
+                  tnn={showcaseTnn}
+                  period={showcase.reports.period}
+                  lang={lang}
+                />
+              </div>
+
+              <p className="mt-6 text-xs font-semibold text-taime-600 group-hover:text-taime-700 transition-colors">
+                {isEn ? 'Read the full analysis →' : 'Ler a análise completa →'}
+              </p>
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* ── SEÇÃO 6: PARA QUEM ────────────────────────────────────────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-20">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.forWhoLabel}</p>
@@ -335,7 +429,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 5: MEMÓRIA 25 ANOS ──────────────────────────────────── */}
+      {/* ── SEÇÃO 7: MEMÓRIA 25 ANOS ──────────────────────────────────── */}
       <section className="bg-taime-900 py-28">
         <div className="max-w-5xl mx-auto px-6">
           <p className="text-xs font-bold tracking-widest text-white/30 mb-4 uppercase">{h.memBadge}</p>
@@ -362,7 +456,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 6: RELATÓRIOS RECENTES ──────────────────────────────── */}
+      {/* ── SEÇÃO 8: RELATÓRIOS RECENTES ──────────────────────────────── */}
       <section id="preview" className="py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-6">
@@ -410,24 +504,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 7: COMO FUNCIONA ─────────────────────────────────────── */}
-      <section id="como-funciona" className="bg-zinc-50 border-t border-zinc-100 py-24">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-3">{h.howLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-12">{h.howTitle}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-            {h.howSteps.map(({ num, title, desc }) => (
-              <div key={num}>
-                <div className="text-5xl font-bold text-zinc-100 tabular-nums mb-4 leading-none select-none">{num}</div>
-                <h3 className="text-lg font-bold text-zinc-900 mb-2">{title}</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SEÇÃO 8: CATEGORIAS ───────────────────────────────────────── */}
+      {/* ── SEÇÃO 9: CATEGORIAS ───────────────────────────────────────── */}
       <section className="py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.catLabel}</p>
@@ -444,72 +521,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 8b: TAIME EM AÇÃO (exemplo real) ─────────────────────── */}
-      {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
-        <section className="py-24 border-t border-zinc-100">
-          <div className="max-w-5xl mx-auto px-6">
-            <p className="section-label mb-3">
-              {isEn ? 'Live example' : 'Exemplo real'}
-            </p>
-            <h2 className="text-3xl font-bold text-zinc-900 mb-3">
-              {isEn ? 'See TAIME in action' : 'Veja o TAIME em ação'}
-            </h2>
-            <p className="text-sm text-zinc-500 max-w-2xl mb-10 leading-relaxed">
-              {isEn
-                ? 'Each trend gets a TAIME Score broken into 5 dimensions and a THEN / NOW / NEXT temporal reading. Below is the highest-scored trend from our published reports — exactly as a paying customer sees it.'
-                : 'Cada tendência recebe um TAIME Score em 5 dimensões e uma leitura temporal THEN / NOW / NEXT. Abaixo está a tendência de maior score dos relatórios publicados — exatamente como o assinante vê.'}
-            </p>
-
-            <Link
-              href={showcaseHref}
-              className="block rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8
-                         hover:border-taime-200 hover:shadow-sm transition-all group"
-            >
-              {/* Título + gauge */}
-              <div className="flex items-start gap-5 mb-6">
-                <ScoreGauge score={showcase.taime_score} />
-                <div className="flex-1 min-w-0 pt-1">
-                  <p className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mb-2">
-                    {isEn ? 'Featured trend' : 'Tendência em destaque'}
-                  </p>
-                  <h3 className="text-lg sm:text-xl font-bold text-zinc-900 leading-snug
-                                 group-hover:text-taime-700 transition-colors">
-                    {showcaseTitle}
-                  </h3>
-                </div>
-              </div>
-
-              {/* 5 dimensões */}
-              <div className="mb-6">
-                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
-                  {isEn ? '5 dimensions' : '5 dimensões'}
-                </p>
-                <ScoreDimensionsPanel dims={showcaseFw.score_dimensions} lang={lang} />
-              </div>
-
-              {/* THEN / NOW / NEXT */}
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-3">
-                  Then · Now · Next
-                </p>
-                <ThenNowNextPanel
-                  tnn={showcaseTnn}
-                  period={showcase.reports.period}
-                  lang={lang}
-                />
-              </div>
-
-              <p className="mt-6 text-xs font-semibold text-taime-600 group-hover:text-taime-700 transition-colors">
-                {isLoggedIn
-                  ? (isEn ? 'Read the full report →' : 'Ler o relatório completo →')
-                  : (isEn ? 'Sign in to read the full report →' : 'Entrar para ler o relatório completo →')}
-              </p>
-            </Link>
-          </div>
-        </section>
-      )}
-
-      {/* ── SEÇÃO 9: TRENDS EM DESTAQUE ───────────────────────────────── */}
+      {/* ── SEÇÃO 10: TRENDS EM DESTAQUE ───────────────────────────────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.trendsLabel}</p>
@@ -518,7 +530,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 10: LINHA DO TEMPO ───────────────────────────────────── */}
+      {/* ── SEÇÃO 11: LINHA DO TEMPO ───────────────────────────────────── */}
       <section className="py-24 overflow-hidden">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.tlLabel}</p>
@@ -544,7 +556,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 11: FAQ ─────────────────────────────────────────────── */}
+      {/* ── SEÇÃO 12: FAQ ─────────────────────────────────────────────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-24">
         <div className="max-w-3xl mx-auto px-6">
           <p className="section-label mb-3">{h.faqLabel}</p>
@@ -556,7 +568,7 @@ export default async function LandingPage() {
       {/* ── RADAR TAIME ───────────────────────────────────────────────── */}
       <RadarFeed />
 
-      {/* ── SEÇÃO 12: PLANOS ──────────────────────────────────────────── */}
+      {/* ── SEÇÃO 13: PLANOS ──────────────────────────────────────────── */}
       <section id="planos" className="py-24">
         <div className="max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.plansLabel}</p>

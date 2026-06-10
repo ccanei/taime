@@ -2,6 +2,79 @@
 
 ---
 
+## [2026-06-10] — Home: narrativa focada em outcome (hero novo, jornada de 4 passos, showcase reconectado à amostra pública)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Componentes visuais, FAQ, planos, timeline, categorias, trends/HomeSearch: **inalterados**
+
+### Contexto
+Feedback de usuário real: o site explicava O QUE o TAIME é, mas não deixava claro O QUE A PESSOA GANHA. Hero genérico ("Do sinal à decisão. Inteligência estratégica em tecnologia."), CTA "Solicitar acesso →" sem entrega explícita, e a seção "Como funciona" estava em terceira pessoa ("Monitoramos / Estruturamos / Você decide") em vez da jornada do usuário. A seção showcase ficava perdida no meio sem conexão narrativa.
+
+### Mudanças
+
+**`lib/i18n/pt.ts` + `lib/i18n/en.ts` (parity preservada):**
+
+| Chave | Antes (PT) | Depois (PT) |
+|---|---|---|
+| `hero[0]` | "Do sinal à decisão." | "Você precisa decidir sobre IA, cloud, segurança." |
+| `hero[1]` (taime-600) | "Inteligência estratégica" | "Ninguém consegue ler tudo." |
+| `hero[2]` | "em tecnologia." | "O TAIME lê por você." |
+| `heroBody` | Descrição abstrata | "Cada relatório resume um período da tecnologia: fatos, tendências e sinais, pontuados e traduzidos em um movimento recomendado. Você entende o passado, o presente e o que vem aí. E decide com clareza." |
+| `heroSub` | "Para líderes, gestores, consultores e empreendedores." | "Grátis: leia 2 relatórios completos por mês. Sem cartão." (agora **abaixo** do CTA, como micro-texto) |
+| `ctaPrimary` | "Ver último relatório" | "Criar conta gratuita →" |
+| `howTitle` | "De sinais brutos a decisões estratégicas." | "Da dúvida à decisão, em 4 passos." |
+| `howSteps` (3 → **4** itens) | We monitor / We structure / You decide | **01 Pergunte** · **02 Veja o resumo da época** · **03 Entenda a trajetória** · **04 Decida com clareza** |
+| `howAdvisorNote` (novo) | — | "Com o Executive Advisor (em breve), você informa suas iniciativas e recebe um plano estratégico de ação: o que priorizar e o que deixar pra lá." |
+
+EN com parity exata. **Nenhum travessão (—) em texto novo** (uso de vírgula, dois-pontos ou ponto).
+
+**`app/page.tsx`:**
+
+- **Constante `PUBLIC_SAMPLE_REPORT_ID`** declarada no topo com o UUID do relatório-amostra (`48c29bb6-6dee-46a1-987b-bb08bd775ab0`), comentada para explicar.
+- **Hero** (Seção 1): CTA único `<Link>` para `/login` (anônimo) ou `/dashboard` (logado), e `heroSub` agora renderizado **abaixo** do botão como `text-xs text-zinc-500 font-medium`. CTA secundária removida do render (chave `ctaSecondary` mantida em i18n para outros usos).
+- **Showcase** (`showcaseHref`): anônimo vai para `/r/${PUBLIC_SAMPLE_REPORT_ID}` (rota pública, amostra com 1 trend liberada) em vez de `/login`. Logado continua indo para `/reports/<id>`.
+- **Showcase copy** (inline, mantém isEn ternaries):
+  - section-label: "É assim que a resposta se parece" / "This is what the answer looks like"
+  - h2: "Uma tendência real, analisada pelo TAIME" / "A real trend, analyzed by TAIME"
+  - subtítulo: "Clique e leia a análise completa: esta é aberta para você experimentar."
+  - CTA do card: "Ler a análise completa →" / "Read the full analysis →" (uniforme para anônimo e logado, já que ambos abrem um relatório legítimo)
+- **Como funciona**: grid passou de `sm:grid-cols-3` para `sm:grid-cols-2 lg:grid-cols-4` (acomoda os 4 passos). `howAdvisorNote` renderizado abaixo, em paragráfo com `border-l-2 border-taime-200 pl-4 italic` (visualmente discreto, diferenciando do card stack).
+- **Reordenação:** Como funciona (era seção 7) + Showcase (era 8b) movidos para **logo após a Seção 3 (O que é)**, ficando como seções 4 e 5. Resultado:
+  1. Hero
+  2. Pains
+  3. O que é
+  4. **Como funciona (4 passos, novo)**
+  5. **Showcase reconectado**
+  6. Para quem
+  7. Memória 25 anos
+  8. Relatórios recentes
+  9. Categorias
+  10. Trends/HomeSearch
+  11. Timeline
+  12. FAQ
+  13. Planos
+- Numeração nos comentários da página atualizada para refletir a nova ordem (cosmético, não-funcional).
+
+### Por que essas mudanças
+
+- Hero antigo era abstrato. Novo é a tensão do leitor real ("você precisa decidir... ninguém consegue ler tudo") com a entrega ("o TAIME lê por você"). A cor `taime-600` na linha do meio força o olho no ponto de tensão.
+- O CTA "Criar conta gratuita →" entrega a expectativa, e o micro-texto "Grátis: 2 relatórios completos por mês. Sem cartão." remove a fricção do "vou ter que pagar?".
+- "Como funciona" na terceira pessoa ("Monitoramos") é o que NÓS fazemos; ninguém compra processo. A reescrita em primeira-pessoa-do-leitor ("Pergunte / Veja / Entenda / Decida") é o que ELE faz. Plus: 4 passos > 3 passos para mapear a jornada completa.
+- O Showcase reconectado ("É assim que a resposta se parece" / "esta é aberta para você experimentar") fecha o loop: 4 passos abstratos → exemplo concreto na próxima seção, com link real para a amostra pública (`/r/[id]`) que já existe (commit anterior).
+
+### O que NÃO foi tocado
+- Componentes visuais (`Navbar`, `Footer`, `ScoreGauge`, `ScoreDimensionsPanel`, `ThenNowNextPanel`, `HomeSearch`, `RadarFeed`, `FaqAccordion`): zero modificação.
+- Seções Pains, Para quem, Memória 25 anos, Relatórios recentes, Categorias, Trends/HomeSearch, Timeline, FAQ, Planos: intactas em conteúdo (só reordenação visual).
+- `ctaSecondary`, `heroSub` (chave): mantidas em i18n; conteúdo de `heroSub` mudou para o micro-texto do hero.
+- Tipos i18n (`Translations`): novo `howAdvisorNote` adicionado em parity nos dois arquivos.
+
+### Lembrete (humano)
+
+A rota `/r/48c29bb6-6dee-46a1-987b-bb08bd775ab0` precisa estar com `is_public = true` no Supabase (commit anterior criou o SQL `add-public-reports.sql`). Sem isso, o link do showcase para anônimos cai em `notFound()`. Confirmar antes do próximo deploy.
+
+---
+
 ## [2026-06-09] — Rota pública `/r/[id]`: amostra de relatório com uma trend liberada
 
 ### Status
