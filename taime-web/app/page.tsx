@@ -214,6 +214,38 @@ export default async function LandingPage() {
         ? 'Appoint a PM with a 90-day mandate to deploy production agents.'
         : 'Nomeie um PM com mandato de 90 dias para colocar agentes em produção.')
 
+  // ── Terceira trend para a seção "O que é o TAIME" ──────────────────────────
+  // Distinta da do hero (topTrends[0]) E da do showcase. Se nenhuma sobrar com
+  // dados completos, degrada para o showcase ou para a do hero.
+  const whatIsTrend = topTrends.find((tr, idx) => {
+    if (idx === 0) return false                                    // hero
+    if (showcase && tr.id === showcase.id) return false            // showcase
+    const fw  = isEn ? tr.taime_framework_en : tr.taime_framework_pt_br
+    const tnn = isEn ? tr.then_now_next_en   : tr.then_now_next_pt_br
+    return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next
+  }) ?? showcase ?? firstTrend
+
+  const whatIsFw    = whatIsTrend ? (isEn ? whatIsTrend.taime_framework_en : whatIsTrend.taime_framework_pt_br) : null
+  const whatIsTitle = whatIsTrend ? (isEn ? whatIsTrend.title_en           : whatIsTrend.title_pt_br) : ''
+  const whatIsScore = whatIsTrend?.taime_score ?? 0
+
+  const whatIsDims: [string, number][] = whatIsFw?.score_dimensions
+    ? [
+        [heroDimLabels.cp, whatIsFw.score_dimensions.competitive_pressure.score],
+        [heroDimLabels.si, whatIsFw.score_dimensions.strategic_impact.score],
+        [heroDimLabels.lr, whatIsFw.score_dimensions.competitive_lag_risk.score],
+        [heroDimLabels.mm, whatIsFw.score_dimensions.market_maturity.score],
+      ]
+    : []
+
+  const whatIsMove = whatIsFw?.move
+    ? firstWords(whatIsFw.move, 16)
+    : ''
+
+  const whatIsHref = whatIsTrend
+    ? (isLoggedIn ? `/reports/${whatIsTrend.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`)
+    : '/login'
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -477,18 +509,130 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 2: A DOR ────────────────────────────────────────────── */}
-      <section className="py-20">
-        <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-10">{h.painsLabel}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {h.pains.map(({ title, desc }) => (
-              <div key={title} className="bg-white rounded-xl border border-zinc-200 p-6">
-                <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center mb-4">
-                  <div className="w-2 h-2 rounded-full bg-red-400" />
+      {/* ── SEÇÃO 2: DO CAOS À DECISÃO (infográfico de fluxo) ─────────── */}
+      <section className="py-24 bg-zinc-50 border-t border-zinc-100">
+        <div className="max-w-6xl mx-auto px-6">
+          <p className="section-label mb-3">{h.painsLabel}</p>
+          <h2 className="text-3xl font-bold text-zinc-900 mb-14 max-w-3xl leading-snug">
+            {isEn
+              ? 'From signal chaos to clear decision'
+              : 'Do caos de sinais à decisão clara'}
+          </h2>
+
+          {/* Grid 3 estágios, com linha conectora */}
+          <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-12 sm:gap-6">
+            {/* Linha horizontal conectora (desktop) — gradiente vermelho → azul → verde */}
+            <div
+              aria-hidden="true"
+              className="hidden sm:block absolute top-8 left-[16.6%] right-[16.6%] h-0.5 z-0"
+              style={{
+                background: 'linear-gradient(to right, rgba(251,146,60,0.6) 0%, rgba(84,121,255,0.7) 50%, rgba(16,185,129,0.6) 100%)',
+              }}
+            />
+            {/* Linha vertical conectora (mobile) — entre estágios */}
+            <div
+              aria-hidden="true"
+              className="sm:hidden absolute top-16 left-8 bottom-16 w-0.5 z-0"
+              style={{
+                background: 'linear-gradient(to bottom, rgba(251,146,60,0.6) 0%, rgba(84,121,255,0.7) 50%, rgba(16,185,129,0.6) 100%)',
+              }}
+            />
+
+            {[
+              {
+                label:    isEn ? 'CHAOS'      : 'O CAOS',
+                title:    isEn ? 'Thousands of signals every week.' : 'Milhares de sinais por semana.',
+                body:     isEn
+                  ? 'New technologies, alerts and trends. Without structure, it is noise, not intelligence.'
+                  : 'Novas tecnologias, alertas e tendências. Sem estrutura, é ruído, não inteligência.',
+                bg:       'bg-orange-50',
+                ring:     'ring-orange-100',
+                iconCol:  'text-orange-500',
+                labelCol: 'text-orange-600',
+                icon: (
+                  <svg width="28" height="28" viewBox="0 0 32 32" fill="currentColor">
+                    <circle cx="4"  cy="6"  r="2" />
+                    <circle cx="10" cy="14" r="2" />
+                    <circle cx="22" cy="4"  r="2" />
+                    <circle cx="28" cy="12" r="2" />
+                    <circle cx="6"  cy="22" r="2" />
+                    <circle cx="16" cy="20" r="2" />
+                    <circle cx="26" cy="24" r="2" />
+                    <circle cx="14" cy="8"  r="2" />
+                    <circle cx="20" cy="28" r="2" />
+                  </svg>
+                ),
+              },
+              {
+                label:    isEn ? 'ANALYSIS'    : 'A ANÁLISE',
+                title:    isEn
+                  ? 'TAIME organizes, scores and translates.'
+                  : 'O TAIME organiza, pontua e traduz.',
+                body:     isEn
+                  ? 'Collects from global sources, scores across 5 dimensions and applies the TYPE → ACT → IMPACT → MOVE → EXIT framework.'
+                  : 'Coleta de fontes globais, pontua em 5 dimensões e aplica o framework TYPE → ACT → IMPACT → MOVE → EXIT.',
+                bg:       'bg-taime-50',
+                ring:     'ring-taime-100',
+                iconCol:  'text-taime-500',
+                labelCol: 'text-taime-600',
+                icon: (
+                  <svg width="28" height="28" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+                       strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="16" cy="16" r="3.5" fill="currentColor" />
+                    <line x1="4"  y1="6"  x2="13.5" y2="13.5" />
+                    <line x1="28" y1="6"  x2="18.5" y2="13.5" />
+                    <line x1="4"  y1="26" x2="13.5" y2="18.5" />
+                    <line x1="28" y1="26" x2="18.5" y2="18.5" />
+                  </svg>
+                ),
+              },
+              {
+                label:    isEn ? 'DECISION' : 'A DECISÃO',
+                title:    isEn
+                  ? 'You receive the recommended move.'
+                  : 'Você recebe o movimento recomendado.',
+                body:     isEn
+                  ? 'Act now, prepare, or let it go. With clarity and historical context.'
+                  : 'Agir agora, preparar, ou deixar pra lá. Com clareza e contexto histórico.',
+                bg:       'bg-emerald-50',
+                ring:     'ring-emerald-100',
+                iconCol:  'text-emerald-600',
+                labelCol: 'text-emerald-700',
+                icon: (
+                  <svg width="28" height="28" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+                       strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="16" cy="16" r="11" />
+                    <path d="M11 16l4 4 6-8" />
+                  </svg>
+                ),
+              },
+            ].map(({ label, title, body, bg, ring, iconCol, labelCol, icon }) => (
+              <div
+                key={label}
+                className="relative flex sm:flex-col items-start sm:items-center
+                           sm:text-center gap-5 sm:gap-0 z-10"
+              >
+                <div className={`w-16 h-16 rounded-2xl ${bg} ${iconCol}
+                                 flex items-center justify-center shrink-0
+                                 sm:mb-6 ring-4 ring-zinc-50 ring-offset-4 ring-offset-zinc-50
+                                 shadow-sm`}>
+                  {/*
+                    ring-4 = corta a linha conectora atrás do círculo, dando
+                    o efeito de "estações" sobre o trilho.
+                  */}
+                  {icon}
                 </div>
-                <h3 className="text-base font-bold text-zinc-900 mb-2">{title}</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
+                <div className="flex-1 min-w-0 sm:max-w-xs">
+                  <p className={`text-[10px] font-bold tracking-widest uppercase ${labelCol} mb-2`}>
+                    {label}
+                  </p>
+                  <h3 className="text-lg font-bold text-zinc-900 mb-2 leading-snug">
+                    {title}
+                  </h3>
+                  <p className="text-sm text-zinc-500 leading-relaxed">
+                    {body}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
@@ -511,78 +655,102 @@ export default async function LandingPage() {
                 {h.whatPoints.map((item, i) => (
                   <li key={i} className="flex items-start gap-3 text-sm text-zinc-700">
                     <span className="shrink-0 w-5 h-5 rounded-full bg-taime-50 text-taime-600
-                                     flex items-center justify-center text-[10px] font-bold mt-0.5">·</span>
+                                     flex items-center justify-center mt-0.5">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" strokeWidth="3"
+                           strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
 
-            {/* Visual mockup — dados reais quando disponíveis */}
-            <div className="bg-zinc-50 rounded-2xl border border-zinc-200 overflow-hidden">
-              <div className="bg-taime-900 px-6 py-4">
-                <p className="text-[10px] font-bold tracking-widest text-white/40 mb-1">
-                  {isEn ? 'TAIME · EXECUTIVE REPORT' : 'TAIME · RELATÓRIO EXECUTIVO'}
-                </p>
-                <p className="text-white font-semibold text-sm leading-snug line-clamp-2">
-                  {mockupTitle}
-                </p>
-              </div>
-              <div className="px-6 py-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 ring-2 ${scoreRingCls(mockupScore)}`}>
-                    <span className={`font-bold text-xl tabular-nums leading-none ${scoreColor(mockupScore)}`}>{mockupScore}</span>
-                    <span className="text-[8px] text-zinc-400 font-bold tracking-wide">SCORE</span>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-zinc-400 tracking-widest">TAIME SCORE</p>
-                    <p className="text-xs text-zinc-600">{scoreBadgeLabel(mockupScore, isEn)}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {mockupDims.map(([label, score]) => (
-                    <div key={label}>
-                      <div className="flex justify-between text-[11px] mb-1">
-                        <span className="text-zinc-500">{label}</span>
-                        <span className="font-semibold text-zinc-700">{score}</span>
-                      </div>
-                      <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-taime-600 rounded-full score-bar" style={{ width: `${score}%` }} />
-                      </div>
+            {/* Card escuro estilo "produto" — terceira trend distinta */}
+            {whatIsTrend && whatIsDims.length > 0 && (
+              <Link
+                href={whatIsHref}
+                className="relative block group"
+              >
+                <div className="rounded-2xl bg-taime-900 border border-zinc-700/40
+                                shadow-2xl overflow-hidden ring-1 ring-white/5
+                                p-6 sm:p-7
+                                hover:ring-taime-500/40 transition-all">
+                  {/* Texture sutil */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 opacity-[0.06] pointer-events-none"
+                    style={{
+                      backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                      backgroundSize: '20px 20px',
+                    }}
+                  />
+
+                  <div className="relative">
+                    {/* Header com label + título */}
+                    <p className="text-[10px] font-bold tracking-widest text-taime-300 mb-3">
+                      {isEn ? 'TAIME · EXECUTIVE REPORT' : 'TAIME · RELATÓRIO EXECUTIVO'}
+                    </p>
+                    <h3 className="text-base sm:text-lg font-bold text-white leading-snug
+                                   mb-6 line-clamp-3 pr-20">
+                      {whatIsTitle}
+                    </h3>
+
+                    {/* Score gauge flutuante */}
+                    <div className="absolute -top-1 right-0 w-16 h-16 rounded-2xl
+                                    bg-taime-500 text-white
+                                    flex flex-col items-center justify-center
+                                    ring-4 ring-taime-900 shadow-lg shadow-taime-500/30">
+                      <span className="text-2xl font-bold leading-none">{whatIsScore}</span>
+                      <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
                     </div>
-                  ))}
-                </div>
-                <div className="pt-2 border-t border-zinc-100">
-                  <p className="text-[9px] font-bold tracking-widest text-zinc-400 mb-2">TYPE → ACT → IMPACT → MOVE → EXIT</p>
-                  <div className="flex gap-1">
-                    {mockupFwItems.map(({ step, val }) => (
-                      <div key={step} className="flex-1 bg-white border border-zinc-100 rounded-lg px-1 py-1.5 text-center">
-                        <p className="text-[7px] font-bold text-zinc-400 leading-none">{step}</p>
-                        <p className="text-[8px] font-semibold text-zinc-700 mt-0.5 truncate">{val}</p>
+
+                    {/* 4 dimensões reais */}
+                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
+                      {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 mb-5">
+                      {whatIsDims.map(([label, val]) => (
+                        <div key={label} className="rounded-lg bg-white/[0.04] border border-white/10 p-2.5">
+                          <p className="text-[8px] text-zinc-400 tracking-wide uppercase leading-tight mb-1.5
+                                        line-clamp-1">{label}</p>
+                          <div className="flex items-baseline gap-2">
+                            <span className={`text-base font-bold tabular-nums leading-none
+                              ${val >= 80 ? 'text-emerald-400'
+                                : val >= 60 ? 'text-amber-400'
+                                : 'text-orange-400'}`}>
+                              {val}
+                            </span>
+                            <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+                              <div
+                                className={`h-full ${val >= 80 ? 'bg-emerald-400' : val >= 60 ? 'bg-amber-400' : 'bg-orange-400'}`}
+                                style={{ width: `${val}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Movimento recomendado real */}
+                    {whatIsMove && (
+                      <div className="rounded-lg bg-taime-500/10 border border-taime-500/30 p-3 mb-4">
+                        <p className="text-[9px] font-bold tracking-widest text-taime-300 mb-1.5">
+                          {isEn ? 'RECOMMENDED MOVE' : 'MOVIMENTO RECOMENDADO'}
+                        </p>
+                        <p className="text-xs text-white/90 leading-snug">{whatIsMove}</p>
                       </div>
-                    ))}
+                    )}
+
+                    <p className="text-xs font-semibold text-taime-300 group-hover:text-taime-200 transition-colors">
+                      {isEn ? 'Read the full analysis →' : 'Ler a análise completa →'}
+                    </p>
                   </div>
                 </div>
-                <div className="pt-2 border-t border-zinc-100">
-                  <div className="flex gap-2">
-                    {mockupTnn.map(({ label, val }) => (
-                      <div key={label} className="flex-1 bg-zinc-50 border border-zinc-100 rounded-lg p-2 text-center">
-                        <p className="text-[8px] font-bold text-zinc-400">{label}</p>
-                        <p className="text-[9px] text-zinc-500 mt-0.5 leading-snug">{val}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end px-6 py-3 border-t border-zinc-200">
-                <Link
-                  href={report ? (isLoggedIn ? `/reports/${report.id}` : '/login') : '/login'}
-                  className="text-xs font-semibold text-taime-600 hover:text-taime-700 transition-colors"
-                >
-                  {isEn ? 'View full report →' : 'Ver relatório completo →'}
-                </Link>
-              </div>
-            </div>
+              </Link>
+            )}
           </div>
         </div>
       </section>

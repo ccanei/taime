@@ -2,6 +2,81 @@
 
 ---
 
+## [2026-06-10] — Home Fase 2: "Do caos à decisão" como infográfico de fluxo + "O que é" com card escuro e terceira trend
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] Hero escuro + seção "Veja o que você recebe": **intocados** (Fase 1 aprovada)
+- [x] 3 trends distintas em 3 lugares da home confirmadas via DB
+
+### Contexto
+Depois do hero escuro (Fase 1), duas seções abaixo ficaram visualmente "soltas": "O problema que o TAIME resolve" eram 3 cards estáticos sem progressão narrativa, e "O que é o TAIME" mostrava o **mesmo** relatório do hero num card claro com estilo antigo. Aqui: a primeira vira um **infográfico de jornada** (3 estágios conectados por gradiente), e a segunda ganha um **card escuro** no mesmo idioma visual do hero, exibindo uma **terceira trend distinta**.
+
+### Mudanças
+
+**Seção 2 (era "A DOR") → "Do caos à decisão" — infográfico de fluxo:**
+- Fundo `bg-zinc-50` com `border-t border-zinc-100` (faz contraste com o hero escuro acima e a Seção 3 branca abaixo).
+- Section-label mantido (`h.painsLabel`). Novo h2 grande: "Do caos de sinais à decisão clara" / "From signal chaos to clear decision".
+- Grid `sm:grid-cols-3` com **3 estações conectadas** por uma linha gradiente contínua (laranja → azul taime → verde emerald), absoluta sobre os ícones no desktop; no mobile a linha é vertical à esquerda dos cards.
+- Cada estação: círculo `w-16 h-16 rounded-2xl` com cor de fundo tintada (orange-50 / taime-50 / emerald-50), ícone SVG inline, `ring-4 ring-zinc-50 ring-offset-4` para "cortar" a linha conectora e dar efeito de estação sobre trilho.
+
+| Estágio | Cor | Ícone | Copy (PT) |
+|---|---|---|---|
+| 1 — O CAOS | laranja | 9 pontos dispersos | "Milhares de sinais por semana. Novas tecnologias, alertas e tendências. Sem estrutura, é ruído, não inteligência." |
+| 2 — A ANÁLISE | azul taime | linhas convergindo para nó central | "O TAIME organiza, pontua e traduz. Coleta de fontes globais, pontua em 5 dimensões e aplica o framework TYPE → ACT → IMPACT → MOVE → EXIT." |
+| 3 — A DECISÃO | verde emerald | círculo com check | "Você recebe o movimento recomendado: agir agora, preparar, ou deixar pra lá. Com clareza e contexto histórico." |
+
+EN com parity exata. **Zero travessões** em texto novo.
+
+**Seção 3 (O que é o TAIME) — modernizada:**
+- **Coluna esquerda** (copy): mantida. Único ajuste visual: bullets de "·" trocados por **check SVG inline** dentro do círculo `bg-taime-50 text-taime-600`. Mesma copy (`h.whatPoints` da i18n).
+- **Coluna direita** (card de mockup): completamente reescrita. Era card claro com `bg-zinc-50` + header navy. Agora é card escuro `bg-taime-900 border border-zinc-700/40 ring-1 ring-white/5 shadow-2xl` com textura de pontos sutil (mesmo padrão visual do hero mockup). Conteúdo:
+  - Label "RELATÓRIO EXECUTIVO" + título REAL da terceira trend (line-clamp-3, com `pr-20` para abrir espaço ao gauge).
+  - **Score gauge flutuante** no canto superior direito (`bg-taime-500` + `ring-4 ring-taime-900` + sombra azul) com o score real e label SCORE.
+  - 4 dimensões REAIS (Pressão Competitiva, Impacto Estratégico, Risco de Atraso, Maturidade) em grid 2×2 com mini-cards `bg-white/[0.04] border border-white/10`, números coloridos por threshold (verde ≥80, âmbar ≥60, laranja abaixo) e barra de progresso.
+  - Bloco destacado "MOVIMENTO RECOMENDADO" em `bg-taime-500/10 border-taime-500/30` com 1 linha real do framework (recortada em 16 palavras).
+  - CTA inline: "Ler a análise completa →".
+- O card inteiro é um `<Link>` para `/reports/<id>` (logado) ou `/r/<PUBLIC_SAMPLE_REPORT_ID>` (anônimo).
+- Diferenciação visual do hero mockup: **sem chrome de janela** e **sem THEN/NOW/NEXT** — esse card é mais focado em "score + ação". Hero mostra workflow completo; "O que é" mostra a entrega final.
+
+**Seleção das 3 trends distintas** (no topo de `page.tsx`):
+```ts
+// hero       = topTrends[0]                                    (firstTrend)
+// showcase   = topTrends.find(idx >= 1 + dados completos)
+// whatIsTrend = topTrends.find(idx >= 1 && tr.id !== showcase.id + dados completos)
+//                                  ?? showcase ?? firstTrend   (degrade gracioso)
+```
+
+### Distribuição atual (estado do banco hoje)
+
+| Slot da home | Trend | Score | Período | Report ID |
+|---|---|---|---|---|
+| **Hero mockup** | Corrida Armamentista de IA em Cibersegurança | 89 | 2026-04-16 | `6d19be8e…` |
+| **Card "O que é"** (novo) | Segurança e Conformidade de IA: A Nova Fronteira de Risco Corporativo | 87 | 2026-03-01 | `783e6eda…` |
+| **Showcase "É assim que a resposta se parece"** | Ameaças Cibernéticas Contra IA e Nuvem | 88 | 2025-02-16 | `bdcca547…` |
+
+3 reports distintos (`6d19be8e ≠ 783e6eda ≠ bdcca547`). Top 3 trends por score são todas de cyber/IA, então a temática se repete mas os relatórios e os scores são diferentes. Se um quarto trend com tema mais variado entrar nos top-3 no futuro, o mix melhora automaticamente.
+
+### O que NÃO foi tocado
+- Hero escuro (Seção 1), seção "Veja o que você recebe" (1b): **intactas** (Fase 1 aprovada).
+- Seções 4 (Como funciona), 5 (Showcase), 6 (Para quem), 7 (Memória 25 anos), 8 (Relatórios recentes), 9 (Categorias), 10 (Trends/HomeSearch), 11 (Timeline), 12 (FAQ), 13 (Planos), Radar, banner final escuro: **intactas**.
+- i18n PT/EN: zero adições (todo o novo conteúdo é via `isEn` inline, padrão do showcase).
+- Componentes visuais externos (`ScoreGauge`, `ScoreDimensionsPanel`, `ThenNowNextPanel`, `HomeSearch`, etc.): intactos.
+- Tipos / queries do Supabase: intactos.
+
+### Teste de "10 segundos de scroll"
+O leitor passa pela home e vê em ordem:
+1. **Hero escuro** com produto à direita → "tem um produto real"
+2. **4 benefícios** com ícones → "isso é o que eu ganho"
+3. **Infográfico de fluxo** vermelho→azul→verde → "antes era caos, agora é clareza"
+4. **"O que é + card escuro"** → "este é o produto, com o output real"
+5. **4 passos numerados** → "minha jornada para usar"
+6. **Showcase "É assim que a resposta se parece"** → "experimente clicando"
+
+A narrativa tem progressão clara do problema (caos visual) à entrega (card escuro + ação).
+
+---
+
 ## [2026-06-10] — Home Fase 1: redesign visual (hero escuro + mockup de produto, cards de benefício, passos com ícones, banner final)
 
 ### Status
