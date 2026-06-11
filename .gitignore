@@ -25,7 +25,15 @@ batch-periods.json
 taime-web-BACKUP-*/
 
 # Claude Code settings — local-only, podem conter permissões/contexto sensível
-.claude/
+# (Glob `.claude/*` em vez de `.claude/` para permitir re-incluir subdirs
+# específicos via negação. Diretório excluído com `/` final impede negação.)
+.claude/*
+# Exceção: skills do projeto são versionadas (compartilhadas com o time)
+!.claude/skills/
+!.claude/skills/**
+
+# Output do gerador de posts LinkedIn — drafts locais, não versionar
+output/
 
 # Lockfile raiz — Next.js usa apenas taime-web/package-lock.json
 package-lock.json

@@ -2,6 +2,66 @@
 
 ---
 
+## [2026-06-11] — Skill `linkedin-content` + script gerador de posts LinkedIn
+
+### Status
+- [x] `npx tsc --noEmit -p tsconfig.json` (pipeline raiz): 0 erros
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Sample run com `--format trend-spotlight`: gerado em `output/linkedin/post-2026-06-11-trend-spotlight.md`
+- [x] Grep U+2014 no output: 0 ocorrências (em dash enforcement em código funcionou)
+- [x] Skill versionada via exceção `!.claude/skills/**` no `.gitignore` (raiz). `.claude/settings.json` continua ignorado.
+
+### Entregas
+
+**1. Skill (`.claude/skills/linkedin-content/SKILL.md`):**
+- Define **quando acionar** (gatilhos em PT e EN: "post linkedin", "conteúdo da quinzena", "post do radar", etc).
+- Codifica **6 regras editoriais invioláveis**: sem fontes nominais, sem em dash, sem hindsight, sem alucinação numérica, tom executivo, idioma EN por padrão.
+- Documenta os **4 formatos**: `trend-spotlight`, `then-now-next`, `radar-pulse`, `score-breakdown` com estrutura mandatória (hook ≤12 palavras, 60-150 palavras, 1 dado concreto, CTA, 3-5 hashtags).
+- Comandos de execução prontos para colar.
+- Declara explicitamente o **que NÃO faz** (não publica, não traduz, não responde DMs).
+
+**2. Script (`scripts/generate-linkedin-post.ts`):**
+- Args: `--format` (obrigatório), `--trend-id`, `--report-id`, `--lang`.
+- Carrega `.env.local` (`dotenv.config({ path: '.env.local' })`) — mesmo padrão de `generate-embeddings.ts`.
+- Busca dados reais via Supabase REST (service key): último report publicado + top trend (ou trend específica via `--trend-id`); para `radar-pulse` carrega sinais das últimas 48h.
+- Chama **Claude Sonnet 4.6** com `temperature: 0.7` (variação criativa controlada de hooks).
+- **Em dash enforcement em código**: `stripEmDash()` aplicado ao output do LLM (mesma regex do `generate-report.ts`: faixa numérica → hífen, qualquer outro → vírgula). Rede determinística mesmo se o prompt falhar.
+- Grava em `output/linkedin/post-YYYY-MM-DD-{format}.md` com: post principal + variação alternativa de hook + bloco de metadata (format, lang, source IDs, timestamp, model).
+- Eco do preview no stdout para inspeção rápida.
+- **NÃO publica em lugar nenhum.**
+
+**3. `.gitignore` (raiz):**
+- `.claude/` (trailing slash) trocado por `.claude/*` (glob). Sem isso, a negação `!.claude/skills/` não funcionaria — Git não permite re-incluir filhos de um diretório explicitamente excluído com `/`.
+- Adicionado `!.claude/skills/` e `!.claude/skills/**` para versionar a skill.
+- Adicionado `output/` para os drafts de posts ficarem locais (variam por dia, não vão pro repo).
+- `.claude/settings.json` segue ignorado (testado).
+
+### Validação da execução de sample
+
+```
+Format:    trend-spotlight
+Language:  en
+Loaded:    report 48c29bb6 (2026-05-16), trend rank=3 score=86
+Title:     "AI as Both Weapon and Shield: The Cybersecurity Arms Race Accelerates"
+Output:    output/linkedin/post-2026-06-11-trend-spotlight.md (25 linhas)
+```
+
+Conferência editorial do post gerado:
+- **Hook ≤12 palavras**: "AI is now both the attack and the defense. Are you securing both sides?" (12 palavras) ✓
+- **Score concreto**: "TAIME Score: 86/100, with Competitive Lag Risk at 87 and Competitive Pressure at 90." ✓
+- **Sem fontes nominais**: zero (verificado por leitura) ✓
+- **Sem em dash U+2014**: `grep -c "—"` retornou 0 ✓
+- **Hashtags 5**: `#TechIntelligence #AI #StrategicForesight #Cybersecurity #AIRisk` ✓
+- **CTA real**: link para `https://www.taime.tech/r/48c29bb6-…` (relatório público) ✓
+- **Alternative hook**: "Your AI productivity stack may already be an open attack surface." ✓
+
+### O que NÃO foi tocado
+- Pipeline existente (`generate-report.ts`, `analyze-signals.ts`, `collect-radar.ts`, etc): zero alteração.
+- Frontend (`taime-web/`): zero alteração.
+- Banco de dados: zero alteração (script é só leitura).
+
+---
+
 ## [2026-06-11] — Plano gratuito: CTA aponta para /login (âncora `#preview` órfã)
 
 ### Status
