@@ -68,7 +68,9 @@ async function getLatestBriefing(): Promise<RadarBriefing | null> {
         `&select=id,briefing_date,title_pt,title_en,body_pt,body_en`,
       {
         headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
-        next:    { revalidate: 60 * 30 }, // ISR 30 min
+        // Sempre busca o briefing mais recente. ISR estava congelando a
+        // faixa do Radar mostrando briefing do dia anterior.
+        cache:   'no-store',
       },
     )
     if (!res.ok) return null
@@ -898,9 +900,6 @@ export default async function LandingPage() {
           >
             {h.ctaPrimary}
           </Link>
-          <p className="mt-5 text-xs text-white/50 font-medium">
-            {isEn ? 'No credit card required.' : 'Não é necessário cartão de crédito.'}
-          </p>
         </div>
       </section>
 

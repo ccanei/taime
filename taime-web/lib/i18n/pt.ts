@@ -12,9 +12,9 @@ export const pt = {
 
   home: {
     badge:      'Sinais globais · Inteligência executiva · Desde 2000',
-    hero:       ['Você precisa decidir sobre IA, cloud, segurança.', 'Ninguém consegue ler tudo.', 'O TAIME lê por você.'],
-    heroBody:   'Cada relatório resume um período da tecnologia: fatos, tendências e sinais, pontuados e traduzidos em um movimento recomendado. Você entende o passado, o presente e o que vem aí. E decide com clareza.',
-    heroSub:    'Grátis: leia 2 relatórios completos por mês. Sem cartão.',
+    hero:       ['Ninguém consegue acompanhar tudo', 'o que acontece em tecnologia.', 'O TAIME consegue.'],
+    heroBody:   'Analisamos milhares de sinais e entregamos o que importa: o contexto, o score e o movimento recomendado. Você decide com o quadro completo.',
+    heroSub:    'Grátis: 2 relatórios completos por mês.',
     ctaPrimary: 'Criar conta gratuita →',
     ctaSecondary: 'Solicitar acesso →',
 
@@ -121,7 +121,7 @@ export const pt = {
       {
         name: 'Gratuito', price: null, badge: null,
         desc: 'Preview dos relatórios públicos',
-        features: ['Preview do último relatório', 'Score geral do período', 'Sem cadastro necessário'],
+        features: ['Preview do último relatório', 'Score geral do período'],
         cta: 'Ver relatório público', href: '#preview', highlight: false,
       },
       {

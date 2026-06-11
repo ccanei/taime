@@ -14,9 +14,9 @@ export const en: Translations = {
 
   home: {
     badge:      'Global signals · Executive intelligence · Since 2000',
-    hero:       ['You need to decide on AI, cloud, security.', 'No one can read everything.', 'TAIME reads it for you.'],
-    heroBody:   'Each report condenses a period of technology: facts, trends and signals, scored and translated into a recommended move. You understand the past, the present and what comes next. And decide with clarity.',
-    heroSub:    'Free: read 2 full reports per month. No card required.',
+    hero:       ['No one can keep up with everything', 'happening in technology.', 'TAIME can.'],
+    heroBody:   'We analyze thousands of signals and deliver what matters: the context, the score and the recommended move. You decide with the full picture.',
+    heroSub:    'Free: 2 full reports per month.',
     ctaPrimary: 'Create free account →',
     ctaSecondary: 'Request access →',
 
@@ -123,7 +123,7 @@ export const en: Translations = {
       {
         name: 'Free', price: null, badge: null,
         desc: 'Preview of public reports',
-        features: ['Preview of latest report', 'General period score', 'No signup required'],
+        features: ['Preview of latest report', 'General period score'],
         cta: 'View public report', href: '#preview', highlight: false,
       },
       {

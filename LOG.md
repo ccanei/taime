@@ -2,6 +2,60 @@
 
 ---
 
+## [2026-06-11] — Home: nova copy do hero, sem menções a cartão, briefing do Radar ao vivo, plano gratuito sem "sem cadastro"
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] `grep -rniE "cartão|cartao|credit card|no card|sem cartão|sem cartao|no credit"` em `app/page.tsx` + `lib/i18n/`: **zero matches** confirmado
+
+### Mudanças
+
+**1. Removidas todas as menções a cartão (PT + EN)**
+- `lib/i18n/pt.ts → heroSub`: `"Grátis: leia 2 relatórios completos por mês. Sem cartão."` → `"Grátis: 2 relatórios completos por mês."`
+- `lib/i18n/en.ts → heroSub`: `"Free: read 2 full reports per month. No card required."` → `"Free: 2 full reports per month."`
+- `app/page.tsx` (banner final escuro): removido o `<p>` com `"No credit card required."` / `"Não é necessário cartão de crédito."` (o botão CTA continua). Grep final confirmou 0 ocorrências.
+
+**2. Nova copy do hero (PT + EN)**
+
+| | Antes | Depois |
+|---|---|---|
+| `hero` (PT) | "Você precisa decidir sobre IA, cloud, segurança." / "Ninguém consegue ler tudo." / "O TAIME lê por você." | "Ninguém consegue acompanhar tudo" / "o que acontece em tecnologia." / **"O TAIME consegue."** (em azul `taime-400`) |
+| `heroBody` (PT) | Texto sobre "fatos, tendências e sinais... passado/presente/futuro" | "Analisamos milhares de sinais e entregamos o que importa: o contexto, o score e o movimento recomendado. Você decide com o quadro completo." |
+| `hero` (EN) | "You need to decide on AI, cloud, security." / "No one can read everything." / "TAIME reads it for you." | "No one can keep up with everything" / "happening in technology." / **"TAIME can."** (em azul) |
+| `heroBody` (EN) | Texto equivalente antigo | "We analyze thousands of signals and deliver what matters: the context, the score and the recommended move. You decide with the full picture." |
+
+A frase final ("O TAIME consegue." / "TAIME can.") fica em `text-taime-400` graças à estrutura existente do JSX (`<span className="text-taime-400">{h.hero[2]}</span>`), sem ajuste de código. CTAs preservados.
+
+**3. Briefing do Radar congelado: fix de cache**
+
+`app/page.tsx → getLatestBriefing()`:
+```ts
+// Antes
+next: { revalidate: 60 * 30 }  // ISR 30 min — congelava a faixa
+
+// Depois
+cache: 'no-store'              // sempre o mais recente
+```
+
+Auditoria dos outros fetches da home:
+- `getTopTrends()` → já tinha `cache: 'no-store'`. ✓
+- Sem `export const revalidate` ou `export const dynamic` no escopo de página. ✓
+- `radar_briefings` agora bate o banco a cada request, sem ISR.
+
+**4. Plano gratuito: removida "Sem cadastro necessário"**
+
+- `lib/i18n/pt.ts` (plano gratuito features): `['Preview do último relatório', 'Score geral do período', 'Sem cadastro necessário']` → `['Preview do último relatório', 'Score geral do período']`
+- `lib/i18n/en.ts` (free plan features): `['Preview of latest report', 'General period score', 'No signup required']` → `['Preview of latest report', 'General period score']`
+
+Como `/planos/page.tsx` e a seção de planos da home consomem o mesmo `h.plans`, a remoção propaga para os dois lugares com um único ponto de edição. Verificado com `grep` em `app/planos`: nada mais para limpar.
+
+### O que NÃO foi tocado
+- Estrutura visual do hero (JSX): preservada — só os 3 strings do `hero[]` mudaram. A linha em `text-taime-400` continua sendo a hero[2], então o destaque já está na frase certa ("O TAIME consegue." / "TAIME can.").
+- FAQ entry sobre "acessar sem cadastro" (linha 167 do `pt.ts`): contextualmente diferente da feature do plano, mantida.
+- Outras seções da home, layout, paywall, `/r/[id]`, `/faq`, busca, planos.
+
+---
+
 ## [2026-06-10] — Home Fase 3: poda estratégica, página /faq, faixa do Radar
 
 ### Status
