@@ -124,7 +124,7 @@ export const en: Translations = {
         name: 'Free', price: null, badge: null,
         desc: 'Preview of public reports',
         features: ['Preview of latest report', 'General period score'],
-        cta: 'View public report', href: '#preview', highlight: false,
+        cta: 'Create free account →', href: '/login', highlight: false,
       },
       {
         name: 'Essential', price: 'Early Access', badge: 'Most popular',

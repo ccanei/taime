@@ -122,7 +122,7 @@ export const pt = {
         name: 'Gratuito', price: null, badge: null,
         desc: 'Preview dos relatórios públicos',
         features: ['Preview do último relatório', 'Score geral do período'],
-        cta: 'Ver relatório público', href: '#preview', highlight: false,
+        cta: 'Criar conta gratuita →', href: '/login', highlight: false,
       },
       {
         name: 'Essencial', price: 'Acesso Antecipado', badge: 'Mais popular',

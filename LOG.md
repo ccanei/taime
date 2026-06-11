@@ -2,6 +2,33 @@
 
 ---
 
+## [2026-06-11] — Plano gratuito: CTA aponta para /login (âncora `#preview` órfã)
+
+### Status
+- [x] `npm run build`: ✓ Compiled successfully, 0 erros TypeScript
+- [x] `grep -rn "#preview"` no `taime-web`: **zero matches** confirmado
+
+### Problema
+A seção "Relatórios recentes" (antes `id="preview"`) foi removida da home na poda da Fase 3 (2026-06-10), mas o CTA do plano Gratuito ainda apontava para `href: '#preview'`. Clique não fazia nada (rolagem para âncora inexistente).
+
+### Mudanças
+
+Apenas 2 referências encontradas no `taime-web`, ambas em i18n:
+
+| Arquivo | Antes | Depois |
+|---|---|---|
+| `lib/i18n/pt.ts` (plano Gratuito) | `cta: 'Ver relatório público', href: '#preview'` | `cta: 'Criar conta gratuita →', href: '/login'` |
+| `lib/i18n/en.ts` (free plan) | `cta: 'View public report', href: '#preview'` | `cta: 'Create free account →', href: '/login'` |
+
+Como `/planos/page.tsx` e a seção de planos da home consomem o mesmo `h.plans`, o fix propaga para os 2 lugares com uma única edição. Texto do CTA alinhado com o do hero ("Criar conta gratuita →" / "Create free account →"), reforçando a consistência da jornada de conversão.
+
+Nenhuma outra referência a `#preview` no projeto (verificado por grep recursivo em `*.ts`, `*.tsx`, `*.mjs`, `*.js`, excluindo `node_modules` e `.next`).
+
+### O que NÃO foi tocado
+Nada além das 2 strings. Resto do plano (`name`, `price`, `badge`, `desc`, `features`, `highlight`): intacto.
+
+---
+
 ## [2026-06-11] — Home: nova copy do hero, sem menções a cartão, briefing do Radar ao vivo, plano gratuito sem "sem cadastro"
 
 ### Status
