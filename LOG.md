@@ -2,6 +2,39 @@
 
 ---
 
+## [2026-06-11] - Plan helper + gate do Executive Advisor para Strategic
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+
+### Entregas
+- **`lib/plan.ts` (novo, helper centralizado):** `getUserPlan(userId)` lê
+  `subscriptions` (status `active`) via service key e retorna `'free' | 'essential'
+  | 'strategic' | null` (sem subscription ativa = tratado como free).
+  `hasAdvisorAccess(plan)` retorna `true` só para `strategic` hoje (comentário
+  marca o ponto único a ajustar quando Essential ganhar Advisor com limite de
+  mensagens). Todo gate de plano deve passar por aqui.
+- **Gate real server-side** em `/api/advisor/chat/route.ts`: após auth,
+  `getUserPlan` + `hasAdvisorAccess`; sem acesso → **403** `{ error: 'Advisor
+  available on Strategic plan only' }`. Removido o TODO antigo de "qualquer
+  usuário autenticado tem acesso".
+- **`app/dashboard/advisor/page.tsx`:** sem acesso → estado **"em breve"** (sem
+  chat, sem onboarding) com CTA para `/planos`. Strategic → `AdvisorView` funcional
+  inalterado.
+- **Card do Advisor em `app/dashboard/page.tsx`:** Strategic = card ativo com CTA
+  real; demais = badge "EM BREVE" + link para `/planos`. Badge "NOVO" só aparece
+  para quem tem acesso.
+- **Não tocado:** prompt, onboarding e lógica de chat do Advisor.
+- **`TAIME_MASTER_DOC.md`:** seção 9 reescrita (3 planos, "Advisory" eliminado) +
+  registro datado da decisão de estrutura de planos; seção 10 atualizada (Advisor
+  liberado para Strategic, em calibração).
+
+### Observações
+- Gate lê `subscriptions` (status `active`), compatível com a futura integração
+  Stripe; nenhuma mudança de gate prevista quando o Stripe entrar.
+
+---
+
 ## [2026-06-11] — Skill `linkedin-content` + script gerador de posts LinkedIn
 
 ### Status

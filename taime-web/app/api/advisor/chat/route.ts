@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
+import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 
 interface AdvisorProfile {
   company_name:           string | null
@@ -93,8 +94,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // TODO: Restrict to paid subscribers when Stripe is active.
-  // For now, any authenticated user has access to the advisor.
+  // Gate de plano: hoje só Strategic. Essential entra com limite de mensagens
+  // numa fase futura (ajustar em lib/plan.ts quando os limites existirem).
+  const plan = await getUserPlan(user.id)
+  if (!hasAdvisorAccess(plan)) {
+    return NextResponse.json(
+      { error: 'Advisor available on Strategic plan only' },
+      { status: 403 },
+    )
+  }
 
   let body: { message: string; sessionId: string }
   try {

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
+import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import type { Report } from '@/lib/types'
 import LogoutButton from '@/components/LogoutButton'
 import DashboardClient from '@/components/DashboardClient'
@@ -137,10 +138,12 @@ export default async function DashboardPage() {
   const locale = localeCookie === 'en' ? 'en' : 'pt'
   const isEn = locale === 'en'
 
-  const [reports, advisorStatus] = await Promise.all([
+  const [reports, advisorStatus, plan] = await Promise.all([
     getReports(),
     getAdvisorStatus(user.id),
+    getUserPlan(user.id),
   ])
+  const advisorUnlocked = hasAdvisorAccess(plan)
 
   // ── Reading progress (dado pessoal: cliente autenticado, respeita RLS) ──────
   const { data: progressRows } = await supabase
@@ -199,14 +202,20 @@ export default async function DashboardPage() {
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
                   <h2 className="text-sm font-bold text-zinc-900">Executive Advisor</h2>
-                  {showNewBadge && (
+                  {advisorUnlocked && showNewBadge && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold
                                      bg-taime-600 text-white tracking-wide">
                       {isEn ? 'NEW' : 'NOVO'}
                     </span>
                   )}
+                  {!advisorUnlocked && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold
+                                     bg-zinc-100 text-zinc-500 tracking-wide">
+                      {isEn ? 'SOON' : 'EM BREVE'}
+                    </span>
+                  )}
                 </div>
-                {advisorStatus.hasProfile ? (
+                {advisorUnlocked && advisorStatus.hasProfile ? (
                   <p className="text-xs text-zinc-400 max-w-sm leading-relaxed line-clamp-2">
                     {advisorStatus.lastMessage
                       ? `"${advisorStatus.lastMessage}..."`
@@ -222,13 +231,22 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            <Link
-              href="/dashboard/advisor"
-              className="btn-primary text-sm px-4 py-2 shrink-0">
-              {advisorStatus.hasProfile
-                ? (isEn ? 'Continue conversation →' : 'Continuar conversa →')
-                : (isEn ? 'Set up your Advisor →' : 'Configurar seu Advisor →')}
-            </Link>
+            {advisorUnlocked ? (
+              <Link
+                href="/dashboard/advisor"
+                className="btn-primary text-sm px-4 py-2 shrink-0">
+                {advisorStatus.hasProfile
+                  ? (isEn ? 'Continue conversation →' : 'Continuar conversa →')
+                  : (isEn ? 'Set up your Advisor →' : 'Configurar seu Advisor →')}
+              </Link>
+            ) : (
+              <Link
+                href="/planos"
+                className="text-sm font-medium text-zinc-500 hover:text-taime-700
+                           transition-colors shrink-0 px-4 py-2">
+                {isEn ? 'Strategic plan →' : 'Plano Strategic →'}
+              </Link>
+            )}
           </div>
         </div>
 

@@ -400,14 +400,34 @@ ADMIN_NOTIFICATION_EMAIL=notify@taime.tech
 
 ## 9. PLANOS E PREÇOS
 
-|Plano                  |Preço            |O que inclui                                                                                  |
-|-----------------------|-----------------|----------------------------------------------------------------------------------------------|
-|**Gratuito**           |Grátis           |Preview dos relatórios, score geral, Radar de hoje                                            |
-|**Essencial**          |Acesso Antecipado|Relatório completo, framework, score dimensions, THEN/NOW/NEXT, implicações, histórico 90 dias|
-|**Estratégico**        |Acesso Antecipado|Tudo do Essencial + histórico completo desde 2000 + acesso antecipado                         |
-|**Advisory** *(futuro)*|A definir        |Tudo do Estratégico + Executive Advisor com memória histórica                                 |
+|Plano          |Preço            |O que inclui                                                                                                          |
+|---------------|-----------------|----------------------------------------------------------------------------------------------------------------------|
+|**Gratuito**   |Grátis           |2 relatórios completos por mês (janela rolling de 30 dias), preview dos demais, Radar de hoje                          |
+|**Essencial**  |Acesso Antecipado|Limites atuais do site (completo até 1 ano, preview 1-5 anos) + Executive Advisor com quantidade limitada de mensagens *(fase futura)*|
+|**Estratégico**|Acesso Antecipado|Histórico completo desde 2000 + Executive Advisor com volume ampliado de mensagens                                     |
 
 Preços em USD e BRL serão anunciados quando Stripe for integrado.
+
+### Decisão de estrutura de planos - 2026-06-11
+
+- **Três planos** (não quatro): **FREE** (2 relatórios completos/mês), **ESSENTIAL**
+  (limites atuais do site + Advisor com quantidade limitada de mensagens, em fase
+  futura) e **STRATEGIC** (histórico completo + Advisor com volume ampliado de
+  mensagens).
+- **Plano "Advisory" separado: eliminado.** O Executive Advisor deixa de ser um
+  plano à parte e passa a ser distribuído entre Essential (acesso limitado) e
+  Strategic (acesso ampliado).
+- **Estado atual:** Advisor liberado **somente para Strategic** (subscription
+  ativa), em desenvolvimento/calibração. Essential e Free veem o estado "em breve"
+  (sem chat, sem onboarding).
+- **Gate técnico:** centralizado em `lib/plan.ts` (`getUserPlan` + `hasAdvisorAccess`).
+  `hasAdvisorAccess` hoje retorna `true` apenas para `strategic`; quando os limites
+  de mensagens do Essential existirem, o ajuste é nesse único ponto. O gate real é
+  server-side em `/api/advisor/chat` (403 para quem não tem acesso) e espelhado na
+  UI (`app/dashboard/advisor/page.tsx` e card em `app/dashboard/page.tsx`).
+- **Stripe: pendente.** O gate lê a tabela `subscriptions` (status `active`),
+  compatível com a futura integração, sem necessidade de mudança no gate quando
+  o Stripe entrar.
 
 -----
 
@@ -416,8 +436,9 @@ Preços em USD e BRL serão anunciados quando Stripe for integrado.
 ### Status atual
 
 - Interface pronta (onboarding 4 etapas + chat)
-- Mensagem automática “em breve” para usuários
-- Input desabilitado enquanto não está ativo
+- **Liberado para Strategic** (subscription ativa), em desenvolvimento/calibração
+- Essential/Free veem o estado "em breve" (sem chat, sem onboarding)
+- Gate centralizado em `lib/plan.ts`; gate real server-side em `/api/advisor/chat` (403)
 
 ### Como funciona (quando ativo)
 
