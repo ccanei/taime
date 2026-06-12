@@ -21,9 +21,9 @@ interface Props {
   profile: AdvisorProfile
 }
 
-const COMING_SOON_PT = `Olá! Sou o TAIME Executive Advisor. Estou sendo configurado para oferecer consultoria estratégica personalizada com base no seu perfil e na inteligência dos relatórios TAIME. Em breve estarei disponível para te ajudar a transformar sinais tecnológicos em decisões estratégicas para sua empresa. Fique atento — você será notificado quando o Advisor estiver ativo.`
+const WELCOME_PT = `Olá! Sou o TAIME Executive Advisor. Tenho acesso ao seu perfil e à inteligência dos relatórios TAIME para te ajudar a transformar sinais tecnológicos em decisões estratégicas para a sua empresa. Como posso ajudar hoje?`
 
-const COMING_SOON_EN = `Hello! I'm the TAIME Executive Advisor. I'm being configured to provide personalized strategic advisory based on your profile and TAIME report intelligence. I'll be available soon to help you transform technology signals into strategic decisions for your organization. Stay tuned — you'll be notified when the Advisor is active.`
+const WELCOME_EN = `Hello! I'm the TAIME Executive Advisor. I have access to your profile and TAIME report intelligence to help you turn technology signals into strategic decisions for your organization. How can I help you today?`
 
 function generateSessionId(): string {
   return crypto.randomUUID()
@@ -173,7 +173,7 @@ export default function AdvisorChat({ userId, profile }: Props) {
                            text-xs font-bold text-white shrink-0">T</div>
             <div className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed
                             bg-white border border-zinc-200 text-zinc-800 shadow-sm">
-              {isPt ? COMING_SOON_PT : COMING_SOON_EN}
+              {isPt ? WELCOME_PT : WELCOME_EN}
             </div>
           </div>
         )}
@@ -230,13 +230,11 @@ export default function AdvisorChat({ userId, profile }: Props) {
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              !hasHistory
-                ? (isPt ? 'Advisor em breve disponível...' : 'Advisor coming soon...')
-                : (isPt ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas... (Enter para enviar)'
-                        : 'Ask about trends, strategy or technology decisions... (Enter to send)')
+              isPt ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas... (Enter para enviar)'
+                   : 'Ask about trends, strategy or technology decisions... (Enter to send)'
             }
             rows={2}
-            disabled={loading || !hasHistory}
+            disabled={loading}
             className="flex-1 resize-none rounded-xl border border-zinc-200 px-4 py-2.5 text-sm
                        text-zinc-900 placeholder:text-zinc-400 outline-none
                        focus:ring-2 focus:ring-taime-600 focus:border-transparent
@@ -244,7 +242,7 @@ export default function AdvisorChat({ userId, profile }: Props) {
           />
           <button
             onClick={handleSend}
-            disabled={loading || !input.trim() || !hasHistory}
+            disabled={loading || !input.trim()}
             className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

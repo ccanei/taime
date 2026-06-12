@@ -2,6 +2,41 @@
 
 ---
 
+## [2026-06-12] - Remove trava coming-soon hardcoded dentro dos componentes do Advisor
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+
+### Contexto
+Gate por plano confirmado funcionando (log: `plan: 'strategic', hasAccess: true`),
+mas a UI continuava em "EM BREVE" mesmo para Strategic. Causa: quando o Advisor foi
+bloqueado para todos (semanas atrás), a trava foi colocada HARDCODED dentro do
+`components/AdvisorChat.tsx`, amarrada a `hasHistory` numa lógica circular: input
+desabilitado até existir histórico, mas sem digitar nunca se criava histórico.
+
+### Onde a trava estava (`components/AdvisorChat.tsx`)
+- Constantes `COMING_SOON_PT/EN` injetadas como mensagem de boas-vindas.
+- Placeholder "Advisor em breve disponível..." / "Advisor coming soon..." quando `!hasHistory`.
+- `disabled={loading || !hasHistory}` no textarea e `disabled={loading || !input.trim() || !hasHistory}` no botão de envio (a trava real).
+
+### O que foi removido / corrigido
+- `COMING_SOON_PT/EN` → `WELCOME_PT/EN` (saudação real convidando a iniciar a conversa).
+- Placeholder agora é sempre o prompt funcional ("Pergunte sobre tendências...").
+- `disabled` do textarea = `loading`; `disabled` do botão = `loading || !input.trim()`.
+  Removida toda dependência de `hasHistory` para habilitar o chat.
+- `hasHistory` mantido apenas para decidir exibir a saudação no estado vazio.
+- `AdvisorView.tsx` e `AdvisorOnboarding.tsx`: sem trava (os `disabled` ali são
+  validação normal de formulário, intocados).
+- Removido `console.log('[advisor-gate]', ...)` de `app/dashboard/advisor/page.tsx`.
+  Mantido o `console.error` no catch de `lib/plan.ts` (útil).
+
+### Resultado
+A decisão de quem vê o Advisor é EXCLUSIVAMENTE do gate por plano em
+`app/dashboard/advisor/page.tsx`. Strategic vê o chat/onboarding totalmente
+funcional; Essential/Free veem a tela "em breve" da página (não do componente).
+
+---
+
 ## [2026-06-11] - Plan helper + gate do Executive Advisor para Strategic
 
 ### Status
