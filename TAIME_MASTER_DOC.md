@@ -560,6 +560,8 @@ Preços em USD e BRL serão anunciados quando Stripe for integrado.
 - Notificações de waitlist: [notify@taime.tech](mailto:notify@taime.tech)
 - Tabela `admins` no Supabase controla acesso
 - Aprovação manual via /admin/waitlist
+- Painéis admin: `/admin/feedback`, `/admin/waitlist`, `/admin/reports`, `/admin/engagement`
+- **`/admin/engagement`** (painel de engajamento por usuário): agrega `reading_progress` e `advisory_memory` na view `user_engagement_monthly` (1 linha por usuário+mês). Mostra relatórios abertos/concluídos e mensagens do Advisor nos últimos 3 meses, última atividade, sinal de tendência (verde estável / amarelo queda >50% / vermelho inativo 30+ dias) e custo do Advisor (tokens + estimativa USD a preço Sonnet). View entregue em `taime-web/add-engagement-view.sql` (executar manualmente no Supabase). Inclui placeholder `saved_reports` (feature de bookmark ainda não construída; `reports_saved` fica 0 até existir).
 
 ### Contato
 

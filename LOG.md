@@ -2,6 +2,59 @@
 
 ---
 
+## [2026-06-12] - Painel de engajamento de usuários (/admin/engagement)
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Grep U+2014 no diff: 0 ocorrências em texto novo
+
+### Objetivo
+Visibilidade de engajamento por usuário para detectar queda de uso (ex.: 10 relatórios
+no mês 2, 1 no mês 3, zero no mês 4) e medir o custo do Advisor por usuário. Só leitura
+e agregação do que já existe (`reading_progress`, `advisory_memory`); nenhum tracking novo.
+
+### Entregas
+
+**Tarefa 1 - Registro de abertura:** já satisfeito. `components/ReportClient.tsx` faz
+`send(0, false)` no mount (quando `!isPreview && !isPublic`), criando a linha em
+`reading_progress` na abertura, antes de qualquer scroll. Sem mudança necessária.
+
+**Tarefa 2 - View SQL (`taime-web/add-engagement-view.sql`, entregue pronta, NÃO executada):**
+view `user_engagement_monthly`, 1 linha por usuário+mês com `reports_opened`,
+`reports_completed`, `reports_saved`, `advisor_messages` (só role user),
+`advisor_input_tokens`/`advisor_output_tokens` (somados só das linhas `assistant` do
+`advisory_memory`, pois o usage é gravado em ambas as linhas da troca),
+`advisor_cost_tokens` (input+output) e `last_activity_at` (GREATEST entre as fontes).
+Join de email/full_name (`users`) e plano (`subscriptions` ativa, lateral). CTEs +
+union de chaves (user_id, month).
+
+**BLOCKER sinalizado:** `saved_reports` NÃO existe no schema (a spec assumia). Adicionei
+`create table if not exists saved_reports (...)` como placeholder no topo do SQL para a
+view ser auto-contida e executável; enquanto não houver feature de bookmark,
+`reports_saved` fica sempre 0.
+
+**Tarefa 3 - Página `/admin/engagement`:** server component com gate admin (mesmo padrão
+dos outros `/admin`: `isAdmin(user.email)`), lê a view via service key e distingue
+"view ausente" (mostra instrução para rodar o SQL) de "view vazia". Client
+`EngagementAdmin.tsx`: tabela 1 linha/usuário, colunas nome/email, plano, 3 meses lado a
+lado (abertos · msgs por mês), última atividade, sinal de tendência e custo Advisor (3m,
+tokens + USD). Sinal comentado: vermelho = inativo 30+ dias, amarelo = queda >50% vs mês
+anterior, verde = estável/crescendo. Filtro por plano (chips todos/free/essential/strategic)
+e ordenação por última atividade (mais recente primeiro). Linha expansível com breakdown
+por mês (abertos/concluídos/salvos/msgs/tokens/custo). Preço Sonnet em constante comentada
+(`SONNET_USD_PER_M_INPUT=3`, `SONNET_USD_PER_M_OUTPUT=15`).
+
+**Tarefa 4 - Master doc:** seção Admin do `TAIME_MASTER_DOC.md` registra a página, a view,
+os sinais e o placeholder `saved_reports`.
+
+### Arquivos
+- `taime-web/add-engagement-view.sql` (novo)
+- `taime-web/app/admin/engagement/page.tsx` (novo)
+- `taime-web/app/admin/engagement/EngagementAdmin.tsx` (novo)
+- `TAIME_MASTER_DOC.md` (seção Admin)
+
+---
+
 ## [2026-06-12] - Advisor v4: idioma, brevidade, anti-truncamento, links, caching, instrumentação
 
 ### Status
