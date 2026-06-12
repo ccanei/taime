@@ -10,11 +10,13 @@ interface Profile {
 }
 
 interface Props {
-  userId:  string
-  profile: Profile | null
+  userId:    string
+  userName:  string | null
+  userEmail: string | null
+  profile:   Profile | null
 }
 
-export default function AdvisorView({ userId, profile }: Props) {
+export default function AdvisorView({ userId, userName, userEmail, profile }: Props) {
   const [hasProfile, setHasProfile] = useState(!!profile)
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(profile)
 
@@ -38,6 +40,6 @@ export default function AdvisorView({ userId, profile }: Props) {
   }
 
   return (
-    <AdvisorChat userId={userId} profile={currentProfile} />
+    <AdvisorChat userId={userId} userName={userName} userEmail={userEmail} profile={currentProfile} />
   )
 }

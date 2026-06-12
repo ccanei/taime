@@ -123,7 +123,9 @@ function TrendSection({ trend, lang, period }: { trend: ReportTrend; lang: Lang;
   const rationale = isPt ? trend.taime_score_rationale_pt_br : trend.taime_score_rationale_en
 
   return (
-    <article className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
+    <article
+      id={`trend-${trend.rank}`}
+      className="bg-white rounded-2xl border border-zinc-200 overflow-hidden scroll-mt-24">
       {/* Trend header */}
       <div className="px-8 py-6 border-b border-zinc-100 flex items-start gap-5">
         <ScoreGauge

@@ -18,8 +18,24 @@ interface AdvisorProfile {
 }
 
 interface Props {
-  userId:  string
-  profile: AdvisorProfile
+  userId:    string
+  userName:  string | null
+  userEmail: string | null
+  profile:   AdvisorProfile
+}
+
+// Iniciais: primeiro + último nome ("Claudinei Canei" -> "CC"); nome único -> 1
+// letra; sem nome -> 1ª letra do email; sem nada -> "U".
+function deriveInitials(name: string | null, email: string | null): string {
+  const n = (name ?? '').trim()
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean)
+    if (parts.length === 1) return parts[0][0].toUpperCase()
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  }
+  const e = (email ?? '').trim()
+  if (e) return e[0].toUpperCase()
+  return 'U'
 }
 
 const WELCOME_PT = `Olá! Sou o TAIME Executive Advisor. Tenho acesso ao seu perfil e à inteligência dos relatórios TAIME para te ajudar a transformar sinais tecnológicos em decisões estratégicas para a sua empresa. Como posso ajudar hoje?`
@@ -30,9 +46,10 @@ function generateSessionId(): string {
   return crypto.randomUUID()
 }
 
-export default function AdvisorChat({ userId, profile }: Props) {
+export default function AdvisorChat({ userId, userName, userEmail, profile }: Props) {
   const { locale }   = useLocale()
   const isPt         = locale === 'pt'
+  const userInitials = deriveInitials(userName, userEmail)
   const [messages,   setMessages]   = useState<Message[]>([])
   const [input,      setInput]      = useState('')
   const [loading,    setLoading]    = useState(false)
@@ -188,7 +205,7 @@ export default function AdvisorChat({ userId, profile }: Props) {
               ${msg.role === 'user'
                 ? 'bg-zinc-800 text-white'
                 : 'bg-taime-600 text-white'}`}>
-              {msg.role === 'user' ? 'U' : 'T'}
+              {msg.role === 'user' ? userInitials : 'T'}
             </div>
 
             {/* Bubble */}

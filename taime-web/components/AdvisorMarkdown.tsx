@@ -25,7 +25,7 @@ export default function AdvisorMarkdown({ content }: { content: string }) {
           em: ({ children }) => <em className="italic">{children}</em>,
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noopener noreferrer"
-               className="text-taime-700 underline underline-offset-2 hover:text-taime-800">
+               className="text-taime-700 underline-offset-2 hover:underline hover:text-taime-800 font-medium">
               {children}
             </a>
           ),

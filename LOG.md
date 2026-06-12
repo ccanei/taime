@@ -2,6 +2,53 @@
 
 ---
 
+## [2026-06-12] - Advisor v4: idioma, brevidade, anti-truncamento, links, caching, instrumentação
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Grep U+2014 no diff: 0 ocorrências em texto novo
+
+### Entregas (tudo em `app/api/advisor/chat/route.ts` salvo indicação)
+
+**1. Idioma forçado:** `language` do router (fallback `detectLanguage()` heurístico na
+última mensagem) vira instrução imperativa NO FIM do system ("ALWAYS respond in
+English/português regardless of previous messages"). Bloco dinâmico, fora do cache.
+
+**2. Responder só à última mensagem:** regra no system prompt ("history is context,
+not a queue; respond exclusively to the latest message").
+
+**3. Brevidade + anti-truncamento:** system pede 200-400 palavras por padrão,
+detalhe completo só sob pedido, oferta de aprofundamento via link, menos
+blockquotes/emojis/tabelas (tabela só p/ 3+ itens). `pickMaxTokens()`: 1536 padrão,
+4096 quando a mensagem pede plano/detalhe. Checa `stop_reason`: se `max_tokens`,
+anexa aviso no idioma da resposta e grava `truncated: true` no context_metadata.
+
+**4. Links para relatórios/trends:** âncora estável por trend na página de relatório
+(`components/ReportClient.tsx`: `id="trend-{rank}"` + `scroll-mt-24`). O bloco de
+contexto inclui `/reports/{id}` por relatório e `/reports/{id}#trend-{rank}` por
+trend; system manda linkar SEMPRE que citar, usando SÓ os URLs fornecidos (proibido
+inventar URL). `components/AdvisorMarkdown.tsx`: link na cor do design system com
+underline no hover.
+
+**5. Prompt caching:** chamada principal usa `system` em blocos com `cache_control`
+ephemeral na ordem regras fixas → perfil → relatórios; histórico e mensagem nova
+ficam fora. Blocos serializados de forma determinística (ordem fixa de campos, sem
+timestamps). Catálogo do router Haiku também cacheado (instruções + catálogo como
+blocos de system). Header `anthropic-beta: prompt-caching-2024-07-31`.
+
+**6. Instrumentação de uso:** context_metadata do assistant grava `usage`
+(input/output/cache_read/cache_creation tokens) da chamada principal + `router_usage`
+da chamada Haiku. Objetivo: medir custo real por mensagem p/ calibrar limites do
+Essential e validar economia do cache.
+
+**7. Avatar com iniciais (`components/AdvisorChat.tsx`):** avatar "U" agora mostra as
+iniciais do usuário. `deriveInitials()`: primeiro+último nome ("Claudinei Canei" ->
+"CC"), nome único -> 1 letra, sem nome -> 1ª letra do email, fallback "U". Nome vem
+de `users.full_name` (fonte existente), threaded via `app/dashboard/advisor/page.tsx`
+-> `AdvisorView` -> `AdvisorChat`. Avatar "T" do Advisor inalterado.
+
+---
+
 ## [2026-06-12] - Advisor v3: seleção inteligente de contexto + grounding rígido + markdown
 
 ### Status

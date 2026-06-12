@@ -67,11 +67,19 @@ export default async function AdvisorPage() {
   }
 
   const service = createSupabaseService()
-  const { data: profile } = await service
-    .from('advisor_profiles')
-    .select('company_name,sector,company_size,strategic_objective,maturity_level')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const [{ data: profile }, { data: userRow }] = await Promise.all([
+    service
+      .from('advisor_profiles')
+      .select('company_name,sector,company_size,strategic_objective,maturity_level')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    service
+      .from('users')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle(),
+  ])
+  const userName = (userRow as { full_name: string | null } | null)?.full_name ?? null
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -95,6 +103,8 @@ export default async function AdvisorPage() {
       <main className="max-w-4xl mx-auto px-6 py-6">
         <AdvisorView
           userId={user.id}
+          userName={userName}
+          userEmail={user.email ?? null}
           profile={profile as {
             company_name: string | null
             sector:       string | null
