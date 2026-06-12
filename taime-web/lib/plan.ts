@@ -29,8 +29,9 @@ export async function getUserPlan(userId: string): Promise<Plan | null> {
     const p = data?.plan as string | undefined
     if (p === 'free' || p === 'essential' || p === 'strategic') return p
     return null
-  } catch {
+  } catch (e) {
     // tabela ausente ou sem registro → null (tratado como 'free')
+    console.error('[getUserPlan] error:', e)
     return null
   }
 }

@@ -14,6 +14,7 @@ export default async function AdvisorPage() {
 
   // Gate de plano: hoje só Strategic tem o Advisor funcional.
   const plan = await getUserPlan(user.id)
+  console.log('[advisor-gate]', { userId: user.id, plan, hasAccess: hasAdvisorAccess(plan) })
   const hasAccess = hasAdvisorAccess(plan)
 
   if (!hasAccess) {
