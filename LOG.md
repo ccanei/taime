@@ -2,6 +2,59 @@
 
 ---
 
+## [2026-06-12] - Advisor v3: seleção inteligente de contexto + grounding rígido + markdown
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] `npm install react-markdown remark-gfm` (cache em /tmp por permissão)
+- [x] Grep U+2014 no diff: 0 ocorrências em texto novo
+
+### Contexto
+Em conversa real o Advisor (a) atribuiu dado a fonte por nome ("o Datadog
+documentou redução de 44%"), violando confidencialidade de fontes, e (b)
+apresentou um suposto padrão histórico 2019-2022 inexistente no contexto (só
+recebia os 3 últimos relatórios): conhecimento geral do modelo vestido de
+inteligência TAIME. Esta entrega ataca as duas causas.
+
+### Entregas
+
+**1. Roteador de contexto (Haiku) em `app/api/advisor/chat/route.ts`:**
+- `routeContext()` chama `claude-haiku-4-5` com a mensagem do usuário + catálogo
+  ENXUTO dos relatórios (id, period_label, títulos das trends, categories,
+  theme_slugs; query sem conteúdo completo, cap 50).
+- Haiku retorna JSON puro `{ report_ids, temporal_scope, language }`, parseado com
+  try/catch (tolerante a cercas de código). Carrega conteúdo completo só dos
+  selecionados (até 3).
+- Fallback: falha/vazio do Haiku → 3 mais recentes. O relatório mais recente
+  entra sempre, mesmo que não selecionado ("onde estamos").
+- `context_metadata` agora grava `report_ids_used`, `selection_source`
+  (`router | fallback`) e `attribution_flag`.
+
+**2. Grounding rígido no system prompt (reescrito):**
+- Natureza das afirmações: dado de relatório deve citar o período de origem;
+  conhecimento geral permitido mas sinalizado, nunca como achado TAIME.
+- Proibição de padrões históricos inventados sobre períodos não carregados;
+  se faltar histórico, oferecer buscar no arquivo e pedir reformulação por período.
+- Fontes por categoria, nunca por nome (recomendar produto por nome continua ok).
+- Números só com lastro nos relatórios do contexto, com referência de período.
+
+**3. Verificação leve pós-resposta (`lib/advisor-grounding.ts`, novo):**
+- `KNOWN_SOURCE_NAMES` (constante exportada, fácil de expandir) +
+  `detectAttribution()`: regex cruza nomes conhecidos com marcadores de atribuição
+  ("segundo X", "X documentou", "estudo da X").
+- Se flag: UMA retentativa corretiva da chamada principal apontando os nomes; se
+  persistir, responde mesmo assim e grava `attribution_flag: true` (não bloqueia).
+- Documentado em comentário que a regex é rede de segurança, não o mecanismo
+  principal (que é o prompt).
+
+**4. Markdown no chat (`components/AdvisorMarkdown.tsx`, novo):**
+- `react-markdown` + `remark-gfm`; mensagens do assistant renderizadas com
+  markdown estilizado no design system (headings compactos, listas, negrito,
+  tabelas com overflow horizontal). Mensagens do usuário seguem texto puro.
+- Sem `rehype-raw`: HTML cru do modelo é escapado por padrão.
+
+---
+
 ## [2026-06-12] - Remove trava coming-soon hardcoded dentro dos componentes do Advisor
 
 ### Status

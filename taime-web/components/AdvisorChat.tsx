@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useLocale } from '@/lib/useLocale'
+import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 
 interface Message {
   id:         string
@@ -195,9 +196,11 @@ export default function AdvisorChat({ userId, profile }: Props) {
               ${msg.role === 'user'
                 ? 'bg-zinc-800 text-white rounded-tr-sm'
                 : 'bg-white border border-zinc-200 text-zinc-800 rounded-tl-sm shadow-sm'}`}>
-              {msg.content.split('\n').map((line, i) => (
-                <span key={i}>{line}{i < msg.content.split('\n').length - 1 && <br />}</span>
-              ))}
+              {msg.role === 'user'
+                ? msg.content.split('\n').map((line, i) => (
+                    <span key={i}>{line}{i < msg.content.split('\n').length - 1 && <br />}</span>
+                  ))
+                : <AdvisorMarkdown content={msg.content} />}
             </div>
           </div>
         ))}
