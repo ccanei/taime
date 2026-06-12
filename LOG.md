@@ -2,6 +2,46 @@
 
 ---
 
+## [2026-06-12] - AdminNav centralizado com link para Engagement
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Grep U+2014 no diff: 0 ocorrências em texto novo
+
+### Problema
+Cada página de `/admin/*` (waitlist, reports, feedback, engagement) tinha sua
+própria `<nav>` hardcoded no header com a lista de links das outras páginas. A
+página nova `/admin/engagement` não aparecia na nav das outras três, então só
+era acessível por link direto.
+
+### Entregas
+
+**Componente único (`taime-web/components/AdminNav.tsx`, novo):** client component
+com a lista de 4 links (Waitlist, Reports, Feedback, Engagement) numa constante
+no topo do arquivo. Recebe prop opcional `active` (caminho do link da página
+atual) e cai em `usePathname()` quando não recebe. Destaca o link ativo com
+`text-zinc-900 font-semibold`; os demais mantêm o estilo `text-zinc-400
+hover:text-zinc-700`. Comentário de cabeçalho marca o componente como fonte
+única do menu admin: qualquer página nova em `/admin/*` deve usar esse
+componente em vez de duplicar links.
+
+**Substituição em todas as páginas admin existentes:** removidos os blocos
+`<nav>...</nav>` hardcoded em `app/admin/waitlist/page.tsx`,
+`app/admin/reports/page.tsx`, `app/admin/feedback/page.tsx` e
+`app/admin/engagement/page.tsx`. Cada um agora renderiza `<AdminNav
+active="/admin/<rota>" />` logo após o breadcrumb com o nome da página. Mantido
+o `Link href="/dashboard"` de volta para o dashboard, que está fora do escopo
+do menu admin.
+
+### Arquivos
+- `taime-web/components/AdminNav.tsx` (novo)
+- `taime-web/app/admin/waitlist/page.tsx` (substitui nav hardcoded)
+- `taime-web/app/admin/reports/page.tsx` (substitui nav hardcoded)
+- `taime-web/app/admin/feedback/page.tsx` (substitui nav hardcoded)
+- `taime-web/app/admin/engagement/page.tsx` (substitui nav hardcoded)
+
+---
+
 ## [2026-06-12] - Painel de engajamento de usuários (/admin/engagement)
 
 ### Status

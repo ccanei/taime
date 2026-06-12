@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
+import AdminNav from '@/components/AdminNav'
 import WaitlistAdmin from './WaitlistAdmin'
 import type { WaitlistRecord } from './WaitlistAdmin'
 
@@ -66,11 +67,7 @@ export default async function AdminWaitlistPage() {
             </Link>
             <span className="text-zinc-200">/</span>
             <span className="text-sm font-semibold text-zinc-900">Waitlist</span>
-            <nav className="flex items-center gap-3 ml-4 text-xs text-zinc-400">
-              <Link href="/admin/reports" className="hover:text-zinc-700 transition-colors">Reports</Link>
-              <span className="text-zinc-200">·</span>
-              <Link href="/admin/feedback" className="hover:text-zinc-700 transition-colors">Feedback</Link>
-            </nav>
+            <AdminNav active="/admin/waitlist" />
           </div>
           <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
             Admin
