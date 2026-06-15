@@ -61,6 +61,9 @@ interface Flag {
   suggestion_pt?: string | null;
   suggestion_en?: string | null;
   suggestion_reason?: string | null;
+  // Sinais do cluster da trend deste flag, anexados na validação para o
+  // curador ver evidência sem nova consulta. Title + snippet curto (~300 ch).
+  signals?: { id: string; title: string; snippet: string }[];
 }
 
 interface ScoreDimension { score: number; label: string }
@@ -678,18 +681,38 @@ export async function validatePersistedReport(reportId: string): Promise<{
     }
   }
 
-  // ── COPILOTO CORRETOR — sugestão subtrativa para cada flag corrigível ───────
-  // Roda durante a validação (sinais já carregados). 1 chamada LLM por flag corrigível.
+  // ── COPILOTO CORRETOR + ANEXO DE SINAIS POR FLAG ────────────────────────────
+  // Roda durante a validação (sinais já carregados). Anexa os sinais do cluster
+  // a cada flag (para o curador ver evidência no /admin) e, se o flag for
+  // corrigível, pede sugestão subtrativa ao LLM. 1 chamada LLM por flag corrigível.
   for (const flag of flags) {
-    if (!isCorrectable(flag)) continue;
-    const t = trends.find(tr => tr.rank === flag.trend_rank);
-    if (!t) continue;
-    const cluster = clusters.find(c => c.id === t.signal_cluster_id);
-    const trendSignals = cluster
-      ? cluster.signal_ids.map(id => signalMap.get(id)).filter((s): s is SignalRow => !!s)
-      : allSignals;
+    const t = flag.trend_rank != null
+      ? trends.find(tr => tr.rank === flag.trend_rank)
+      : undefined;
+
+    let usedSignals: SignalRow[] = [];
+    if (t) {
+      const cluster = clusters.find(c => c.id === t.signal_cluster_id);
+      const trendSignals = cluster
+        ? cluster.signal_ids.map(id => signalMap.get(id)).filter((s): s is SignalRow => !!s)
+        : allSignals;
+      usedSignals = trendSignals.length ? trendSignals : allSignals;
+
+      // Anexa sinais ao flag (deduplicado por id, snippet ~300 chars).
+      const seen = new Set<string>();
+      const attached: { id: string; title: string; snippet: string }[] = [];
+      for (const s of usedSignals) {
+        if (seen.has(s.id)) continue;
+        seen.add(s.id);
+        const snippet = (s.content || s.metadata?.snippet || '').slice(0, 300).trim();
+        attached.push({ id: s.id, title: s.title, snippet });
+      }
+      flag.signals = attached;
+    }
+
+    if (!isCorrectable(flag) || !t) continue;
+
     const { pt, en } = readFieldBothLangs(t, flag.field);
-    const usedSignals = trendSignals.length ? trendSignals : allSignals;
     const sug = await suggestCorrection(flag, pt, en, usedSignals);
     if (sug) {
       // Guarda determinística: a sugestão tem de ser estritamente subtrativa.

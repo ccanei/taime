@@ -88,6 +88,7 @@ function FlagEditor({
   const [en, setEn] = useState(initialEn)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [signalsOpen, setSignalsOpen] = useState(false)
 
   const editable = parsed != null && trend != null
 
@@ -146,6 +147,29 @@ function FlagEditor({
       </div>
       <p className="text-sm font-medium leading-snug">{flag.detail}</p>
       {flag.claim && <p className="mt-1 text-xs italic opacity-80 leading-snug">&ldquo;{flag.claim}&rdquo;</p>}
+
+      {/* Sinais do cluster da trend (evidência que sustenta, ou não, a afirmação) */}
+      {flag.signals && flag.signals.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setSignalsOpen(o => !o)}
+            className="text-[11px] font-semibold underline underline-offset-2 hover:opacity-70"
+          >
+            {signalsOpen ? 'Ocultar' : 'Ver'} sinais ({flag.signals.length})
+          </button>
+          {signalsOpen && (
+            <ul className="mt-2 space-y-1.5 rounded-lg bg-white/70 border border-zinc-200 p-2.5">
+              {flag.signals.map(s => (
+                <li key={s.id} className="text-[11px] leading-snug">
+                  <p className="font-semibold text-zinc-800">{s.title}</p>
+                  {s.snippet && <p className="text-zinc-600">{s.snippet}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Sugestão do copiloto corretor */}
       {editable && (flag.suggestion_pt || flag.suggestion_en) && (

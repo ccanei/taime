@@ -15,6 +15,7 @@ export interface ValidationFlag {
   claim: string
   detail: string
   lang: 'pt-BR' | 'en' | null
+  signals?: { id: string; title: string; snippet: string }[]
 }
 
 export interface ReportRecord {
