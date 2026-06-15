@@ -20,9 +20,34 @@ const SUFFIX: Record<Lang, string> = { 'pt-BR': '_pt_br', en: '_en' }
 /** Bases que são colunas JSONB (têm subchave). As demais são colunas de texto direto. */
 const JSONB_BASES = new Set(['taime_framework', 'then_now_next', 'org_implications'])
 
-/** Parseia "taime_framework_en.executive_snapshot" → estrutura navegável. */
-export function parseField(field: string): ParsedField | null {
-  const [columnPart, jsonKey = null] = field.split('.')
+/**
+ * Normaliza um field cru vindo do flag antes de parsear.
+ * Os flags do judge às vezes chegam "sujos":
+ *   - "then_now_next_en.next (32)"                     → sufixo " (NN)" (contador)
+ *   - "then_now_next_pt_br.then / then_now_next_en.then" → label dupla (PT / EN)
+ *   - "...then (11) / ...then (30)"                     → ambos os problemas juntos
+ * Esta função remove o " (NN)" e, em label dupla, escolhe o lado pedido
+ * (default: o lado EN; cai para o primeiro lado se não houver EN).
+ */
+export function normalizeField(field: string, prefer: Lang = 'en'): string {
+  // remove qualquer " (123)" / "(123)" em qualquer parte da string
+  const stripped = field.replace(/\s*\(\d+\)/g, '').trim()
+  if (!stripped.includes('/')) return stripped
+  // label dupla: separa os lados e escolhe pelo idioma preferido
+  const parts = stripped.split('/').map(s => s.trim()).filter(Boolean)
+  const wantSuffix = SUFFIX[prefer]
+  const picked =
+    parts.find(p => p.split('.')[0].endsWith(wantSuffix)) ?? parts[0]
+  return picked
+}
+
+/** Parseia "taime_framework_en.executive_snapshot" → estrutura navegável.
+ *  Aceita fields "sujos" (com " (NN)" ou label dupla "PT / EN"): normaliza antes. */
+export function parseField(field: string, prefer: Lang = 'en'): ParsedField | null {
+  const clean = normalizeField(field, prefer)
+  const [columnPartRaw, jsonKeyRaw = null] = clean.split('.')
+  const columnPart = columnPartRaw.trim()
+  const jsonKey = jsonKeyRaw != null ? jsonKeyRaw.trim() : null
   // columnPart termina em _pt_br ou _en
   let lang: Lang
   let base: string

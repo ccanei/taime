@@ -388,28 +388,46 @@ function buildSignalsBlock(signals: SignalRow[]): string {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const CORRECTOR_SYSTEM = `\
-You are a careful copy editor fixing a flagged passage in a strategic intelligence report.
-You receive: the current text (in one or both languages), why it was flagged, the raw
-signals for the period, and the period end date. You propose a corrected version.
+You are a REMOVAL EDITOR for a finished strategic intelligence report.
+The report is already done. A validator (the judge) has identified one specific problem.
+Your only job is to RETURN THE ORIGINAL TEXT MINUS THE PROBLEM, never the original text
+PLUS anything.
 
-STRICT RULES — these are inviolable:
-1. SUBTRACTIVE ONLY. You may ONLY remove or soften the flagged problem. You must NEVER
-   add any fact, number, statistic, date, company name, or entity that is not already
-   present in the current text or directly supported by the signals. When in doubt, remove.
-2. NO NEW SOURCE. If the flag is source attribution (e.g. "according to Gartner"), fix it
-   by REMOVING the attribution while keeping the underlying fact. Never swap in another source.
-3. TEMPORAL BOUNDARY. Your correction must NEVER reference events, data, or outcomes after
-   the period end date. No hindsight.
-4. PRESERVE THE INSIGHT. Keep the strategic direction and meaning. Remove only what is not
-   defensible. The corrected text should read naturally, not truncated.
-5. NO EM DASH. Do not introduce em dash (—); use commas or periods.
-6. HONEST NULL. If the problem cannot be fixed by subtraction alone (the entire claim is the
-   violation and removing it would gut the passage, requiring a rewrite that adds new content),
-   return null for the suggestion and explain why in the reason.
+YOU ARE FORBIDDEN TO:
+- Introduce any content word (noun, proper name, number, date, place, statistic, percentage,
+  monetary value) that does not already exist in the current text or appear literally in the
+  signals provided.
+- Swap a named source for another source, or for an "equivalent" invented fact.
+- Improve, enrich, exemplify, or rewrite the passage.
+- Reference anything after the period end date.
+
+DECISION HIERARCHY (try in order, stop at the first that works):
+(A) REMOVE the flagged span while keeping the sentence standing. Delete the problematic
+    name/number/date/clause; adjust only minimal connectors so the grammar closes.
+    Ex.: "...according to Gartner's research" -> remove the attribution, the sentence survives.
+    Ex.: "...through tools like FraudGPT" -> remove the mention, keep the rest.
+(B) If pure removal breaks the sentence, SOFTEN/DOWNGRADE the assertion using ONLY words
+    already present in the original text or in the provided signals. Downgrade means asserting
+    LESS, never asserting something different.
+    Ex.: "competitors already run X in production" (signal does not confirm "already run") ->
+         "organizations with reliable data build the foundation to run X in production".
+(C) If the flagged assertion IS the core of the sentence and has no basis in the signals,
+    REMOVE THE WHOLE SENTENCE (or clause). A shorter true paragraph beats a richer false one.
+    The trend's context does not depend on a single sentence.
+
+GOLDEN RULE: the set of content words in your suggestion must be a SUBSET of the content words
+in the original text (plus, at most, terms that appear literally in the provided signals). If
+you need a new content word to "save" the sentence, then the correct answer is option (C):
+remove the sentence.
+
+If NONE of A/B/C yields an honest, subtractive result, return null and explain why. Do not
+invent a correction.
 
 LANGUAGE SCOPE: fix ONLY the language(s) actually flagged. PT and EN may differ naturally in
-phrasing — do NOT force them to mirror each other. Only align them if the flag itself is about
+phrasing, do NOT force them to mirror each other. Only align them if the flag itself is about
 a factual divergence between the two languages.
+
+NO EM DASH. Do not introduce em dash; use commas or periods.
 
 Return VALID JSON ONLY:
 {
@@ -417,6 +435,67 @@ Return VALID JSON ONLY:
   "suggestion_en": "<corrected EN text, or null if EN was not flagged or has no subtractive fix>",
   "reason": "<one short sentence in Portuguese explaining what you changed and why it resolves the flag>"
 }`;
+
+// ─── Guarda determinística: rejeita sugestão que introduza conteúdo novo ────────
+// Mesmo princípio do em dash: a regra crítica vive no código, não só no prompt.
+
+/** Extrai tokens de conteúdo "perigosos": números/%/valores/anos e nomes próprios
+ *  (palavra Capitalizada no meio da frase). Heurística conservadora. */
+function contentTokens(text: string): Set<string> {
+  const tokens = new Set<string>();
+  if (!text) return tokens;
+  // números, percentuais, valores, anos, com sufixos comuns de magnitude
+  const numeric = text.match(
+    /\$?\s?\d[\d.,]*\s*(%|bilh[õo]es?|milh[õo]es?|billion|million|mil)?/gi,
+  ) || [];
+  for (const n of numeric) tokens.add(n.toLowerCase().replace(/\s+/g, ''));
+  // nomes próprios: Capitalizada precedida de minúscula/vírgula+espaço (dentro da frase)
+  const proper = text.match(/(?<=[a-zà-ú0-9,]\s)[A-ZÀ-Ú][A-Za-zÀ-ú]{2,}/g) || [];
+  for (const p of proper) tokens.add(p.toLowerCase());
+  return tokens;
+}
+
+/** Tokens de conteúdo na sugestão que NÃO estão no original nem nos sinais. */
+function novelContentTokens(suggestion: string, original: string, signalsText: string): string[] {
+  const allowed = new Set<string>([
+    ...contentTokens(original),
+    ...contentTokens(signalsText),
+  ]);
+  const novel: string[] = [];
+  for (const t of contentTokens(suggestion)) {
+    if (!allowed.has(t)) novel.push(t);
+  }
+  return novel;
+}
+
+/** Aplica a regra subtrativa de forma determinística. Se a sugestão introduziu
+ *  conteúdo novo, descarta e tenta remoção literal do trecho flagado; se nem isso
+ *  for possível com segurança, devolve null (correção manual). */
+function enforceSubtractive(
+  suggestion: string | null,
+  original: string,
+  signalsText: string,
+  flaggedSpan: string,
+): { value: string | null; note?: string } {
+  if (!suggestion) return { value: null };
+  const novel = novelContentTokens(suggestion, original, signalsText);
+  if (novel.length === 0) return { value: suggestion };
+
+  // Sugestão reprovada: tentar remoção literal do trecho flagado (opção A pura).
+  if (flaggedSpan && original.includes(flaggedSpan)) {
+    const stripped = original.replace(flaggedSpan, '').replace(/\s{2,}/g, ' ').replace(/\s+([.,;])/g, '$1').trim();
+    if (stripped && stripped !== original) {
+      return {
+        value: stripped,
+        note: `Sugestão do corretor introduziu termo(s) novo(s) [${novel.join(', ')}] e foi descartada; aplicada remoção literal do trecho flagado.`,
+      };
+    }
+  }
+  return {
+    value: null,
+    note: `Sugestão introduziu termo(s) novo(s) [${novel.join(', ')}] e o trecho não pôde ser removido automaticamente. Corrija manualmente.`,
+  };
+}
 
 interface Suggestion { suggestion_pt: string | null; suggestion_en: string | null; reason: string }
 
@@ -610,11 +689,20 @@ export async function validatePersistedReport(reportId: string): Promise<{
       ? cluster.signal_ids.map(id => signalMap.get(id)).filter((s): s is SignalRow => !!s)
       : allSignals;
     const { pt, en } = readFieldBothLangs(t, flag.field);
-    const sug = await suggestCorrection(flag, pt, en, trendSignals.length ? trendSignals : allSignals);
+    const usedSignals = trendSignals.length ? trendSignals : allSignals;
+    const sug = await suggestCorrection(flag, pt, en, usedSignals);
     if (sug) {
-      flag.suggestion_pt     = sug.suggestion_pt;
-      flag.suggestion_en     = sug.suggestion_en;
-      flag.suggestion_reason = sug.reason;
+      // Guarda determinística: a sugestão tem de ser estritamente subtrativa.
+      // Se introduziu conteúdo novo, é descartada e cai para remoção literal
+      // do trecho flagado (ou null + correção manual).
+      const signalsText = buildSignalsBlock(usedSignals);
+      const guardedPt = enforceSubtractive(sug.suggestion_pt, pt, signalsText, flag.claim);
+      const guardedEn = enforceSubtractive(sug.suggestion_en, en, signalsText, flag.claim);
+      flag.suggestion_pt     = guardedPt.value;
+      flag.suggestion_en     = guardedEn.value;
+      flag.suggestion_reason = [sug.reason, guardedPt.note, guardedEn.note]
+        .filter(Boolean)
+        .join(' ');
     }
   }
 
