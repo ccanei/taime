@@ -2,6 +2,138 @@
 
 ---
 
+## [2026-06-15] - Advisor v4.2: load do histórico + prompt sem brecha de "prescrição"
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Grep U+2014 nas linhas adicionadas: 0 ocorrências
+
+### Estado encontrado antes de mexer
+
+**`app/api/advisor/chat/route.ts`:**
+- `insert([userRow, assistantRow])` sem `created_at` explícito. PostgreSQL avalia
+  `now()` uma vez por transação, então ambos os rows ficavam com timestamp
+  idêntico ao microssegundo, deixando `order by created_at` não-determinístico.
+- Load do histórico para o modelo: `.order('created_at', asc).limit(20)`. Mesma
+  ordenação ambígua e, com asc+limit, a ponta (mensagens mais recentes) é
+  cortada quando a sessão cresce.
+- `RULES_BLOCK` linha 120 ainda continha a cláusula v3:
+  `"Recommending a product or tool by name is allowed, because that is
+  prescription, not attribution."` Foi exatamente isso que o modelo seguiu ao
+  listar n8n a US$20/mês, Pinecone tier free, Great Expectations etc.
+- Retry corretivo só checava atribuição de fontes (`detectAttribution`); não
+  pegava preços/prazos nem nomes de ferramentas fora do contexto TAIME.
+
+**`components/AdvisorChat.tsx`:**
+- Load do histórico ao reabrir: `.order('created_at', asc).limit(30)`. Mesmo
+  bug propagado: corta pela cauda e perde a última resposta do assistant.
+
+**`lib/advisor-grounding.ts`:**
+- Comentário do topo afirmava explicitamente que prescrição de produto por nome
+  era permitida (alinhado à v3, conflitante com a v4.1/v4.2).
+- `KNOWN_SOURCE_NAMES` cobria firmas de pesquisa, não ferramentas/produtos.
+- Sem heurística para preços/prazos sem backing.
+
+### Entregas
+
+**Tarefa 1 - Histórico (last assistant reply restaurada):**
+- `route.ts` insert agora seta `created_at` explícito: user = `Date.now()`,
+  assistant = `Date.now() + 1ms`. Garante ordem cronológica determinística no banco.
+- `route.ts` load: `.order('created_at', desc).order('id', desc).limit(20)`,
+  depois `.slice().reverse()`. Pega as 20 mais recentes em vez de cortar a ponta;
+  tiebreaker por `id` por paranóia.
+- `AdvisorChat.tsx` load: mesma transformação (`desc + id desc + limit(30) +
+  reverse`). Sessões longas mantêm a última troca completa na renderização.
+
+**Tarefa 2 - Prompt v4.2 sem brecha de "prescrição":**
+- `RULES_BLOCK` reescrito como bloco único e coerente. Regra 3 agora "SOURCES,
+  TOOLS AND VENDORS BY CATEGORY. This rule has no exception." Removida a
+  cláusula sobre prescrição de produto. Para nomear um produto, exige que um
+  relatório TAIME carregado o cite (com link à trend).
+- Nova regra 4: "NO PRICES, NO TIMELINES WITHOUT BACKING" cobre custos mensais,
+  tier free, preços de licença e prazos de implementação. Comportamento default:
+  qualitativo + oferta para abrir um relatório específico.
+- Alterar o bloco invalida o cache prompt-caching uma vez (esperado e aceitável).
+  Depois o bloco volta a ser determinístico/cacheável.
+
+**Rede de segurança estendida (`advisor-grounding.ts`):**
+- Comentário do topo atualizado para v4.2 (sem exceção para prescrição).
+- Nova lista `KNOWN_TOOLS` (Pinecone, n8n, Great Expectations, Snowflake,
+  Databricks, OpenAI, etc.) cobrindo produtos populares em estratégia tecnológica.
+- `detectPricingViolations(text, reportsContext)`: regex para preços em
+  dólar/real, free tier, tier gratuito e prazos concretos. Flagueia só o que
+  NÃO consta literalmente no contexto dos relatórios carregados.
+- `detectUnsupportedTools(text, reportsContext)`: nome de tool conhecida no
+  texto que não aparece no contexto dos relatórios.
+- `runGroundingChecks()`: combina as 3 checagens (atribuição, preço/prazo,
+  tool fora do contexto) em uma única passagem.
+- `route.ts` retry corretivo agora consome `runGroundingChecks(reply,
+  reportsBlock)` e monta uma instrução corretiva listando todas as violações
+  juntas; UMA única retentativa.
+- `context_metadata.grounding_violations` registra as violações que sobraram
+  após o retry (instrumentação para auditoria futura).
+
+### Arquivos
+- `taime-web/app/api/advisor/chat/route.ts` (load + insert + prompt + grounding wiring)
+- `taime-web/components/AdvisorChat.tsx` (load do histórico)
+- `taime-web/lib/advisor-grounding.ts` (lista de tools, novas checagens, runner)
+
+---
+
+## [2026-06-13] - Batch histórico 2024-H2 (2024-07-01 → 2024-12-16)
+
+### Status
+- [x] period-utils.ts confirmado biweekly para 2022+ (bug TZ corrigido em generatePeriods: passou a comparar como string YYYY-MM-DD)
+- [x] generate-periods.ts produziu exatamente 12 períodos quinzenais
+- [x] batch-pipeline.ts: 12/12 concluídos, 0 falhas, 0 períodos pulados
+- [x] validate-report.ts: rodou para os 12 períodos (verificação adicional além da inline em generate-report.ts)
+- [x] Sweep de status: 2 relatórios de 2024-07-01 que estavam `published` foram demovidos para `pending_review` por instrução explícita
+- [x] generate-embeddings.ts (idempotente, status=published) + embed inline para os 22 pending_review (sem mudar status). 22/22 vetores gerados.
+
+### Tabela resumo
+
+| Período      | report_id(s)      | # trends | score médio | flags (B/W) | breach | status         |
+|--------------|-------------------|----------|-------------|-------------|--------|----------------|
+| 2024-07-01   | 2f4ff973,a189bbe3 |        8 |        77.4 | 1/5         | 0      | pending_review |
+| 2024-07-16   | 1eb1919c,b04cba35 |        8 |        76.0 | 4/22        | 0      | pending_review |
+| 2024-08-01   | 2d1820c0          |        7 |        82.7 | 4/12        | 0      | pending_review |
+| 2024-08-16   | 0196b839          |        7 |        79.7 | 14/20       | 0      | pending_review |
+| 2024-09-01   | 91d4e817,16e65c97 |        8 |        82.3 | 4/5         | ⚠ 2    | pending_review |
+| 2024-09-16   | d7c30278,c244ebee |        8 |        76.4 | 6/11        | 0      | pending_review |
+| 2024-10-01   | 525e346f,0b240c3b |        8 |        80.8 | 15/30       | ⚠ 1    | pending_review |
+| 2024-10-16   | 8ff9f82b,e0277078 |        8 |        80.0 | 3/7         | 0      | pending_review |
+| 2024-11-01   | 9aa34538,4d3284d1 |        8 |        82.3 | 8/15        | 0      | pending_review |
+| 2024-11-16   | d5246a72,52ebb5c9 |        8 |        78.1 | 15/28       | ⚠ 2    | pending_review |
+| 2024-12-01   | 019a13b6,14aced97 |        8 |        79.8 | 3/9         | ⚠ 1    | pending_review |
+| 2024-12-16   | 6d4037cd,c30e3b92 |        8 |        78.1 | 5/6         | 0      | pending_review |
+
+**Totais:** 22 relatórios criados · 94 trends · 0 períodos pulados · 0 falhas · 6 temporal breach
+
+### ⚠ ALERTA — Temporal breach detectado (6 flags, 4 períodos)
+
+Todos `severity=blocking`, `category=temporal`. Relatórios seguem em `pending_review` (não publicados):
+
+- **2024-09-01 report#1 (91d4e817)** — trend 1 (both langs): claims sobre consolidação de Microsoft/Salesforce/Anthropic e talento como `next` extrapolam o que os sinais do período suportam.
+- **2024-10-01 report#1 (525e346f)** — trend 2 `then_now_next_en.next`: "would begin locking in platform relationships" framing past-tense que embute hindsight.
+- **2024-11-16 report#1 (d5246a72)** — trend 3: menciona "new European Commission seated in December 2024" / "Comissão Europeia assumia em dezembro de 2024" — evento posterior ao boundary 2024-11-30.
+- **2024-12-01 report#1 (019a13b6)** — trend 3 `then_now_next_en.next`: "pointed toward" framing embute hindsight sobre desenvolvimentos pós-boundary.
+
+Detalhes completos em `/tmp/temporal-breach-details.txt` (transitório).
+
+### Notas operacionais
+
+- O período 2024-07-01 não aparecia na lista até corrigir bug de timezone em `generatePeriods` (BRT UTC-3 fazia `pStart=03:00Z` cair antes de `fromDate=12:00Z`). Fix: comparar `pKey` como string YYYY-MM-DD contra `fromStr/toStr`.
+- Períodos 2024-08-01 e 2024-08-16 geraram só 1 relatório cada (7 clusters → não divide em 2). Esperado pelo pipeline.
+- `generate-embeddings.ts` só processa `status=published`, então os 22 novos `pending_review` foram embedados via script inline que segue exatamente o mesmo `buildEmbedText` do script oficial, mas sem mudar o status.
+- Sem commits — apenas execução do pipeline. Único arquivo de código tocado: `period-utils.ts` (bug fix de TZ).
+
+### Arquivos
+- `period-utils.ts` (fix bug TZ em generatePeriods)
+- `batch-periods.json`, `batch-progress.json` (gerados pelo pipeline)
+- Logs transitórios: `/tmp/batch-2024H2.log`, `/tmp/validate-2024H2.log`, `/tmp/embeddings-2024H2.log`, `/tmp/final-summary-2024H2.txt`, `/tmp/temporal-breach-details.txt`
+
+---
+
 ## [2026-06-12] - AdminNav centralizado com link para Engagement
 
 ### Status

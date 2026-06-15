@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
-import { detectAttribution } from '@/lib/advisor-grounding'
+import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 
 interface AdvisorProfile {
   company_name:           string | null
@@ -107,6 +107,9 @@ function languageInstruction(lang: Lang): string {
 }
 
 // ── Bloco 1: regras fixas (estável, cacheável) ──────────────────────────────
+// v4.2: bloco único e coerente. Removida a cláusula v3 "Recommending a product
+// by name is allowed" que conflitava com a regra de categoria-apenas. Trocar
+// este bloco invalida o cache uma vez (esperado).
 const RULES_BLOCK = `You are the TAIME Executive Advisor, a senior strategic technology intelligence consultant with access to the client's organizational context and to TAIME's published intelligence reports.
 
 GROUNDING RULES (non-negotiable):
@@ -117,9 +120,9 @@ GROUNDING RULES (non-negotiable):
 
 2. NO INVENTED HISTORICAL PATTERNS. Do not assert what "companies did in [period]" or cite data from periods whose reports are NOT loaded in this turn. The archive spans 25 years, but only the periods provided this turn are in front of you. If the question needs history you do not have loaded, say you can pull it from the archive and ask the client to reframe specifying the period of interest. Never fabricate a trajectory to sound authoritative.
 
-3. SOURCES BY CATEGORY, NEVER BY NAME. Never attribute any data or conclusion to a named research firm, consultancy, outlet or vendor ("according to X", "X documented", "a study by X"). Refer to sources only by category ("market research", "observability vendor documentation", "industry analysts"). Recommending a product or tool by name is allowed, because that is prescription, not attribution.
+3. SOURCES, TOOLS AND VENDORS BY CATEGORY. This rule has no exception. Never attribute any data or conclusion to a named research firm, consultancy, outlet or vendor ("according to X", "X documented", "a study by X"). When recommending or discussing tools, infrastructure components, platforms or vendors, refer to them by CATEGORY and by the selection criteria that matter for the client (e.g. "a managed vector database with strong SDK ergonomics", "an open-source workflow orchestrator with self-host option", "a commercial observability platform with tracing"). Name a specific product ONLY when one of the TAIME reports loaded this turn cites it as a market fact, and in that case link to the trend that mentions it. Never volunteer a product name from your own background knowledge, even as an example.
 
-4. NUMBERS NEED BACKING. State percentages or monetary figures only when they appear in the loaded reports, and reference the period. Without backing, speak qualitatively ("a meaningful reduction") rather than inventing a precise figure.
+4. NO PRICES, NO TIMELINES WITHOUT BACKING. Do not state monthly costs, subscription tiers, license prices, free-tier availability or implementation timelines unless they appear in the loaded reports (and then with the link). Without backing, speak qualitatively ("a moderate operational cost", "weeks rather than months") and offer to dig into a specific report on request. The same applies to percentages and monetary figures.
 
 CONVERSATION RULES:
 
@@ -348,15 +351,20 @@ export async function POST(req: NextRequest) {
   const profile = profileData as AdvisorProfile | null
 
   // ── Load conversation history (last 20 messages) ──────────────────────────
+  // v4.2: ordena desc para que o limit pegue as MAIS RECENTES (asc cortava a
+  // ponta e perdia a última resposta). Tiebreaker por id porque user e assistant
+  // do mesmo turno têm timestamps muito próximos. Inverte no fim para mandar
+  // ao modelo na ordem cronológica natural.
   const { data: historyData } = await service
     .from('advisory_memory')
-    .select('role, content')
+    .select('role, content, created_at, id')
     .eq('user_id', user.id)
     .eq('session_id', sessionId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
+    .order('id',         { ascending: false })
     .limit(20)
 
-  const history = (historyData ?? []) as MemoryRow[]
+  const history = ((historyData ?? []) as MemoryRow[]).slice().reverse()
 
   // ── Catálogo enxuto p/ o roteador (sem conteúdo completo) ──────────────────
   const { data: candidateData } = await service
@@ -406,10 +414,12 @@ export async function POST(req: NextRequest) {
   const lang: Lang = routed?.language ?? detectLanguage(userMessage)
 
   // ── System em blocos: regras + perfil + relatórios (cacheáveis) e idioma ───
+  // Calculamos reportsBlock uma vez para reuso na rede de segurança de grounding.
+  const reportsBlock = buildReportsBlock(reports)
   const system: SystemBlock[] = [
-    { type: 'text', text: RULES_BLOCK,                    cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: buildProfileBlock(profile),     cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: buildReportsBlock(reports),     cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: RULES_BLOCK,                cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: reportsBlock,               cache_control: { type: 'ephemeral' } },
     { type: 'text', text: languageInstruction(lang) }, // dinâmico, fora do cache
   ]
 
@@ -435,12 +445,24 @@ export async function POST(req: NextRequest) {
   let mainUsage  = first.usage
 
   // ── Verificação leve pós-resposta (rede de segurança, não o mecanismo
-  //    principal: o grounding real está no system prompt). Regex heurística:
-  //    se detectar atribuição a fonte nomeada, UMA retentativa corretiva.
-  let attributionFlag = false
-  const check = detectAttribution(reply)
+  //    principal: o grounding real está no system prompt). v4.2: combina
+  //    atribuição + preço/prazo sem backing + ferramenta fora do contexto
+  //    TAIME em uma checagem única, com UMA retentativa corretiva.
+  let groundingViolations: GroundingViolation[] = []
+  const check = runGroundingChecks(reply, reportsBlock)
   if (check.flagged) {
-    const corrective = `Your previous response attributed information to one or more named sources (${check.matches.join(', ')}). This violates the source-confidentiality rule. Rewrite your previous answer keeping the same substance and recommendations, but NEVER name research firms, consultancies, vendors or outlets as the source of any data or claim. Refer to sources only by category (for example "market research" or "observability vendor documentation"). Recommending products by name remains allowed. Return only the rewritten answer.`
+    const bullets = check.violations.map(v => {
+      switch (v.type) {
+        case 'attribution':
+          return `- Attributed data or conclusions to a named source (${v.detail}). Sources must be cited by category only.`
+        case 'pricing_or_timeline':
+          return `- Stated price, tier or implementation timeline without backing in the loaded reports (${v.detail}). Speak qualitatively when no report supports the figure.`
+        case 'tool_outside_context':
+          return `- Named a specific product or vendor not present in the loaded TAIME reports (${v.detail}). Refer to tools by category and selection criteria; name a product only if a loaded report cites it.`
+      }
+    }).join('\n')
+
+    const corrective = `Your previous response violated the grounding rules:\n${bullets}\n\nRewrite your previous answer keeping the same substance and recommendations, but enforce all rules: sources by category only, tools and vendors by category + selection criteria (no product names unless a loaded report cites them with a link), and no prices, tiers or implementation timelines unless they appear in the loaded reports. Return only the rewritten answer.`
 
     const retry = await callMain(system, [
       ...conversationMessages,
@@ -452,11 +474,12 @@ export async function POST(req: NextRequest) {
       reply      = retry.reply
       stopReason = retry.stopReason
       mainUsage  = retry.usage
-      attributionFlag = detectAttribution(reply).flagged
+      groundingViolations = runGroundingChecks(reply, reportsBlock).violations
     } else {
-      attributionFlag = true
+      groundingViolations = check.violations
     }
   }
+  const attributionFlag = groundingViolations.length > 0
 
   // ── Anti-truncamento: se a resposta bateu no teto, sinaliza e avisa ────────
   const truncated = stopReason === 'max_tokens'
@@ -468,20 +491,27 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Persist both messages to advisory_memory ──────────────────────────────
+  // v4.2: created_at explícito e sequencial. Sem isso, PostgreSQL avalia now()
+  // uma vez por transação e os dois rows ficam com timestamp idêntico, deixando
+  // a ordem da reabertura não-determinística. 1ms já basta para o tiebreaker.
   const contextMeta = {
-    report_ids_used:  selectedIds,
-    selection_source: selectionSource,
-    attribution_flag: attributionFlag,
+    report_ids_used:      selectedIds,
+    selection_source:     selectionSource,
+    attribution_flag:     attributionFlag,
+    grounding_violations: groundingViolations,
     truncated,
-    language:         lang,
-    usage:            mainUsage,
-    router_usage:     routerUsage,
-    profile_snapshot: profile ? {
+    language:             lang,
+    usage:                mainUsage,
+    router_usage:         routerUsage,
+    profile_snapshot:     profile ? {
       company_name: profile.company_name,
       sector:       profile.sector,
       maturity:     profile.maturity_level,
     } : null,
   }
+
+  const userTs      = new Date()
+  const assistantTs = new Date(userTs.getTime() + 1)
 
   await service.from('advisory_memory').insert([
     {
@@ -490,6 +520,7 @@ export async function POST(req: NextRequest) {
       role:             'user',
       content:          userMessage,
       context_metadata: contextMeta,
+      created_at:       userTs.toISOString(),
     },
     {
       user_id:          user.id,
@@ -497,6 +528,7 @@ export async function POST(req: NextRequest) {
       role:             'assistant',
       content:          reply,
       context_metadata: contextMeta,
+      created_at:       assistantTs.toISOString(),
     },
   ])
 

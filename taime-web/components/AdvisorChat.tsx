@@ -74,16 +74,21 @@ export default function AdvisorChat({ userId, userName, userEmail, profile }: Pr
         const sid = (latest[0] as { session_id: string }).session_id
         setSessionId(sid)
 
+        // v4.2: desc + tiebreaker por id + limit pega as 30 MAIS RECENTES.
+        // Antes era asc com limit, o que cortava a ponta e sumia com a última
+        // resposta do assistant quando user+assistant compartilhavam created_at.
         const { data: msgs } = await supabase
           .from('advisory_memory')
           .select('id, role, content, created_at')
           .eq('user_id', userId)
           .eq('session_id', sid)
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: false })
+          .order('id',         { ascending: false })
           .limit(30)
 
         if (msgs && msgs.length > 0) {
-          setMessages(msgs as Message[])
+          // reverte para ordem cronológica natural na renderização
+          setMessages([...(msgs as Message[])].reverse())
           setHasHistory(true)
         } else {
           setSessionId(generateSessionId())
