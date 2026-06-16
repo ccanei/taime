@@ -532,5 +532,25 @@ export async function POST(req: NextRequest) {
     },
   ])
 
+  // Sincroniza metadados em advisor_sessions: cria na primeira mensagem com
+  // título derivado da pergunta, atualiza last_activity_at e message_count nas
+  // demais. Falha silenciosa: se a migração add-advisor-session-archive.sql
+  // ainda não rodou, o chat segue funcionando sem o seletor de sessões.
+  const isNewSession = history.length === 0
+  const title        = isNewSession ? userMessage.slice(0, 80) : null
+  try {
+    const { error: sessionErr } = await service.rpc('advisor_session_upsert', {
+      p_session_id: sessionId,
+      p_user_id:    user.id,
+      p_title:      title,
+      p_inc:        2,
+    })
+    if (sessionErr && sessionErr.code !== '42883' && sessionErr.code !== '42P01') {
+      console.warn('[advisor-sessions] upsert failed:', sessionErr.message)
+    }
+  } catch (e) {
+    console.warn('[advisor-sessions] upsert exception:', e)
+  }
+
   return NextResponse.json({ reply })
 }

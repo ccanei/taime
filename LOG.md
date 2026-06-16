@@ -2,6 +2,206 @@
 
 ---
 
+## [2026-06-16] - Advisor: seletor de sessões anteriores + arquivamento por inatividade (90d)
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Grep U+2014 nas linhas adicionadas: 0 ocorrências
+- [x] Nenhuma mensagem de `advisory_memory` é apagada (archive é predicado de leitura, não DELETE)
+
+### Estado encontrado antes de mexer
+
+- `AdvisorChat.tsx` carrega só a sessão mais recente do usuário; sem caminho
+  para acessar sessões anteriores. Botão "Novo contexto" cria id novo e limpa,
+  mas o histórico de chats antigos (que existe em `advisory_memory`) fica órfão.
+- `advisory_memory` (schema.sql:256): log de mensagens com `id, user_id,
+  session_id, role, content, context_metadata, created_at`. Sem coluna ou
+  tabela auxiliar para metadados de sessão. Política RLS já cobre leitura/insert
+  pelo próprio user.
+- `app/dashboard/advisor/page.tsx` envolve `AdvisorView` (gate + onboarding +
+  chat); `AdvisorView` mostra onboarding OU chat, sem outras vistas.
+
+### Recomendação de schema (Tarefa 3)
+
+Implementada a opção de **tabela `advisor_sessions`** ao invés de coluna
+`archived_at` em `advisory_memory`. Razões:
+
+1. **Lista de sessões = leitura simples** (1 linha por sessão), em vez de
+   `GROUP BY session_id` em `advisory_memory` toda vez. Em volume não importa,
+   mas dá título estável (snapshot) e oferece um lugar natural para metadados.
+2. **Arquivar/desarquivar = UPDATE de 1 linha**, em vez de N (uma por mensagem).
+3. **Separação de responsabilidades:** `advisory_memory` continua log imutável
+   de mensagens; `advisor_sessions` é fonte de verdade dos metadados (título,
+   última atividade, contagem, archived_at).
+4. **Substrato para a fase futura** (pgvector + sumarização): colunas como
+   `summary` e `summary_embedding` entram nessa mesma tabela sem mexer no log.
+
+Custo: 1 upsert leve por turno no chat route + backfill na migração. Aceito.
+
+### Entregas
+
+**Tarefa 1, Endpoint de listagem**
+- `app/api/advisor/sessions/route.ts`: GET autenticado, gate de plano
+  (`hasAdvisorAccess`), retorna `{sessions: [{session_id, title, last_activity_at,
+  message_count, archived_at, created_at}]}` ordenado por última atividade desc.
+- Query param `archived=1`: aplica `archived_at IS NOT NULL OR last_activity_at <
+  now() - 90d`. Default (0): `archived_at IS NULL AND last_activity_at >= cutoff`.
+- Tolera tabela ausente (code `42P01`): retorna `migration_pending: true` em vez
+  de 500, para a UI seguir funcionando antes da migração rodar.
+
+**Tarefa 2, UI de seleção**
+- `components/AdvisorChat.tsx`: sidebar lateral (240px no desktop, overlay
+  no mobile pelo botão hambúrguer) com abas Ativas/Arquivadas, lista de
+  sessões com título + tempo ("há Xd") + contagem, e botão "Novo contexto"
+  em cima. Clicar uma sessão chama `loadHistoryFor(sid)` reusando o load
+  v4.2 (`order created_at desc + id desc + limit 50 + reverse`), preservando
+  o desempate que evita perder a última resposta.
+- Sessão ativa na sidebar é destacada com borda + fundo. Após cada `handleSend`,
+  refetch da lista para a sessão atual subir ao topo com o novo timestamp /
+  título (quando é a primeira mensagem).
+
+**Tarefa 3, Migração (entregue, NÃO executada)**
+- `taime-web/add-advisor-session-archive.sql`:
+  - Cria `advisor_sessions (session_id pk, user_id fk, title, last_activity_at,
+    message_count, archived_at null, created_at)`.
+  - Índices parciais por user_id ordenados por last_activity_at desc (active)
+    e archived_at desc (archived).
+  - Função `advisor_session_upsert(p_session_id, p_user_id, p_title, p_inc)`:
+    insere com title na primeira mensagem; em conflito, só atualiza
+    `last_activity_at`, `message_count += inc` e `archived_at = null`
+    (qualquer atividade desarquiva). Title nunca é sobrescrito.
+  - Backfill: gera 1 linha por sessão existente em `advisory_memory`,
+    derivando title da primeira mensagem do usuário (substring 0..80),
+    `last_activity_at = max(created_at)`, `message_count = count(*)`.
+  - RLS: select/update/insert restritos a `user_id = auth.uid()`.
+
+**Tarefa 4, Documentação**
+- `TAIME_MASTER_DOC.md` seção Advisor: registra a sidebar, a regra de 90 dias,
+  a tabela `advisor_sessions` como fonte de verdade de metadados, e nota
+  explícita de que "usar sessões arquivadas como memória do Advisor" é fase
+  futura que depende de pgvector + sumarização.
+
+**Wire do chat route**
+- `app/api/advisor/chat/route.ts`: após persistir o par user+assistant em
+  `advisory_memory`, chama `service.rpc('advisor_session_upsert', ...)` passando
+  o title só quando é a primeira mensagem (`history.length === 0`). Erros
+  com códigos `42883` (função não existe) ou `42P01` (tabela não existe)
+  são silenciosos; outros viram `console.warn` mas não bloqueiam a resposta.
+
+### Garantias verificadas
+- Nenhuma mensagem de `advisory_memory` é apagada nem alterada por esta entrega.
+- Archive de 90 dias é predicado de leitura; `archived_at` fica NULL para essas
+  sessões. Reativar é só voltar a mandar mensagem na sessão (last_activity_at
+  atualizado pelo upsert; e se tiver sido arquivada explicitamente, `archived_at`
+  é zerado).
+- Aba "Arquivadas" expõe sessões 90+ dias sem atividade, então o histórico
+  do cliente continua acessível (não desaparece, só sai da vista padrão).
+- O desempate `order created_at desc + id desc + reverse` da v4.2 foi
+  preservado no novo `loadHistoryFor(sid)`.
+
+### Arquivos
+- `taime-web/add-advisor-session-archive.sql` (novo, NÃO executado)
+- `taime-web/app/api/advisor/sessions/route.ts` (novo)
+- `taime-web/app/api/advisor/chat/route.ts` (upsert advisor_sessions)
+- `taime-web/components/AdvisorChat.tsx` (sidebar + abas + select)
+- `TAIME_MASTER_DOC.md` (seção Advisor)
+
+---
+
+## [2026-06-16] - Piloto Opus 4.8 em 2024-01-01 (geração only, custo + flags medidos)
+
+### Objetivo
+Rodar UM período histórico (2024-01-01, 1ª Quinzena de Janeiro) com cadeia completa, Opus 4.8 só na geração, validação separada, medir custo real e qualidade do output antes de decidir batch 2024-H1.
+
+### Mudanças reversíveis no código
+- `generate-report.ts`: constante `GENERATION_MODEL = 'claude-opus-4-8'` no topo (cfg.model usa essa const). Reverter trocando para `'claude-sonnet-4-6'`.
+- `generate-report.ts`: 2 linhas `temperature: 0.1` comentadas com nota — Opus 4.8 deprecou `temperature` (erro 400 invalid_request_error na primeira tentativa). Restaurar ao reverter para Sonnet.
+- `validate-report.ts`: instrumentação de uso (acumula calls/in/out/cache em `_USAGE_TOTAL`, imprime no fim). Útil mantida para futuro pilot.
+
+### Volume coletado (vs 2026)
+| Métrica | Pilot 2024-01-01 | Média 2026 H2 |
+|---------|-------------------|---------------|
+| Sinais coletados | 397 | ~450 |
+| Fontes ativas c/ sinal | 74 / 110 (67%) | ~75 |
+| Erros de coleta | 2 / 110 | ~2-5 |
+| Clusters (após análise) | 7 | 7-8 |
+| Trends finais | 7 (1 relatório) | 8 (2 relatórios típico) |
+| Sinais efetivos no relatório | 184 | 100-200 |
+
+Volume normal para o período. Janeiro 2024 entrou no auge do hype pós-ChatGPT — densidade de fontes consistente.
+
+### Custo por etapa (USD, 1 período, modelo + cache real)
+
+| Etapa | Modelo | Calls | Input | Output | Cache R | Cache W | Custo |
+|-------|--------|-------|-------|--------|---------|---------|-------|
+| 1. Coleta | Serper | 110 | n/a | n/a | n/a | n/a | ~$0.11 |
+| 2. Análise | Sonnet 4.6 | 1 | 41,864 | 2,413 | 0 | 0 | $0.162 |
+| 3. Geração | **Opus 4.8** | 16 | 119,589 | 39,823 | 652,228 | 49,384 | **$6.685** |
+| 4. Validação | Sonnet 4.6 | 21 | 93,657 | 5,362 | 0 | 0 | $0.361 |
+| **TOTAL** | | | | | | | **$7.32** |
+
+**Projeção × 12 períodos (2024-H2 c/ Opus na geração): ~$87.82**
+
+Comparativo: se geração fosse Sonnet (mesmas dimensões): geração ~$1.34, total/período ~$1.97, total 12 períodos ~$23.6. **Uplift Opus = +$64 sobre Sonnet no semestre completo**, ou +$5.35/período (5× o custo da geração).
+
+Observações:
+- Cache funcionou bem na geração (95% das chamadas leem 49384 tokens do system prompt — economia direta de ~$9 que teriam sido cobrados como input cheio).
+- Validação não consegue cache entre chamadas (groundingCheck por trend + corrector por flag = prompts diferentes). 21 calls sem cache é o maior custo "perdido".
+- Coleta é dominada por Serper (sem LLM); 1 hora real de chamadas, custo desprezível.
+
+### Validação — flags detalhados (FAIL · 21 flags na 1ª rodada, 15 flags na 2ª rodada)
+
+Duas execuções do validador (a 2ª foi para instrumentar uso); ambas FAIL, com variação esperada de LLM-as-judge. Usar 1ª como referência (21 flags).
+
+**Distribuição por categoria:**
+| Categoria | Count | Severidade |
+|-----------|-------|------------|
+| `grounding` (partially_supported) | 16 | warning |
+| `source` (source_name) | 5 | blocking |
+| `temporal` (hindsight) | **0** | — |
+| `deterministic` (em_dash, monetary, score_mismatch) | **0** | — |
+
+**Observações por regra inviolável:**
+1. **Sem hindsight** ✓✓ — **ZERO flags temporais**. O Opus respeitou o boundary 2024-01-15. Compare com batch Sonnet 2024-H2: 6 breaches em 22 relatórios (27% de incidência). Esta foi a maior preocupação — Opus passou.
+2. **Paridade PT=EN** ✓ — Todos os 7 trends com scores PT=EN idênticos (89, 84, 84, 84, 79, 74, 54).
+3. **Sem em dash** ✓ — 0 flags determinísticos. Opus respeitou a regra.
+4. **Sem valores monetários** ✓ — 0 flags `monetary`.
+5. **Fontes por categoria** ⚠ — 2 source leaks reais:
+   - Trend 6, `then_now_next_en.now`: "ISG-type advisory signals question..." — nomeia ISG.
+   - Trend 7, `taime_framework_en.confidence_basis`: "a major cloud and research vendor" — identifica IBM/Microsoft de forma transparente.
+
+   3 dos 5 flags `source_name` são **falsos positivos do validador** (categorias permitidas como "44 signals from strategic consulting firms"; o próprio detail do validador admite "should NOT be flagged — withdrawing flag"). Não é problema do Opus.
+
+6. **Sem afirmações sem lastro nos sinais** ⚠ — 16 warnings `partially_supported`. Padrão Opus: adiciona **especificidade quantitativa** ("127 qubits", "3 a 5 anos", "entre 2020 e 2023", "maioria classificando") que não estão literalmente nos sinais. Generaliza single-source (Accenture → "consultorias estão expandindo"). Síntese analítica ("operating model é o diferenciador") sem aspas diretas.
+
+   Esses são exatamente o tipo de prosa que o Opus produz: mais rica, mais específica, mais "executive". O custo é traceability — cada número/data novo precisa ser checado pelo curador.
+
+**Opus produziu MAIS flags do que típico Sonnet:**
+- Média Sonnet H2: ~11.5 flags/relatório
+- Opus pilot: 21 flags/relatório (~80% mais)
+- Mas composição **muito diferente**: 0 temporais (Sonnet teve 27% de incidência), 0 determinísticos, 5 source (3 falsos positivos), 16 grounding warnings.
+- **Severidade real menor**: 2 blocking reais (vs Sonnet H2 que teve média ~6 blocking/relatório); 16 warnings que são "afinar a prosa", não "rejeitar".
+
+### Veredito preliminar
+
+- **Qualidade**: Opus respeita as regras invioláveis melhor que Sonnet (0 hindsight é o ganho central). Trade-off: mais ruído de `partially_supported` por excesso de especificidade quantitativa não-lastreada.
+- **Custo**: 5× mais caro que Sonnet só na geração. Para 12 períodos H1: +$64 USD ≈ R$320. Recuperável se o ganho de qualidade evita uma rodada de regeneração manual.
+- **Risco**: Opus 4.8 deprecou `temperature` → reproduzibilidade entre runs reduzida. Para histórico imutável, isso é aceitável (não vamos re-rodar).
+- **Recomendação**: rodar 2024-H1 com Opus se o budget permitir +$70-100 no semestre. Antes do batch, ajustar judge para reduzir falsos positivos `source_name` em frases categoria-mandated.
+
+### Arquivos tocados (working tree, sem commit)
+- `generate-report.ts` (model + temperature)
+- `validate-report.ts` (usage instrumentation)
+- `batch-periods.json`, `batch-progress.json` (estado do pilot único)
+- Logs: `/tmp/pilot-2024-01-01.log`, `/tmp/pilot-2024-01-01-gen.log`, `/tmp/pilot-2024-01-01-validate.log`, `/tmp/pilot-2024-01-01-validate2.log`, `/tmp/pilot-flags-detail.txt`
+
+### Estado do relatório
+- `period=2024-01-01`, `report_number=1`, `id=4bcc2388-e7ce-41e5-8c01-2160405dfccb`
+- `status=pending_review` (NÃO publicado), `validation_verdict=fail`
+- Aguardando curadoria manual em `/admin/reports`.
+
+---
+
 ## [2026-06-16] - Revalidação de relatórios pendentes 2024-07-01 a 2024-11-01 com judge atualizado
 
 ### Objetivo

@@ -400,34 +400,45 @@ ADMIN_NOTIFICATION_EMAIL=notify@taime.tech
 
 ## 9. PLANOS E PREÇOS
 
-|Plano          |Preço            |O que inclui                                                                                                          |
-|---------------|-----------------|----------------------------------------------------------------------------------------------------------------------|
-|**Gratuito**   |Grátis           |2 relatórios completos por mês (janela rolling de 30 dias), preview dos demais, Radar de hoje                          |
-|**Essencial**  |Acesso Antecipado|Limites atuais do site (completo até 1 ano, preview 1-5 anos) + Executive Advisor com quantidade limitada de mensagens *(fase futura)*|
-|**Estratégico**|Acesso Antecipado|Histórico completo desde 2000 + Executive Advisor com volume ampliado de mensagens                                     |
+|Plano          |Preço (faixa, não público)|O que inclui                                                                                                                                 |
+|---------------|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+|**Free**       |Grátis                    |2 relatórios completos/mês (janela rolling de 30 dias); completos só até 1 ano de idade; sem Advisor                                          |
+|**Essential**  |R$197 / $39               |Relatórios completos até 2 anos, preview 2-5 anos, sem preview acima de 5; Advisor 30 mensagens/mês com contexto limitado à janela de 2 anos  |
+|**Strategic**  |R$649 / $129              |Relatórios: arquivo completo sem limite; Advisor 400 mensagens/mês com arquivo completo (pgvector quando pronto) + plano estratégico Fase 2   |
 
-Preços em USD e BRL serão anunciados quando Stripe for integrado.
+Preços são faixa de trabalho interna; nada público até Stripe + Strategic completo + formalização.
 
-### Decisão de estrutura de planos - 2026-06-11
+### Decisão de estrutura de planos - 2026-06-15 (substitui a de 2026-06-11)
 
-- **Três planos** (não quatro): **FREE** (2 relatórios completos/mês), **ESSENTIAL**
-  (limites atuais do site + Advisor com quantidade limitada de mensagens, em fase
-  futura) e **STRATEGIC** (histórico completo + Advisor com volume ampliado de
-  mensagens).
-- **Plano "Advisory" separado: eliminado.** O Executive Advisor deixa de ser um
-  plano à parte e passa a ser distribuído entre Essential (acesso limitado) e
-  Strategic (acesso ampliado).
-- **Estado atual:** Advisor liberado **somente para Strategic** (subscription
-  ativa), em desenvolvimento/calibração. Essential e Free veem o estado "em breve"
-  (sem chat, sem onboarding).
+- **Três planos:** FREE, ESSENTIAL e STRATEGIC. Plano "Advisory" separado permanece eliminado.
+- **Essential = único plano pago no lançamento.** Relatórios completos até 2 anos,
+  preview 2-5 anos, sem preview acima de 5 anos. Advisor: **30 mensagens/mês**,
+  contexto limitado à **janela de 2 anos** (recusa honesta + CTA de upgrade se pedir
+  período mais antigo). Faixa R$197 / $39.
+- **Strategic = fora de venda agora, em vitrine "em breve".** Continua visível no
+  site para ancorar valor e captar interesse na waitlist (`requested_plan = strategic`),
+  mas sem botão de compra. Relatórios: arquivo completo sem limite. Advisor: 400
+  mensagens/mês com arquivo completo (via pgvector quando pronto) + plano estratégico
+  Fase 2 (futuro). Faixa R$649 / $129, não pública.
+- **Limites de mensagem (30/400)** são marcadores de plano e trava anti-abuso, não
+  contenção de custo (custo de inferência medido é trivial, ~$0,0157/msg em Sonnet).
+- **Diferenciador real entre planos = janela de histórico**, não contagem de
+  mensagens. Essential vê 2 anos; Strategic vê o arquivo completo.
+- **Regra de acesso única (Opção C):** o Advisor herda a mesma janela de relatórios
+  do plano. Para Essential, o catálogo enviado ao router e o contexto carregado são
+  filtrados pela janela de 2 anos; pedido fora da janela → recusa honesta + CTA de upgrade.
+- **Estado atual:** Advisor liberado **somente para Strategic** (subscription ativa).
+  Limites de mensagem e filtro de janela por plano **ainda não implementados** —
+  entram junto com a ativação paga do Essential.
 - **Gate técnico:** centralizado em `lib/plan.ts` (`getUserPlan` + `hasAdvisorAccess`).
-  `hasAdvisorAccess` hoje retorna `true` apenas para `strategic`; quando os limites
-  de mensagens do Essential existirem, o ajuste é nesse único ponto. O gate real é
-  server-side em `/api/advisor/chat` (403 para quem não tem acesso) e espelhado na
-  UI (`app/dashboard/advisor/page.tsx` e card em `app/dashboard/page.tsx`).
-- **Stripe: pendente.** O gate lê a tabela `subscriptions` (status `active`),
-  compatível com a futura integração, sem necessidade de mudança no gate quando
-  o Stripe entrar.
+  Server-side em `/api/advisor/chat` (403) + espelhado na UI
+  (`app/dashboard/advisor/page.tsx` e card em `app/dashboard/page.tsx`). Lê a tabela
+  `subscriptions` (status `active`), compatível com Stripe futuro.
+- **Cobrança (decidido):** começa com **Stripe Brasil + conta CPF**, recebimento em
+  BRL. Preço exibido segue o idioma detectado (PT → R$, default EN → US$) via Stripe
+  multi-currency; vendas em USD são convertidas e creditadas em BRL. Estrutura
+  internacional (LLC + Stripe US + conta USD) fica para quando houver tração
+  internacional, com orientação contábil.
 
 -----
 
@@ -435,18 +446,54 @@ Preços em USD e BRL serão anunciados quando Stripe for integrado.
 
 ### Status atual
 
-- Interface pronta (onboarding 4 etapas + chat)
-- **Liberado para Strategic** (subscription ativa), em desenvolvimento/calibração
+- Interface pronta (onboarding enxuto + perfil progressivo + chat com markdown)
+- **Liberado para Strategic** (subscription ativa), calibrado e estável (v4.x)
 - Essential/Free veem o estado "em breve" (sem chat, sem onboarding)
 - Gate centralizado em `lib/plan.ts`; gate real server-side em `/api/advisor/chat` (403)
+- **Limites por plano (decisão 2026-06-15, ainda não implementados):** Essential 30
+  mensagens/mês + janela de 2 anos; Strategic 400 mensagens/mês + arquivo completo.
+  Entram junto com a ativação paga do Essential.
 
 ### Como funciona (quando ativo)
 
-1. Cliente completa onboarding: empresa, setor, tamanho, infraestrutura, objetivo, maturidade
-1. Cada mensagem carrega: perfil + últimas 20 mensagens da sessão + últimos 3 relatórios TAIME
-1. Claude Sonnet 4.6 responde como consultor estratégico com framework TAIME
-1. Detecta idioma da mensagem e responde no mesmo
-1. Histórico salvo em `advisory_memory` por sessão
+1. Onboarding enxuto (empresa, setor, objetivo; campos avançados sob demanda via perfil progressivo)
+1. Router Haiku seleciona os relatórios relevantes por pergunta (fallback: 3 mais recentes); contexto = perfil + histórico + relatórios selecionados
+1. Claude Sonnet 4.6 responde como consultor estratégico com framework TAIME; grounding rígido (cita período de origem, fontes e ferramentas por categoria, sem inventar números/preços)
+1. Detecta idioma da mensagem e responde no mesmo; prompt caching em blocos estáveis; `usage` instrumentado em `context_metadata`
+1. Histórico salvo em `advisory_memory` por sessão; metadados (título, última atividade, contagem, archived_at) em `advisor_sessions`
+1. **Quando Essential ativar:** catálogo e contexto filtrados pela janela do plano; pedido fora da janela → recusa honesta + CTA de upgrade
+
+### Navegação entre sessões + arquivamento (2026-06-16)
+
+- Sidebar lateral no `AdvisorChat` lista as sessões anteriores do usuário com
+  título derivado (primeiros ~80 caracteres da primeira mensagem do usuário),
+  última atividade ("há Xd") e contagem de mensagens. Clicar carrega aquele
+  `session_id`; "Novo contexto" cria um id novo e limpa a tela.
+- Aba "Ativas / Arquivadas" no topo da sidebar alterna o filtro.
+- **Fonte de verdade:** tabela `advisor_sessions` (uma linha por sessão), criada
+  em `taime-web/add-advisor-session-archive.sql`. `advisory_memory` continua
+  imutável como log de mensagens; mensagens NUNCA são apagadas.
+- **Regra de arquivamento (não destrutiva):** sessão sem atividade há **mais de
+  90 dias** é considerada arquivada e sai da lista padrão de ativas. O campo
+  `archived_at` é reservado para arquivamento explícito (uso futuro); a regra
+  de 90 dias é aplicada como predicado em tempo de leitura, sem preencher o campo.
+- **Endpoint:** `GET /api/advisor/sessions?archived=0|1` retorna a lista do
+  usuário autenticado, ordenada por última atividade. Tolera a tabela ainda
+  não existir (retorna `{sessions: [], migration_pending: true}` em vez de 500),
+  para não quebrar a UI antes da migração rodar.
+- **Sync:** o chat route (`/api/advisor/chat`) chama `advisor_session_upsert`
+  (RPC) após persistir as duas linhas de cada turno; failure é logado e segue
+  sem bloquear a resposta.
+- **Histórico como ativo do TAIME:** archive remove da vista principal, mas o
+  conteúdo continua disponível na aba "Arquivadas" para o cliente acessar.
+
+### Fase futura (não nesta entrega): sessões arquivadas como memória
+
+Usar o conteúdo de sessões arquivadas como contexto adicional do Advisor (além
+do histórico da sessão atual) exige sumarização do diálogo + indexação semântica
+(pgvector). É entrega separada que depende dessa infraestrutura. O dado já está
+organizado e marcado em `advisor_sessions`, pronto para receber colunas como
+`summary` e `summary_embedding` quando chegar a hora.
 
 ### Roadmap do Advisor
 
@@ -560,8 +607,6 @@ Preços em USD e BRL serão anunciados quando Stripe for integrado.
 - Notificações de waitlist: [notify@taime.tech](mailto:notify@taime.tech)
 - Tabela `admins` no Supabase controla acesso
 - Aprovação manual via /admin/waitlist
-- Painéis admin: `/admin/feedback`, `/admin/waitlist`, `/admin/reports`, `/admin/engagement`
-- **`/admin/engagement`** (painel de engajamento por usuário): agrega `reading_progress` e `advisory_memory` na view `user_engagement_monthly` (1 linha por usuário+mês). Mostra relatórios abertos/concluídos e mensagens do Advisor nos últimos 3 meses, última atividade, sinal de tendência (verde estável / amarelo queda >50% / vermelho inativo 30+ dias) e custo do Advisor (tokens + estimativa USD a preço Sonnet). View entregue em `taime-web/add-engagement-view.sql` (executar manualmente no Supabase). Inclui placeholder `saved_reports` (feature de bookmark ainda não construída; `reports_saved` fica 0 até existir).
 
 ### Contato
 
@@ -599,7 +644,7 @@ Preços de referência (USD/1M tokens, padrão): Haiku 4.5 $1/$5 · Sonnet 4.6 $
 
 Caso de uso premium: a partir do perfil (receita, valor, tamanho, headcount, **budget de investimento**, **horizonte temporal**), o Advisor diagnostica, lista as iniciativas de IA, **prioriza** e devolve um plano sequenciado por ano com quick wins.
 
-**Estado atual (produção):** `chat/route.ts` usa Sonnet 4.6, `max_tokens: 1024`, contexto = perfil + últimas 20 mensagens + 3 relatórios. **Insuficiente para o caso de uso de plano.**
+**Estado atual (produção, v4.x):** `chat/route.ts` usa Sonnet 4.6 com `max_tokens` dinâmico (1.536 padrão / 4.096 quando pede plano ou detalhe), router Haiku para seleção de relatórios, prompt caching e instrumentação de `usage`. O **chat** está calibrado e estável. O **caso de uso de plano** (Fase 2) continua pendente: exige endpoint dedicado, Opus e tabela própria, conforme abaixo.
 
 **Duas mudanças estruturais planejadas:**
 
