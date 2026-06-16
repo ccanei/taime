@@ -2,6 +2,111 @@
 
 ---
 
+## [2026-06-16] - Revalidação de relatórios pendentes 2024-07-01 a 2024-11-01 com judge atualizado
+
+### Objetivo
+Reprocessar sob o judge atual apenas os relatórios cujo `period` cai entre
+2024-07-01 e 2024-11-01 e que ainda estavam em aprovação pendente. Relatórios
+já publicados são preservados intactos. Sem auto-correção, sem reescrita de
+texto, sem auto-publicação.
+
+### Escopo
+Total no range: 16 relatórios.
+- Em escopo (status `pending_review`, revalidados): **14**
+- Pulados (status `published`, NÃO tocados): **2**
+  - `2024-07-01 #2` (1ª Quinzena Jul/24), verdict prévio `needs_review`, validated_at 2026-06-12.
+  - `2024-09-01 #2` (1ª Quinzena Set/24), verdict prévio `needs_review`, validated_at 2026-06-13.
+
+O filtro nativo do `validate-report.ts`
+(`status=in.(generating,pending_review,draft)`) garantiu que os publicados
+ficassem fora da varredura.
+
+### Mudança defensiva no validador
+Adicionada opção `NO_AUTO_PUBLISH=1` no `validate-report.ts`. Quando ligada,
+mesmo um veredito `pass` deixa o relatório em `pending_review` em vez de
+publicar. Default off preserva o fluxo normal do pipeline; usei `=1` em todo
+este lote.
+
+### Piloto
+`2024-07-01 #1` (id `2f4ff973`) rodou antes do lote para validar a regra:
+- verdict `fail`, 11 flags (2 blocking + 9 warnings), 100% category `grounding`.
+- Texto do relatório NÃO foi tocado (patch só escreve `validation_*` + `status`).
+- Sugestões subtractivas confirmadas (`Removida a cláusula...`,
+  `Removeu a referência...`, opção C aplicada quando necessário).
+- Idioma das sugestões alinhou com o campo flagueado (`*_pt_br.*` → `suggestion_pt`,
+  `*_en.*` → `suggestion_en`); `suggestion_reason` em PT em todos.
+- Sem marcador injetado no corpo. Sem sugestão na língua errada. Sem sugestão
+  introduzindo conteúdo novo (a guarda `enforceSubtractive` não precisou descartar
+  nenhuma sugestão).
+
+### Lote (13 restantes, 8 períodos)
+Rodados sequencialmente com `PERIOD=<p> NO_AUTO_PUBLISH=1 npx ts-node
+validate-report.ts` para: 2024-07-16, 2024-08-01, 2024-08-16, 2024-09-01,
+2024-09-16, 2024-10-01, 2024-10-16, 2024-11-01.
+
+### Tabela por relatório (escopo + pulados)
+
+| Period | # | Status | Verdict | Sig | Trends | Flags | Block | Warn | Det | Grnd | Temporal_breach | Source | Judge_parse_errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2024-07-01 | 1 | pending_review | stale\* | 193 | 4 | 10 | 1 | 9 | 0 | 10 | **0** | 0 | 3/4 |
+| 2024-07-01 | 2 *(pulado)* | published | needs_review | 193 | 4 | 1 | 0 | 1 | 0 | 1 | **0** | 0 | 1/4 |
+| 2024-07-16 | 1 | pending_review | fail | 170 | 4 | 12 | 2 | 10 | 0 | 12 | **0** | 0 | 2/4 |
+| 2024-07-16 | 2 | pending_review | fail | 170 | 4 | 13 | 4 | 9 | 4 | 6 | **0** | 3 | 1/4 |
+| 2024-08-01 | 1 | pending_review | fail | 160 | 7 | 8 | 4 | 4 | 0 | 6 | **0** | 2 | 1/7 |
+| 2024-08-16 | 1 | pending_review | fail | 140 | 7 | 25 | 8 | 17 | 1 | 21 | **0** | 3 | 1/7 |
+| 2024-09-01 | 1 | pending_review | fail | 210 | 4 | 5 | 4 | 1 | 0 | 1 | **2** | 2 | 0/4 |
+| 2024-09-01 | 2 *(pulado)* | published | needs_review | 210 | 4 | 2 | 0 | 2 | 0 | 2 | **0** | 0 | 2/4 |
+| 2024-09-16 | 1 | pending_review | fail | 187 | 4 | 6 | 4 | 2 | 0 | 2 | **0** | 4 | 2/4 |
+| 2024-09-16 | 2 | pending_review | needs_review | 187 | 4 | 1 | 0 | 1 | 0 | 1 | **0** | 0 | 1/4 |
+| 2024-10-01 | 1 | pending_review | fail | 170 | 4 | 26 | 6 | 20 | 0 | 26 | **0** | 0 | 1/4 |
+| 2024-10-01 | 2 | pending_review | fail | 170 | 4 | 5 | 1 | 4 | 0 | 5 | **0** | 0 | 3/4 |
+| 2024-10-16 | 1 | pending_review | fail | 202 | 4 | 7 | 3 | 4 | 0 | 4 | **0** | 3 | 1/4 |
+| 2024-10-16 | 2 | pending_review | needs_review | 202 | 4 | 2 | 0 | 2 | 0 | 2 | **0** | 0 | 2/4 |
+| 2024-11-01 | 1 | pending_review | fail | 187 | 4 | 3 | 1 | 2 | 0 | 2 | **0** | 1 | 0/4 |
+| 2024-11-01 | 2 | pending_review | fail | 187 | 4 | 17 | 6 | 11 | 0 | 16 | **0** | 1 | 0/4 |
+
+\* `2024-07-01 #1`: a chamada do validador retornou `fail` (11 flags persistidos
+no log do run), mas o DB acabou exibindo `stale`. Esse relatório já estava
+`stale` antes da revalidação (provável trigger de edição prévia via /admin que
+o validador não dispersa). Comportamento de projeto, fora do escopo desta tarefa;
+para curadoria, conta como pendente.
+
+### Agregados (só do escopo revalidado, n=14)
+- Verdicts: **0 pass · 2 needs_review · 11 fail · 1 stale** (este último por trigger pré-existente, ver nota acima).
+- **temporal_breach agregado: 2** (apenas em `2024-09-01 #1`, ambos
+  blocking, trend 1). Os outros 13 relatórios revalidados ficaram em 0.
+  As duas detecções são legítimas do judge:
+  1. `then_now_next_en.next`: "organizations without production deployments
+     by mid-2025 would face a compounding disadvantage" (data futura específica
+     fora do boundary 2024-09-15).
+  2. `then_now_next_pt_br.next`: "a próxima fronteira seria a transição de
+     assistentes de produtividade para agentes autônomos..." (extrapola o que
+     os sinais estabelecem no período).
+  Ou seja, a coluna não fica zerada porque há violações temporais reais nos
+  relatórios; o judge as detectou corretamente, sem falsos positivos
+  determinísticos. Resolução é curadoria manual.
+- **judge_parse_error agregado: 18 trends afetados em 62 trends totais → 29.0%**
+  (8 dos 14 relatórios tiveram pelo menos 1 trend cujo judge LLM retornou JSON
+  não-parseável). Cada falha é gravada como warning explícito (`judge_parse_error`)
+  para revisão manual; nenhuma é silenciosamente descartada. Taxa alta sugere
+  que vale endurecer o parsing do judge (retry com prompt mais restrito, ou
+  estrutura `tools`) em iteração futura; fora do escopo desta tarefa.
+
+### Garantias verificadas
+- Texto de relatório não foi alterado em nenhuma das 14 revalidações
+  (patch só escreve `validation_verdict`, `validation_flags`, `validated_at`,
+  `signal_count`, `status`).
+- Nenhuma correção foi aplicada automaticamente: as sugestões ficam apenas no
+  campo `suggestion_*` de cada flag, para a curadoria decidir em `/admin/reports`.
+- Os 2 relatórios publicados do range continuam com `validated_at` antigo:
+  `2024-07-01 #2` em 2026-06-12, `2024-09-01 #2` em 2026-06-13.
+- Todos os 14 revalidados terminaram em `status=pending_review` (nenhum publicado).
+
+### Arquivos
+- `validate-report.ts` (adiciona flag `NO_AUTO_PUBLISH`)
+
+---
+
 ## [2026-06-15] - Advisor v4.2: load do histórico + prompt sem brecha de "prescrição"
 
 ### Status

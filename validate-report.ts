@@ -38,6 +38,10 @@ const now    = new Date();
 const PERIOD = process.env.PERIOD
   ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
+// Opt-in: revalidações em lote (ex.: backfill após mudar a regra do judge)
+// pedem para NUNCA auto-publicar. Default false preserva o fluxo do pipeline.
+const NO_AUTO_PUBLISH = process.env.NO_AUTO_PUBLISH === '1';
+
 const _pi             = parsePeriod(PERIOD);
 const PERIOD_END_DATE = `${_pi.end.getFullYear()}-${String(_pi.end.getMonth() + 1).padStart(2, '0')}-${String(_pi.end.getDate()).padStart(2, '0')}`;
 
@@ -733,13 +737,15 @@ export async function validatePersistedReport(reportId: string): Promise<{
 
   // ── Destino ──────────────────────────────────────────────────────────────────
   // pass limpo → auto-publica. Qualquer flag → pending_review (você decide).
+  // NO_AUTO_PUBLISH=1 desliga a auto-publicação (revalidação em lote, curadoria
+  // sempre manual): mesmo um veredito pass deixa o relatório em pending_review.
   const patch: Record<string, unknown> = {
     validation_verdict: verdict,
     validation_flags:   flags,
     validated_at:       new Date().toISOString(),
     signal_count:       signalCount,
   };
-  if (verdict === 'pass') {
+  if (verdict === 'pass' && !NO_AUTO_PUBLISH) {
     patch.status       = 'published';
     patch.published_at = new Date().toISOString();
   } else {
@@ -785,8 +791,10 @@ async function main(): Promise<void> {
     console.log(`  ${icon} Veredito: ${verdict.toUpperCase()}`);
     console.log(`     Sinais no período: ${signalCount}`);
     console.log(`     Flags: ${blocking} bloqueantes, ${warning} avisos`);
-    if (verdict === 'pass') {
+    if (verdict === 'pass' && !NO_AUTO_PUBLISH) {
       console.log('     → AUTO-PUBLICADO');
+    } else if (verdict === 'pass') {
+      console.log('     → pass limpo (sem auto-publicar: NO_AUTO_PUBLISH=1)');
     } else {
       console.log('     → pending_review (revisar em /admin/reports)');
       for (const f of flags.slice(0, 8)) {
