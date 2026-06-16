@@ -2,6 +2,40 @@
 
 ---
 
+## [2026-06-16] - Advisor v4.3, fim da alucinação sobre acesso ao arquivo + router temporal
+
+### Sintoma
+Usuário perguntou se o Advisor podia buscar relatórios mais antigos sobre um tema. O Advisor respondeu literalmente: *"Não tenho acesso ao arquivo TAIME de forma autônoma. Só analiso o que é carregado diretamente nesta conversa, seja colando o texto ou via mecanismo da plataforma"* e pediu pro usuário colar relatórios. Isso é falso. O Advisor tem um router (Haiku) que seleciona até 3 relatórios do arquivo a cada turno e injeta no system prompt. O modelo inventou uma arquitetura que não é a nossa e empurrou o usuário pra um fluxo que não existe.
+
+### Causas
+1. `RULES_BLOCK` dizia o que NÃO fazer, mas nunca descrevia positivamente como os relatórios chegam ao modelo. Sem essa descrição, Sonnet defaulta pro modelo mental genérico "usuário cola contexto".
+2. `ROUTER_INSTRUCTIONS` otimizava só por proximidade textual. Pergunta histórica recebia a mesma seleção viesada por recência.
+3. Catálogo do roteador era `limit(50)` ordenado por `period desc`. Como o arquivo já tem 74 relatórios publicados, 2024 corria risco de ficar fora do candidate set.
+
+### Mudanças (taime-web/app/api/advisor/chat/route.ts)
+1. **`RULES_BLOCK`**: adicionado bloco `HOW YOU RECEIVE REPORTS` antes de `YOUR ROLE`. Descreve o pipeline real (router automático seleciona até 3 relatórios), dita a resposta correta quando o pedido não bate com o que foi carregado (2 frases: explica o gap, oferece focar no carregado OU reformulação), e PROÍBE explicitamente afirmar que não tem acesso autônomo ou pedir colagem manual.
+2. **`ROUTER_INSTRUCTIONS`**: reescrito o bloco de regras pra ensinar o Haiku a detectar intenção temporal ("historical" para "relatórios mais antigos / trajetória / over time / how did X evolve"; "specific_period" quando o usuário cita ano/semestre/mês) e priorizar diversidade de períodos sobre proximidade textual nos casos históricos. Quando o usuário cita um ano e o catálogo tem relatórios daquele ano, eles vencem recência.
+3. **Catálogo subido pra `limit(100)`** com comentário marcando como solução parcial. Cobre os 74 relatórios atuais e dá folga pra próximas quinzenas.
+
+### Verificação
+- `npm run build`: ✓ Compiled successfully in 4.0s, 0 erros.
+- Sem em dash (U+2014) no diff: ✓ (corrigido em 1 lugar onde introduzi por engano).
+- DB: 74 publicados total, 19 de 2024 no catálogo (era 0 visíveis ao router antes do limit=100). 7 trends de 2024 batendo em "AI Coding" / "code agent" / "developer".
+- Probe direto contra o roteador real (script transitório em /tmp/probe-router-v43-done.js):
+  - "como está AI coding em relatórios mais antigos?" → `historical`, pega 3 reports de 2024 (antes pegava 3 de 2026).
+  - "how is AI coding evolving over time?" → `historical`, 3 períodos distintos (2024-08, 2024-12, 2026-01). Diversidade funciona.
+  - "AI coding em 2024" → pega 2024-09-01 (16e65c97) + 2024-10-01 (0b240c3b), que SÃO os relatórios com as trends literais "AI Coding Assistants". `temporal_scope` veio "recent" em vez de "specific_period" mas a seleção está certa.
+  - "estado atual da governança em IA" → `recent`, 2026. Não regressa.
+
+### Limitação conhecida (pgvector-pending)
+A query mais genérica "AI coding em relatórios mais antigos" ainda não pega o relatório com "AI Coding Assistants" literal no título de uma trend específica de 2024. O Haiku decide com metadados enxutos (top 6 trend titles) e top-3 selections; se a trend matching está na rank 7+ ou em outra coluna não-incluída no catálogo, fica invisível. A solução completa é busca semântica sobre o arquivo inteiro com pgvector, fora do escopo da v4.3.
+
+### Arquivos
+- `taime-web/app/api/advisor/chat/route.ts` (3 blocos: RULES_BLOCK, ROUTER_INSTRUCTIONS, catalog limit)
+- `LOG.md`
+
+---
+
 ## [2026-06-16] - Advisor: seletor de sessões anteriores + arquivamento por inatividade (90d)
 
 ### Status

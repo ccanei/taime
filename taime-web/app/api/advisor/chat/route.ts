@@ -107,6 +107,9 @@ function languageInstruction(lang: Lang): string {
 }
 
 // ── Bloco 1: regras fixas (estável, cacheável) ──────────────────────────────
+// v4.3: bloco "HOW YOU RECEIVE REPORTS" inserido para impedir alucinação sobre
+// a própria arquitetura (modelo dizia "não tenho acesso autônomo ao arquivo,
+// cole o texto aqui"; arquitetura real = router automático seleciona relatórios).
 // v4.2: bloco único e coerente. Removida a cláusula v3 "Recommending a product
 // by name is allowed" que conflitava com a regra de categoria-apenas. Trocar
 // este bloco invalida o cache uma vez (esperado).
@@ -133,6 +136,14 @@ CONVERSATION RULES:
 LINKING RULES:
 
 7. LINK WHAT YOU CITE. Whenever you mention a report, include a markdown link to it. Whenever you mention a specific trend, link to that trend's anchor. Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL.
+
+HOW YOU RECEIVE REPORTS:
+
+Every user message is routed through an automatic selector that picks up to 3 TAIME reports from the published archive and inlines them in the intelligence block above. You never depend on the user pasting reports. You never need them to upload anything. The selector decides each turn based on the user's question; if a future turn needs different reports, it will fetch them.
+
+When the loaded reports do not cover the topic or period the user asked about, the correct response is exactly two sentences: state that the reports selected for this question do not cover that period or topic, and offer either (a) to focus the answer on what was loaded, or (b) to have the user rephrase naming the period or topic of interest so the selector can find better matches on the next turn.
+
+FORBIDDEN: claiming you have no autonomous access to the archive, claiming you only see what the user pastes, asking the user to paste or upload report text, or describing any flow where the user must load reports manually. That pipeline does not exist in the product; saying it does is a hallucination about your own architecture.
 
 YOUR ROLE:
 - Act as a senior strategic advisor who knows this client's context and the loaded TAIME intelligence.
@@ -194,14 +205,26 @@ ${body}`
 // ── Roteador de contexto (Haiku) ────────────────────────────────────────────
 // Seleciona até 3 relatórios relevantes a partir de metadados enxutos.
 // Retorna result=null em qualquer falha (parse, rede, vazio) para acionar fallback.
+//
+// v4.3: heurística de diversidade temporal quando o usuário pede histórico /
+// trajetória / um ano específico. Sem isso, o router antes priorizava
+// proximidade textual e devolvia três relatórios do mesmo mês. Solução
+// completa (semantic search sobre arquivo inteiro) virá com pgvector.
 const ROUTER_INSTRUCTIONS = `You are a context router for a strategic advisor. Given a user message and a catalog of available intelligence reports (metadata only), select up to 3 reports whose content is most relevant to answer the message. Prefer fewer, sharper selections over many loose ones.
 
 Respond with PURE JSON only, no markdown, no prose, in exactly this shape:
 {"report_ids":["..."],"temporal_scope":"recent|historical|specific_period","language":"pt|en"}
 
-Rules:
+Detecting the user's temporal intent:
+- "recent": the message is about the current moment, latest state, or has no temporal cue.
+- "historical": the message asks how something evolved, its trajectory or older state. Markers in PT: "relatórios mais antigos", "histórico", "ao longo do tempo", "trajetória", "evolução", "como evoluiu", "como era antes". Markers in EN: "how did X evolve", "over time", "history of", "older reports", "trajectory", "back when".
+- "specific_period": the message names a year, quarter, half-year or month (e.g. "em 2024", "1º semestre de 2025", "agosto de 2024", "in 2024 H1").
+
+Selection rules:
 - report_ids must be ids that exist in the catalog. Up to 3. Use [] if none clearly apply.
-- temporal_scope: "recent" if the message is about the current moment; "historical" if it asks about the past or trajectory; "specific_period" if it names a period.
+- For "recent": pick the most topically relevant reports, recency-leaning.
+- For "historical": prioritize PERIOD DIVERSITY over textual closeness. The three picks must come from distinct periods (do not return three from the same month). Cover a spread (early/middle/recent) when possible. If the catalog has a report whose title or trends directly match the topic asked about and that report is older, it must be picked over a newer report that only loosely matches.
+- For "specific_period": if any report in the catalog has its period inside the named year/half/quarter/month, those reports must take precedence over recency. If none match, pick the topically closest reports from the nearest available periods and still return scope="specific_period" so the advisor can be honest about the miss.
 - language: detect from the user message.`
 
 function buildCatalog(candidates: CandidateReport[]): string {
@@ -367,12 +390,15 @@ export async function POST(req: NextRequest) {
   const history = ((historyData ?? []) as MemoryRow[]).slice().reverse()
 
   // ── Catálogo enxuto p/ o roteador (sem conteúdo completo) ──────────────────
+  // v4.3: limite parcial subido para 100. Cobre o arquivo atual e dá ao roteador
+  // visibilidade dos relatórios de 2024 quando o usuário pede histórico. Solução
+  // completa = pgvector + semantic search sobre o arquivo inteiro.
   const { data: candidateData } = await service
     .from('reports')
     .select('id, period, period_label, title_en, title_pt_br, report_trends(title_en, category, theme_slug)')
     .eq('status', 'published')
     .order('period', { ascending: false })
-    .limit(50)
+    .limit(100)
 
   const candidates   = (candidateData ?? []) as CandidateReport[]
   const candidateIds = new Set(candidates.map(c => c.id))
