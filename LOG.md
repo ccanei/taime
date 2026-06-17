@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-06-16] - /api/trends/top: trends do período publicado mais recente
+
+### Sintoma
+O topo da home (mockup "RELATÓRIO EXECUTIVO") e a seção "Tendências em destaque" mostravam uma trend de score 89 do período 2026-04-16 ("Corrida Armamentista de IA em Cibersegurança") cravada eternamente, mesmo com o período 2026-06-01 já publicado. A query antiga era `report_trends?order=taime_score.desc&limit=3` sem qualquer filtro por status nem por período. Dois bugs em um:
+1. Top score histórico de toda a base ofuscava trends novas (típicas com score 80-85).
+2. Trends de relatórios em `generating`, `pending_review` ou `draft` podiam vazar para o público porque nada filtrava `status=published`.
+
+### Mudança (taime-web/app/api/trends/top/route.ts)
+Reescrito o endpoint inteiro. Fluxo agora:
+
+1. Resolve o período publicado mais recente: `reports?status=eq.published&order=period.desc&limit=1&select=period`.
+2. Busca trends desse período filtrando pelo inner join: `report_trends?reports.status=eq.published&reports.period=eq.<latest>&order=taime_score.desc&limit=8&select=..., reports!inner(period)`.
+
+Sem `reports!inner(...)`, o PostgREST faria left join e ignoraria silenciosamente o filtro do lado FK. O `!inner` força a checagem.
+
+`limit=8` cobre os dois formatos típicos de período: 1 relatório (4-7 trends) ou 2 relatórios após auto-split (4+4 = 8 trends). Page consumer suporta qualquer tamanho: hero usa `topTrends[0]`, showcase usa `.find` após o index 0, grid de "Tendências em destaque" é responsivo (1/2/3 colunas). Sem mudanças em `app/page.tsx` nem em `HomeSearch`. Sem mudanças no shape do JSON; o `TopTrend` interface segue válido.
+
+Estado vazio (nenhum publicado, qualquer fetch !ok) retorna `[]` com status 200, mantendo o contrato silencioso de hoje.
+
+### Verificação
+- `npm run build`: ✓ 0 erros.
+- `grep U+2014` no diff: 0 ocorrências.
+- Baseline antes: top-3 global vinha 89 (2026-04-16) + 89 (2024-01-01) + 88 (2025-02-16).
+- Endpoint novo: 8 trends, 100% de 2026-06-01, dos 2 relatórios publicados do período (a1452c28, ff6996bc), ordenadas por score (84 84 84 84 82 82 74 52). Hero passa de 89 estagnado para 84 atual.
+- Shape parity: todos os campos do `TopTrend` presentes, embed `reports.period` preservado.
+
+### Arquivos
+- `taime-web/app/api/trends/top/route.ts` (rewrite completo)
+- `LOG.md`
+
+---
+
 ## [2026-06-16] - Advisor v4.3, fim da alucinação sobre acesso ao arquivo + router temporal
 
 ### Sintoma
