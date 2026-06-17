@@ -6,6 +6,14 @@ import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useLocale } from '@/lib/useLocale'
 
+// `useLocale` retorna 'pt' | 'en'. O banco (public.users.preferred_language)
+// aceita só 'pt-BR' | 'en' (CHECK). Mapeamos no signup para alimentar o
+// metadata do OTP, que o callback consome ao enriquecer o perfil.
+type DbLocale = 'pt-BR' | 'en'
+function toDbLocale(uiLocale: 'pt' | 'en'): DbLocale {
+  return uiLocale === 'en' ? 'en' : 'pt-BR'
+}
+
 type Mode   = 'waitlist' | 'magic-link' | 'free-signup'
 type Status = 'idle' | 'loading' | 'sent' | 'error'
 type Plan   = 'free' | 'essential' | 'strategic'
@@ -20,7 +28,7 @@ const INPUT_CLS = `w-full px-4 py-2.5 rounded-lg border border-zinc-200 text-sm 
 // useSearchParams() exige Suspense boundary no App Router. Mantemos a leitura
 // do query param e toda a UI dentro do filho; o Suspense fica no default export.
 function LoginPageInner() {
-  const { t } = useLocale()
+  const { locale, t } = useLocale()
   const searchParams = useSearchParams()
 
   // ?plan=free|essential|strategic. Fora da whitelist cai em 'free'.
@@ -123,24 +131,68 @@ function LoginPageInner() {
   }
 
   // ── Free self-signup (plan=free) ────────────────────────────────────────────
-  // Dispara magic link com shouldCreateUser=true. O trigger
-  // on_auth_user_created_grant_free cria a subscription free no clique.
-  // Em paralelo, registra um lead aprovado na waitlist (best-effort, não
-  // bloqueante) para o admin acompanhar quem entrou pela porta free.
+  // Ordem é importante:
+  //   1) POST waitlist PRIMEIRO. Lead garantido mesmo se a pessoa nunca
+  //      clicar no link. Endpoint grava status=approved + contacted=true
+  //      para o plano free. 409 (email já existe) é tratado como sucesso para
+  //      seguir adiante; outros erros >= 400 abortam (o magic link NÃO é
+  //      disparado e a UX mostra o motivo).
+  //   2) signInWithOtp com perfil completo no `data` (user_metadata).
+  //      O trigger handle_new_user consome `full_name` ao criar a row em
+  //      public.users. O callback (auth/callback/route.ts) consome
+  //      company/job_title/preferred_language e enriquece public.users.
 
   async function handleFreeSignup(e: React.FormEvent) {
     e.preventDefault()
-    if (!mlEmail) return
+    if (!name || !email || !interest) return
     setStatus('loading')
     setErrorMsg('')
 
-    const normalizedEmail = mlEmail.trim().toLowerCase()
+    const normalizedName    = name.trim()
+    const normalizedEmail   = email.trim().toLowerCase()
+    const normalizedCompany = company.trim() || null
+    const normalizedRole    = userRole.trim() || null
+    const dbLocale          = toDbLocale(locale)
+
+    // (1) Waitlist primeiro.
+    try {
+      const wl = await fetch('/api/admin/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:           normalizedName,
+          email:          normalizedEmail,
+          company:        normalizedCompany,
+          role:           normalizedRole,
+          interest,
+          requested_plan: 'free',
+          website,
+        }),
+      })
+      if (!wl.ok && wl.status !== 409) {
+        setErrorMsg(t.login.errGeneric)
+        setStatus('error')
+        return
+      }
+    } catch {
+      setErrorMsg(t.login.errGeneric)
+      setStatus('error')
+      return
+    }
+
+    // (2) Magic link com perfil no metadata.
     const supabase = createSupabaseBrowser()
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
         shouldCreateUser: true,
         emailRedirectTo: `${window.location.origin}/dashboard`,
+        data: {
+          full_name:          normalizedName,    // consumido por handle_new_user
+          company:            normalizedCompany, // consumidos pelo callback
+          job_title:          normalizedRole,
+          preferred_language: dbLocale,
+        },
       },
     })
 
@@ -149,22 +201,6 @@ function LoginPageInner() {
       setStatus('error')
       return
     }
-
-    // Lead aprovado na waitlist. Best-effort: erro NÃO bloqueia o sucesso do
-    // magic link (que é o que de fato libera o acesso para o usuário).
-    fetch('/api/admin/waitlist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name:           normalizedEmail,
-        email:          normalizedEmail,
-        company:        null,
-        role:           null,
-        interest:       'Free self-signup',
-        requested_plan: 'free',
-        website,
-      }),
-    }).catch(err => console.warn('free-signup waitlist log failed:', err))
 
     setStatus('sent')
   }
@@ -196,10 +232,10 @@ function LoginPageInner() {
                 <div className="text-4xl mb-4">✉️</div>
                 <h2 className="text-xl font-bold text-zinc-900 mb-2">{t.login.freeSentTitle}</h2>
                 <p className="text-sm text-zinc-500 leading-relaxed">
-                  {t.login.freeSentBody(mlEmail)}
+                  {t.login.freeSentBody(email)}
                 </p>
                 <button
-                  onClick={() => { setStatus('idle'); setMlEmail('') }}
+                  onClick={() => { setStatus('idle'); setEmail(''); setName(''); setCompany(''); setUserRole(''); setInterest('') }}
                   className="mt-6 text-sm text-taime-600 hover:underline"
                 >
                   {t.login.changeEmail}
@@ -246,7 +282,7 @@ function LoginPageInner() {
                 </button>
               </div>
 
-            /* ── FREE SIGNUP: formulário ──────────────────────────────── */
+            /* ── FREE SIGNUP: formulário (mesmos campos da waitlist) ── */
             ) : isFreeSignup ? (
               <>
                 <h1 className="text-2xl font-bold text-zinc-900 mb-1">
@@ -275,19 +311,85 @@ function LoginPageInner() {
                   </div>
 
                   <div>
+                    <label htmlFor="fs-name" className="block text-sm font-medium text-zinc-700 mb-1.5">
+                      {t.login.nameLabel} <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="fs-name"
+                      type="text"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      placeholder={t.login.namePlaceholder}
+                      required
+                      disabled={status === 'loading'}
+                      className={INPUT_CLS}
+                    />
+                  </div>
+
+                  <div>
                     <label htmlFor="fs-email" className="block text-sm font-medium text-zinc-700 mb-1.5">
-                      {t.login.emailLabel}
+                      {t.login.emailLabel} <span className="text-red-400">*</span>
                     </label>
                     <input
                       id="fs-email"
                       type="email"
-                      value={mlEmail}
-                      onChange={e => setMlEmail(e.target.value)}
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
                       placeholder={t.login.emailPlaceholder}
                       required
                       disabled={status === 'loading'}
                       className={INPUT_CLS}
                     />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="fs-company" className="block text-sm font-medium text-zinc-700 mb-1.5">
+                        {t.login.companyLabel}
+                      </label>
+                      <input
+                        id="fs-company"
+                        type="text"
+                        value={company}
+                        onChange={e => setCompany(e.target.value)}
+                        placeholder={t.login.companyPlaceholder}
+                        disabled={status === 'loading'}
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="fs-role" className="block text-sm font-medium text-zinc-700 mb-1.5">
+                        {t.login.roleLabel}
+                      </label>
+                      <input
+                        id="fs-role"
+                        type="text"
+                        value={userRole}
+                        onChange={e => setUserRole(e.target.value)}
+                        placeholder={t.login.rolePlaceholder}
+                        disabled={status === 'loading'}
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="fs-interest" className="block text-sm font-medium text-zinc-700 mb-1.5">
+                      {t.login.interestLabel} <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      id="fs-interest"
+                      value={interest}
+                      onChange={e => setInterest(e.target.value)}
+                      required
+                      disabled={status === 'loading'}
+                      className={INPUT_CLS}
+                    >
+                      <option value="" disabled>{t.login.interestPlaceholder}</option>
+                      {(t.login.interests as readonly string[]).map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {status === 'error' && (
@@ -296,8 +398,8 @@ function LoginPageInner() {
 
                   <button
                     type="submit"
-                    disabled={status === 'loading' || !mlEmail}
-                    className="w-full btn-primary justify-center py-3 disabled:opacity-60"
+                    disabled={status === 'loading' || !name || !email || !interest}
+                    className="w-full btn-primary justify-center py-3 disabled:opacity-60 mt-2"
                   >
                     {status === 'loading' ? t.login.freeSubmitting : t.login.freeSubmit}
                   </button>

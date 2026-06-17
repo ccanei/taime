@@ -2,6 +2,63 @@
 
 ---
 
+## [2026-06-17] - Free self-signup: form completo + waitlist-first + perfil enriquecido no callback
+
+### Contexto e correção
+O commit `548a8c8` ligou a bifurcação por plano mas o free-signup usava form mínimo (só email). Resultado: lead pobre no admin (sem nome/empresa/cargo/interesse) e `public.users` nascia sem `company`, `job_title`, `preferred_language`. Este commit corrige.
+
+### Decisão
+- Free = form COMPLETO (nome, empresa, role, interesse, email, honeypot). Mesmos campos da waitlist; muda só copy e CTA.
+- Submit do free segue ordem rígida: (1) POST waitlist PRIMEIRO; (2) só se o lead foi gravado, dispara magic link. Lead garantido mesmo se a pessoa nunca clicar no link.
+  - 409 (email já existe na waitlist) é tratado como ok e segue para o OTP.
+  - Qualquer outro 4xx/5xx aborta com mensagem; magic link NÃO é disparado.
+- Magic link inclui perfil no `data` (user_metadata): `full_name, company, job_title, preferred_language`.
+- `handle_new_user()` grava `(id, email, full_name)` em public.users como hoje.
+- Callback (`app/auth/callback/route.ts`) lê o user_metadata e enriquece public.users com COALESCE: só preenche `company`/`job_title` quando o perfil atual está vazio; nunca rebaixa quem foi aprovado manualmente.
+- Endpoint da waitlist: para `requested_plan === 'free'` insere com `status='approved'` E `contacted=true` (espelha o que o `/api/admin/approve` faz).
+- Triggers e essential/strategic intactos.
+
+### Mudanças por arquivo
+
+`taime-web/app/login/page.tsx`
+- Free-signup agora compartilha os mesmos campos da waitlist (nome, email, empresa, role, interesse) e reusa o mesmo state. Removido o form mínimo só-email e qualquer dependência de `mlEmail` nesse fluxo.
+- `useLocale()` agora desestrutura `{ locale, t }` para passar idioma no metadata. Helper local `toDbLocale('pt'|'en') -> 'pt-BR'|'en'` respeita o CHECK do banco.
+- `handleFreeSignup`: ordem `waitlist POST -> 409=ok -> OTP com data { full_name, company, job_title, preferred_language }`. Mensagens de erro em ambas as etapas.
+
+`taime-web/app/auth/callback/route.ts`
+- Lookup de `public.users` agora seleciona também `company, job_title`.
+- Builda `patch` com semantica COALESCE: só inclui `company` se metadata trouxer E `profile.company` for null; idem `job_title`.
+- Idioma: integrado ao mesmo PATCH. Mantida proteção `language_set_by_user=true` (nunca toca). Quando false, prioridade `metaLang > sessionLocale > default`. Sem regressão na detecção de cookie que já existia.
+- Comentário de cabeçalho reescrito para refletir a nova função (enriquecimento de perfil, não só idioma).
+
+`taime-web/app/api/admin/waitlist/route.ts`
+- Quando `requested_plan === 'free'`: insere com `status='approved'` E `contacted=true` (consistência com approve manual).
+- Demais planos: `status='pending'`, `contacted=false`.
+- Honeypot, validação e dedupe 409 preservados.
+
+### Verificação
+- `npm run build` (taime-web): ✓ Compiled successfully em 4.1s, 0 erros.
+- Em dash (U+2014) nas linhas adicionadas: 0 (auditado via `git diff`).
+- Triggers `on_auth_user_created` e `on_auth_user_created_grant_free` não tocados.
+- Aprovação manual (`/api/admin/approve`, `WaitlistAdmin.tsx`), rejeição, change-plan, gate (`lib/plan.ts`, `lib/access.ts`) não tocados.
+
+### Pré-requisito de painel (não código)
+**Supabase: Auth → Providers → Email → "Allow new users to sign up" HABILITADO.** Sem isso, `signInWithOtp({ shouldCreateUser: true })` falha para emails novos.
+
+### Teste sugerido
+1. `/login?plan=free` com formulário completo → ANTES de clicar no magic link, conferir no Supabase: `waitlist` tem o lead com `status='approved'`, `contacted=true`, `name`, `email`, `company`, `role`, `interest`, `requested_plan='free'`.
+2. Clicar no magic link → redireciona para `/dashboard`. Conferir: `auth.users` tem o user; `public.users` tem `full_name` (handle_new_user) E `company`, `job_title`, `preferred_language` (callback); `subscriptions` tem `plan='free'`, `status='active'` (trigger).
+3. `/login?plan=essential` → waitlist `pending`, `contacted=false`, sem conta, sem OTP.
+4. Re-login de usuário aprovado manualmente: COALESCE não deve rebaixar `company`/`job_title` já preenchidos. Se metadata vazio e profile preenchido, o PATCH não é enviado (sem chaves no patch).
+
+### Arquivos
+- `taime-web/app/login/page.tsx`
+- `taime-web/app/auth/callback/route.ts`
+- `taime-web/app/api/admin/waitlist/route.ts`
+- `LOG.md`
+
+---
+
 ## [2026-06-17] - Login bifurcado por plano: free vira self-signup, paid segue waitlist manual
 
 ### Decisão

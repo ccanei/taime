@@ -170,11 +170,14 @@ export async function POST(req: Request) {
   }
 
   // Free = self-signup automático (a conta é criada via magic link no /login);
-  // o lead entra na waitlist já aprovado para não poluir a fila de pendentes.
-  // Essential/Strategic seguem o fluxo manual: nascem em 'pending' e o admin
-  // aprova em /admin/waitlist. Default do banco é 'pending', então só passamos
-  // o campo quando precisamos sobrescrever (free).
-  const status = requested_plan === 'free' ? 'approved' : 'pending'
+  // o lead entra na waitlist já aprovado e marcado como contatado, para não
+  // poluir a fila de pendentes (consistente com o que o /api/admin/approve
+  // faz ao aprovar manualmente: status=approved + contacted=true).
+  // Essential/Strategic seguem o fluxo manual: nascem em 'pending' e
+  // contacted=false. O admin aprova em /admin/waitlist.
+  const isFree   = requested_plan === 'free'
+  const status   = isFree ? 'approved' : 'pending'
+  const contacted = isFree
 
   try {
     const res = await fetch(
@@ -187,7 +190,7 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
           Prefer: 'return=minimal',
         },
-        body: JSON.stringify({ name, email, company, role, interest, requested_plan, status }),
+        body: JSON.stringify({ name, email, company, role, interest, requested_plan, status, contacted }),
       }
     )
 
