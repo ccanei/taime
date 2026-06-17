@@ -6,6 +6,10 @@ import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import { useLocale } from '@/lib/useLocale'
 
+// Os planCards do i18n vêm na ordem Gratuito / Essencial / Estratégico.
+// Mapeamos o índice para a chave de plano usada pelo /login?plan=...
+const PLAN_KEYS = ['free', 'essential', 'strategic'] as const
+
 const FEATURE_VALUES: { free: boolean | string; essential: boolean | string; strategic: boolean | string }[] = [
   { free: true,  essential: true,  strategic: true  }, // Preview dos relatórios
   { free: true,  essential: true,  strategic: true  }, // TAIME Score geral
@@ -57,36 +61,39 @@ export default function PlanosPage() {
       {/* ── CARDS DE PLANOS ──────────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-6 pb-16">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
-          {p.planCards.map(({ name, price, desc, badge, highlight }) => (
-            <div
-              key={name}
-              className={`relative rounded-2xl border p-6
-                ${highlight
-                  ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600'
-                  : 'border-zinc-200 bg-white'
-                }`}
-            >
-              {badge && (
-                <span className="absolute -top-3 left-6 px-3 py-0.5 rounded-full text-[11px]
-                                 font-bold bg-taime-600 text-white">
-                  {badge}
-                </span>
-              )}
-              <h2 className="text-lg font-bold text-zinc-900 mb-1">{name}</h2>
-              <p className={`text-2xl font-bold tabular-nums mb-1
-                ${highlight ? 'text-zinc-900' : 'text-zinc-600'}`}>
-                {price}
-              </p>
-              <p className="text-sm text-zinc-500 mb-5">{desc}</p>
-              <Link href="/login"
-                className={highlight
-                  ? 'btn-primary w-full justify-center py-3'
-                  : 'btn-secondary w-full justify-center py-3'
-                }>
-                {p.planCtaBtn}
-              </Link>
-            </div>
-          ))}
+          {p.planCards.map(({ name, price, desc, badge, highlight }, idx) => {
+            const planKey = PLAN_KEYS[idx] ?? 'free'
+            return (
+              <div
+                key={name}
+                className={`relative rounded-2xl border p-6
+                  ${highlight
+                    ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600'
+                    : 'border-zinc-200 bg-white'
+                  }`}
+              >
+                {badge && (
+                  <span className="absolute -top-3 left-6 px-3 py-0.5 rounded-full text-[11px]
+                                   font-bold bg-taime-600 text-white">
+                    {badge}
+                  </span>
+                )}
+                <h2 className="text-lg font-bold text-zinc-900 mb-1">{name}</h2>
+                <p className={`text-2xl font-bold tabular-nums mb-1
+                  ${highlight ? 'text-zinc-900' : 'text-zinc-600'}`}>
+                  {price}
+                </p>
+                <p className="text-sm text-zinc-500 mb-5">{desc}</p>
+                <Link href={`/login?plan=${planKey}`}
+                  className={highlight
+                    ? 'btn-primary w-full justify-center py-3'
+                    : 'btn-secondary w-full justify-center py-3'
+                  }>
+                  {p.planCtaBtn}
+                </Link>
+              </div>
+            )
+          })}
         </div>
       </section>
 

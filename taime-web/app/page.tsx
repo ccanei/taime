@@ -832,35 +832,42 @@ export default async function LandingPage() {
           <h2 className="text-3xl font-bold text-zinc-900 mb-3">{h.plansTitle}</h2>
           <p className="text-sm text-zinc-400 mb-12">{h.plansSub}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            {h.plans.map(({ name, price, badge, desc, features, cta, href, highlight }) => (
-              <div key={name} className={`relative rounded-2xl border p-6 flex flex-col gap-5
-                ${highlight ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600' : 'border-zinc-200 bg-white'}`}>
-                {badge && (
-                  <span className="absolute -top-3 left-6 px-3 py-0.5 rounded-full text-[11px]
-                                   font-bold bg-taime-600 text-white">{badge}</span>
-                )}
-                <div>
-                  <h3 className="text-lg font-bold text-zinc-900 mb-1">{name}</h3>
-                  {price
-                    ? <p className="text-2xl font-bold text-zinc-900 tabular-nums">{price}</p>
-                    : <p className="text-2xl font-bold text-zinc-400">Grátis</p>
-                  }
-                  <p className="text-sm text-zinc-500 mt-1">{desc}</p>
+            {h.plans.map(({ name, price, badge, desc, features, cta, href, highlight }, idx) => {
+              // Os planCards do i18n vêm na ordem Free / Essential / Strategic.
+              // Mapeamos o índice para a chave usada pelo /login?plan=...
+              const planKey  = (['free', 'essential', 'strategic'] as const)[idx] ?? 'free'
+              const ctaHref  = href.startsWith('#') ? href : `/login?plan=${planKey}`
+              const ctaClass = highlight ? 'btn-primary justify-center py-3' : 'btn-secondary justify-center py-3'
+              return (
+                <div key={name} className={`relative rounded-2xl border p-6 flex flex-col gap-5
+                  ${highlight ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600' : 'border-zinc-200 bg-white'}`}>
+                  {badge && (
+                    <span className="absolute -top-3 left-6 px-3 py-0.5 rounded-full text-[11px]
+                                     font-bold bg-taime-600 text-white">{badge}</span>
+                  )}
+                  <div>
+                    <h3 className="text-lg font-bold text-zinc-900 mb-1">{name}</h3>
+                    {price
+                      ? <p className="text-2xl font-bold text-zinc-900 tabular-nums">{price}</p>
+                      : <p className="text-2xl font-bold text-zinc-400">Grátis</p>
+                    }
+                    <p className="text-sm text-zinc-500 mt-1">{desc}</p>
+                  </div>
+                  <ul className="space-y-2 flex-1">
+                    {features.map((f, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-zinc-700">
+                        <span className="shrink-0 text-taime-600 font-bold mt-0.5">✓</span>{f}
+                      </li>
+                    ))}
+                  </ul>
+                  {ctaHref.startsWith('#') ? (
+                    <a    href={ctaHref} className={ctaClass}>{cta}</a>
+                  ) : (
+                    <Link href={ctaHref} className={ctaClass}>{cta}</Link>
+                  )}
                 </div>
-                <ul className="space-y-2 flex-1">
-                  {features.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-zinc-700">
-                      <span className="shrink-0 text-taime-600 font-bold mt-0.5">✓</span>{f}
-                    </li>
-                  ))}
-                </ul>
-                {href.startsWith('#') ? (
-                  <a href={href} className={highlight ? 'btn-primary justify-center py-3' : 'btn-secondary justify-center py-3'}>{cta}</a>
-                ) : (
-                  <Link href={href} className={highlight ? 'btn-primary justify-center py-3' : 'btn-secondary justify-center py-3'}>{cta}</Link>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
           <p className="text-center text-xs text-zinc-400">{h.plansNote}</p>
         </div>

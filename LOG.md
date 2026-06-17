@@ -2,6 +2,52 @@
 
 ---
 
+## [2026-06-17] - Login bifurcado por plano: free vira self-signup, paid segue waitlist manual
+
+### Decisão
+Bifurcar `/login` pelo plano que o usuário escolheu nos cards de planos.
+- Free: self-signup direto via magic link (Supabase Auth OTP com `shouldCreateUser: true`). O trigger `on_auth_user_created_grant_free` já cria a subscription. O lead entra na waitlist como `approved` (não polui a fila de aprovação). Sem Stripe, sem checkout.
+- Essential e Strategic: comportamento histórico intacto. Continuam entrando na waitlist com `status: 'pending'` e aguardando aprovação manual em `/admin/waitlist`. Sem magic link, sem conta criada.
+- Admin mantém poder de mudar plano via `/api/admin/change-plan` e `WaitlistAdmin.tsx`. Nada disso foi tocado.
+
+### Mudanças por arquivo
+- `taime-web/app/planos/page.tsx`: cards mapeiam por índice para `PLAN_KEYS = ['free','essential','strategic']`. CTAs viram `/login?plan=<key>`.
+- `taime-web/app/page.tsx`: idem na seção de planos da home. CTAs `'/login'` substituídos por `/login?plan=<key>`. Suporte preservado a `href` que começa com `#` (ancoras internas).
+- `taime-web/app/login/page.tsx`: reescrita estrutural.
+  - `useSearchParams()` lê `?plan=`, whitelist `['free','essential','strategic']`, fallback `'free'`.
+  - Componente extraído em `LoginPageInner`, default export wrapeado em `<Suspense>` (exigência do App Router para hooks de query string).
+  - Novo modo `free-signup`: form mínimo (só email), honeypot preservado, dispara `signInWithOtp({ shouldCreateUser: true, emailRedirectTo: /dashboard })`. Em paralelo POSTa para `/api/admin/waitlist` (best-effort, falha não bloqueia o sucesso do magic link).
+  - Modo `waitlist` (essential/strategic) sem mudanças funcionais. Select de plano: se o usuário voltar a marcar "free" no select, volta para o modo `free-signup`.
+  - Modo `magic-link` para usuários existentes: sem mudanças no fluxo. O botão "Solicitar acesso" no estado `notFound` agora leva para `free-signup` (caminho natural pro visitante novo).
+- `taime-web/app/api/admin/waitlist/route.ts`: quando `requested_plan === 'free'`, insere com `status: 'approved'`; senão mantém `'pending'`. Honeypot, dedupe 409, emails e validação intactos.
+- `taime-web/lib/i18n/pt.ts` e `en.ts`: chaves novas `login.freeTitle`, `freeBody`, `freeSubmit`, `freeSubmitting`, `freeSentTitle`, `freeSentBody(email)`.
+
+### Verificação
+- `npm run build` (taime-web): ✓ Compiled successfully em 4.9s, 0 erros.
+- Em dash (U+2014) nas linhas adicionadas: 0 (auditado via `git diff`).
+- Honeypot preservado em ambos os modos (waitlist e free-signup).
+- Dedupe 409 preservado no endpoint (free e paid).
+- i18n PT e EN espelhados.
+
+### Pré-requisito de painel (não código)
+**Confirmar manualmente no Supabase**: Auth → Providers → Email → **"Allow new users to sign up"** HABILITADO. Sem isso, `signInWithOtp({ shouldCreateUser: true })` falha para emails novos e o self-signup free não cria conta.
+
+### Teste sugerido
+1. `/login?plan=free` com email real → recebe magic link → clica → `/dashboard` → conferir no Supabase que: `auth.users` tem o user; `subscriptions` tem `{ plan: 'free', status: 'active' }` criado pelo trigger; `waitlist` tem lead `approved` com `requested_plan: 'free'`.
+2. `/login?plan=essential` → form completo da waitlist com select pré-selecionado em "essential" → submit → `waitlist` recebe `status: 'pending'`. Nenhum email do Supabase Auth disparado.
+3. `/login?plan=strategic` → idem item 2 mas plan strategic.
+4. `/login` sem query → cai em `free-signup` (default).
+
+### Arquivos
+- `taime-web/app/login/page.tsx` (rewrite)
+- `taime-web/app/api/admin/waitlist/route.ts` (status condicional)
+- `taime-web/app/planos/page.tsx` (CTAs com plan key)
+- `taime-web/app/page.tsx` (CTAs com plan key)
+- `taime-web/lib/i18n/pt.ts` e `taime-web/lib/i18n/en.ts` (chaves novas)
+- `LOG.md`
+
+---
+
 ## [2026-06-17] - Validador: parse tolerante + retry no judge (judge_parse_error)
 
 ### Status

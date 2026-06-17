@@ -204,6 +204,13 @@ export const en: Translations = {
     switchToWaitlist: '← Request access',
     errDuplicate:  'This email is already on the waitlist.',
     errGeneric:    'Registration error. Please try again.',
+    // Free self-signup (free plan): magic link flow with automatic account creation.
+    freeTitle:     'Create free account',
+    freeBody:      'Instant access to the public preview. Enter your email and we will send you an access link.',
+    freeSubmit:    'Send access link',
+    freeSubmitting: 'Sending...',
+    freeSentTitle: 'Link sent!',
+    freeSentBody:  (email: string) => `We sent an access link to ${email}. Click it to sign in.`,
   },
 
   sobre: {

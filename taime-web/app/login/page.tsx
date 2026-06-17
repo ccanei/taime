@@ -1,22 +1,35 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useLocale } from '@/lib/useLocale'
 
-type Mode   = 'waitlist' | 'magic-link'
+type Mode   = 'waitlist' | 'magic-link' | 'free-signup'
 type Status = 'idle' | 'loading' | 'sent' | 'error'
+type Plan   = 'free' | 'essential' | 'strategic'
+
+const ALLOWED_PLANS: readonly Plan[] = ['free', 'essential', 'strategic']
 
 const INPUT_CLS = `w-full px-4 py-2.5 rounded-lg border border-zinc-200 text-sm text-zinc-900
                    placeholder:text-zinc-400 bg-white
                    focus:outline-none focus:ring-2 focus:ring-taime-600 focus:border-transparent
                    disabled:opacity-60`
 
-export default function LoginPage() {
+// useSearchParams() exige Suspense boundary no App Router. Mantemos a leitura
+// do query param e toda a UI dentro do filho; o Suspense fica no default export.
+function LoginPageInner() {
   const { t } = useLocale()
+  const searchParams = useSearchParams()
 
-  const [mode, setMode]     = useState<Mode>('waitlist')
+  // ?plan=free|essential|strategic. Fora da whitelist cai em 'free'.
+  const planParam = searchParams.get('plan') as Plan | null
+  const initialPlan: Plan = planParam && ALLOWED_PLANS.includes(planParam) ? planParam : 'free'
+
+  // Plan free: self-signup direto (magic link com shouldCreateUser=true) + lead aprovado na waitlist.
+  // Plan essential/strategic: continua waitlist manual com status pending (comportamento histórico).
+  const [mode, setMode]     = useState<Mode>(initialPlan === 'free' ? 'free-signup' : 'waitlist')
   const [status, setStatus] = useState<Status>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -26,14 +39,14 @@ export default function LoginPage() {
   const [company, setCompany]   = useState('')
   const [userRole, setUserRole] = useState('')
   const [interest, setInterest] = useState('')
-  const [requestedPlan, setRequestedPlan] = useState<'free' | 'essential' | 'strategic'>('free')
-  // Honeypot anti-bot — escondido para humanos, atrai preenchimento automático de bots
+  const [requestedPlan, setRequestedPlan] = useState<Plan>(initialPlan)
+  // Honeypot anti-bot, escondido para humanos, atrai preenchimento automático de bots.
   const [website, setWebsite] = useState('')
 
-  // Magic link field (separate email so it doesn't collide with waitlist)
+  // Magic link / free-signup field (separate email so it doesn't collide with waitlist)
   const [mlEmail, setMlEmail] = useState('')
 
-  // Special flag: email not found in Supabase Auth
+  // Special flag: email not found in Supabase Auth (apenas no modo magic-link de login)
   const [notFound, setNotFound] = useState(false)
 
   function switchMode(next: Mode) {
@@ -43,7 +56,7 @@ export default function LoginPage() {
     setNotFound(false)
   }
 
-  // ── Waitlist ────────────────────────────────────────────────────────────────
+  // ── Waitlist (essential / strategic; fluxo manual histórico) ────────────────
 
   async function handleWaitlist(e: React.FormEvent) {
     e.preventDefault()
@@ -79,7 +92,7 @@ export default function LoginPage() {
     }
   }
 
-  // ── Magic link ──────────────────────────────────────────────────────────────
+  // ── Magic link (login de quem já tem conta) ─────────────────────────────────
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault()
@@ -109,7 +122,55 @@ export default function LoginPage() {
     }
   }
 
-  const isWaitlist = mode === 'waitlist'
+  // ── Free self-signup (plan=free) ────────────────────────────────────────────
+  // Dispara magic link com shouldCreateUser=true. O trigger
+  // on_auth_user_created_grant_free cria a subscription free no clique.
+  // Em paralelo, registra um lead aprovado na waitlist (best-effort, não
+  // bloqueante) para o admin acompanhar quem entrou pela porta free.
+
+  async function handleFreeSignup(e: React.FormEvent) {
+    e.preventDefault()
+    if (!mlEmail) return
+    setStatus('loading')
+    setErrorMsg('')
+
+    const normalizedEmail = mlEmail.trim().toLowerCase()
+    const supabase = createSupabaseBrowser()
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/dashboard`,
+      },
+    })
+
+    if (error) {
+      setErrorMsg(error.message || t.login.errGeneric)
+      setStatus('error')
+      return
+    }
+
+    // Lead aprovado na waitlist. Best-effort: erro NÃO bloqueia o sucesso do
+    // magic link (que é o que de fato libera o acesso para o usuário).
+    fetch('/api/admin/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:           normalizedEmail,
+        email:          normalizedEmail,
+        company:        null,
+        role:           null,
+        interest:       'Free self-signup',
+        requested_plan: 'free',
+        website,
+      }),
+    }).catch(err => console.warn('free-signup waitlist log failed:', err))
+
+    setStatus('sent')
+  }
+
+  const isWaitlist   = mode === 'waitlist'
+  const isFreeSignup = mode === 'free-signup'
 
   return (
     <div className="min-h-screen bg-zinc-50 flex flex-col">
@@ -129,8 +190,24 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <div className="bg-white rounded-2xl border border-zinc-200 p-8 shadow-sm">
 
-            {/* ── WAITLIST: confirmação ─────────────────────────────────── */}
-            {isWaitlist && status === 'sent' ? (
+            {/* ── FREE SIGNUP: confirmação ─────────────────────────────── */}
+            {isFreeSignup && status === 'sent' ? (
+              <div className="text-center py-2">
+                <div className="text-4xl mb-4">✉️</div>
+                <h2 className="text-xl font-bold text-zinc-900 mb-2">{t.login.freeSentTitle}</h2>
+                <p className="text-sm text-zinc-500 leading-relaxed">
+                  {t.login.freeSentBody(mlEmail)}
+                </p>
+                <button
+                  onClick={() => { setStatus('idle'); setMlEmail('') }}
+                  className="mt-6 text-sm text-taime-600 hover:underline"
+                >
+                  {t.login.changeEmail}
+                </button>
+              </div>
+
+            /* ── WAITLIST: confirmação ─────────────────────────────────── */
+            ) : isWaitlist && status === 'sent' ? (
               <div className="text-center py-2">
                 <div className="w-14 h-14 rounded-full bg-emerald-50 ring-2 ring-emerald-200
                                flex items-center justify-center mx-auto mb-5">
@@ -154,7 +231,7 @@ export default function LoginPage() {
               </div>
 
             /* ── MAGIC LINK: confirmação ──────────────────────────────── */
-            ) : !isWaitlist && status === 'sent' ? (
+            ) : !isWaitlist && !isFreeSignup && status === 'sent' ? (
               <div className="text-center py-2">
                 <div className="text-4xl mb-4">✉️</div>
                 <h2 className="text-xl font-bold text-zinc-900 mb-2">{t.login.sentTitle}</h2>
@@ -169,7 +246,80 @@ export default function LoginPage() {
                 </button>
               </div>
 
-            /* ── WAITLIST: formulário ────────────────────────────────── */
+            /* ── FREE SIGNUP: formulário ──────────────────────────────── */
+            ) : isFreeSignup ? (
+              <>
+                <h1 className="text-2xl font-bold text-zinc-900 mb-1">
+                  {t.login.freeTitle}
+                </h1>
+                <p className="text-sm text-zinc-500 mb-7 leading-relaxed">
+                  {t.login.freeBody}
+                </p>
+
+                <form onSubmit={handleFreeSignup} className="space-y-4">
+                  {/* Honeypot anti-bot */}
+                  <div
+                    aria-hidden="true"
+                    style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
+                  >
+                    <label htmlFor="fs-website">Website</label>
+                    <input
+                      id="fs-website"
+                      type="text"
+                      name="website"
+                      value={website}
+                      onChange={e => setWebsite(e.target.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="fs-email" className="block text-sm font-medium text-zinc-700 mb-1.5">
+                      {t.login.emailLabel}
+                    </label>
+                    <input
+                      id="fs-email"
+                      type="email"
+                      value={mlEmail}
+                      onChange={e => setMlEmail(e.target.value)}
+                      placeholder={t.login.emailPlaceholder}
+                      required
+                      disabled={status === 'loading'}
+                      className={INPUT_CLS}
+                    />
+                  </div>
+
+                  {status === 'error' && (
+                    <p className="text-sm text-red-600">{errorMsg}</p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={status === 'loading' || !mlEmail}
+                    className="w-full btn-primary justify-center py-3 disabled:opacity-60"
+                  >
+                    {status === 'loading' ? t.login.freeSubmitting : t.login.freeSubmit}
+                  </button>
+                </form>
+
+                <div className="mt-6 flex items-center justify-between text-sm">
+                  <button
+                    onClick={() => { setRequestedPlan('essential'); switchMode('waitlist') }}
+                    className="text-taime-600 hover:underline"
+                  >
+                    {t.nav.howItWorks === 'Como funciona' ? 'Solicitar plano pago →' : 'Request a paid plan →'}
+                  </button>
+                  <button
+                    onClick={() => switchMode('magic-link')}
+                    className="text-zinc-400 hover:text-zinc-600 hover:underline"
+                  >
+                    {t.login.switchToLogin}
+                  </button>
+                </div>
+              </>
+
+            /* ── WAITLIST: formulário (essential / strategic) ────────── */
             ) : isWaitlist ? (
               <>
                 <h1 className="text-2xl font-bold text-zinc-900 mb-1">
@@ -180,7 +330,7 @@ export default function LoginPage() {
                 </p>
 
                 <form onSubmit={handleWaitlist} className="space-y-4">
-                  {/* Honeypot anti-bot — não exibido para usuários reais */}
+                  {/* Honeypot anti-bot */}
                   <div
                     aria-hidden="true"
                     style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
@@ -286,13 +436,18 @@ export default function LoginPage() {
                     <select
                       id="wl-plan"
                       value={requestedPlan}
-                      onChange={e => setRequestedPlan(e.target.value as 'free' | 'essential' | 'strategic')}
+                      onChange={e => {
+                        const next = e.target.value as Plan
+                        setRequestedPlan(next)
+                        // Se o usuário volta para free no select, leva ele para o fluxo de self-signup.
+                        if (next === 'free') switchMode('free-signup')
+                      }}
                       disabled={status === 'loading'}
                       className={INPUT_CLS}
                     >
-                      <option value="free">{t.nav.howItWorks === 'Como funciona' ? 'Gratuito — preview público' : 'Free — public preview'}</option>
-                      <option value="essential">{t.nav.howItWorks === 'Como funciona' ? 'Essencial — histórico de 1 ano' : 'Essential — 1-year history'}</option>
-                      <option value="strategic">{t.nav.howItWorks === 'Como funciona' ? 'Estratégico — histórico completo' : 'Strategic — full archive'}</option>
+                      <option value="free">{t.nav.howItWorks === 'Como funciona' ? 'Gratuito, preview público' : 'Free, public preview'}</option>
+                      <option value="essential">{t.nav.howItWorks === 'Como funciona' ? 'Essencial, histórico de 1 ano' : 'Essential, 1-year history'}</option>
+                      <option value="strategic">{t.nav.howItWorks === 'Como funciona' ? 'Estratégico, histórico completo' : 'Strategic, full archive'}</option>
                     </select>
                   </div>
 
@@ -356,7 +511,7 @@ export default function LoginPage() {
                       </p>
                       <button
                         type="button"
-                        onClick={() => switchMode('waitlist')}
+                        onClick={() => switchMode('free-signup')}
                         className="text-xs font-semibold text-taime-600 hover:underline"
                       >
                         {t.login.notFoundCta}
@@ -377,7 +532,7 @@ export default function LoginPage() {
 
                 <div className="mt-6 flex items-center justify-between text-sm">
                   <button
-                    onClick={() => switchMode('waitlist')}
+                    onClick={() => switchMode('free-signup')}
                     className="text-zinc-400 hover:text-zinc-600 hover:underline"
                   >
                     {t.login.switchToWaitlist}
@@ -394,5 +549,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-50" />}>
+      <LoginPageInner />
+    </Suspense>
   )
 }

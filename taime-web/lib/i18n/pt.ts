@@ -202,6 +202,13 @@ export const pt = {
     switchToWaitlist: '← Solicitar acesso',
     errDuplicate:  'Este email já está na lista de espera.',
     errGeneric:    'Erro ao registrar. Tente novamente.',
+    // Self-signup gratuito (plano free): fluxo de magic link com criação automática de conta.
+    freeTitle:     'Criar conta gratuita',
+    freeBody:      'Acesso imediato ao preview público. Informe seu email e enviaremos um link de acesso.',
+    freeSubmit:    'Enviar link de acesso',
+    freeSubmitting: 'Enviando...',
+    freeSentTitle: 'Link enviado!',
+    freeSentBody:  (email: string) => `Enviamos um link de acesso para ${email}. Clique nele para entrar.`,
   },
 
   sobre: {

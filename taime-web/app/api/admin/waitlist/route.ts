@@ -169,6 +169,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
   }
 
+  // Free = self-signup automático (a conta é criada via magic link no /login);
+  // o lead entra na waitlist já aprovado para não poluir a fila de pendentes.
+  // Essential/Strategic seguem o fluxo manual: nascem em 'pending' e o admin
+  // aprova em /admin/waitlist. Default do banco é 'pending', então só passamos
+  // o campo quando precisamos sobrescrever (free).
+  const status = requested_plan === 'free' ? 'approved' : 'pending'
+
   try {
     const res = await fetch(
       `${supabaseUrl}/rest/v1/waitlist`,
@@ -180,7 +187,7 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
           Prefer: 'return=minimal',
         },
-        body: JSON.stringify({ name, email, company, role, interest, requested_plan }),
+        body: JSON.stringify({ name, email, company, role, interest, requested_plan, status }),
       }
     )
 
