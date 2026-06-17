@@ -1,13 +1,15 @@
 #!/usr/bin/env npx ts-node
 import 'dotenv/config';
 /**
- * TAIME — Signal Collector
- * Coleta sinais das fontes tier-1 via Serper API.
+ * TAIME, Signal Collector
+ * Coleta sinais via Serper API a partir de TODAS as fontes ativas
+ * (`sources.active = true`), processadas em ordem `tier asc, name asc`.
+ * Hoje a base inclui tier-1 e tier-2; o script não filtra por tier.
  * Suporta períodos históricos (filtro de data Serper) e o período atual.
  *
  * Usage:  npx ts-node collect-signals.ts
  * Env:    SERPER_API_KEY  SUPABASE_URL  SUPABASE_SERVICE_KEY
- *         PERIOD (opcional — default: início do período semanal atual)
+ *         PERIOD (opcional, default: início do período semanal atual)
  */
 
 import { parsePeriod, isHistorical, toSerperDate } from './period-utils';

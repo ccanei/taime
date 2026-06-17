@@ -138,6 +138,9 @@ async function dbPatch(table: string, id: string, data: unknown): Promise<void> 
 
 // ─── Anthropic API ──────────────────────────────────────────────────────────
 
+// PILOT instrumentation: accumulate token usage across all calls in a run.
+const _USAGE_TOTAL = { calls: 0, input: 0, output: 0, cache_read: 0, cache_write: 0 };
+
 async function anthropicPost(body: unknown): Promise<{ text: string; usage: AnthropicUsage }> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -150,19 +153,89 @@ async function anthropicPost(body: unknown): Promise<{ text: string; usage: Anth
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
-  const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage };
+  const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage & { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
   const text = data.content.find(b => b.type === 'text')?.text ?? '';
+  _USAGE_TOTAL.calls++;
+  _USAGE_TOTAL.input      += data.usage.input_tokens ?? 0;
+  _USAGE_TOTAL.output     += data.usage.output_tokens ?? 0;
+  _USAGE_TOTAL.cache_read += data.usage.cache_read_input_tokens ?? 0;
+  _USAGE_TOTAL.cache_write += data.usage.cache_creation_input_tokens ?? 0;
   return { text, usage: data.usage };
+}
+
+function _printUsageTotal(): void {
+  console.log('\n[USAGE TOTAL] calls=' + _USAGE_TOTAL.calls +
+    ' input=' + _USAGE_TOTAL.input +
+    ' output=' + _USAGE_TOTAL.output +
+    ' cache_read=' + _USAGE_TOTAL.cache_read +
+    ' cache_write=' + _USAGE_TOTAL.cache_write);
+}
+
+// Sanitiza caracteres de controle (U+0000..U+001F) que aparecem LITERAIS dentro
+// de valores string do JSON. Caso comum: o judge cita um trecho do relatório
+// que contém '\n' literal no meio do valor da chave "claim" ou "detail", o que
+// quebra JSON.parse estrito. Faz toggle de "in string" rastreando aspas não
+// escapadas; só substitui dentro de strings, sem corromper a estrutura.
+function sanitizeControlChars(text: string): string {
+  let out      = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === '\\' && i + 1 < text.length) {
+        // sequência de escape: copia o par como está
+        out += c + text[i + 1];
+        i++;
+        continue;
+      }
+      if (c === '"') {
+        out += c;
+        inString = false;
+        continue;
+      }
+      const code = c.charCodeAt(0);
+      if (code < 0x20) {
+        switch (c) {
+          case '\n': out += '\\n'; break;
+          case '\r': out += '\\r'; break;
+          case '\t': out += '\\t'; break;
+          case '\b': out += '\\b'; break;
+          case '\f': out += '\\f'; break;
+          default:   out += '\\u' + code.toString(16).padStart(4, '0'); break;
+        }
+        continue;
+      }
+      out += c;
+    } else {
+      if (c === '"') {
+        out += c;
+        inString = true;
+        continue;
+      }
+      out += c;
+    }
+  }
+  return out;
 }
 
 function parseJsonSafe<T>(raw: string, label: string): T {
   let text = raw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
-  const start = text.indexOf('{');
+  const start    = text.indexOf('{');
   const startArr = text.indexOf('[');
-  const cut = startArr !== -1 && (startArr < start || start === -1) ? startArr : start;
+  const cut      = startArr !== -1 && (startArr < start || start === -1) ? startArr : start;
   if (cut > 0) text = text.slice(cut);
-  try { return JSON.parse(text) as T; }
-  catch (e) { throw new Error(`JSON inválido [${label}]: ${e}\n${text.slice(0, 300)}`); }
+
+  // Tentativa 1: parse direto (caminho rápido, caso o judge tenha cumprido).
+  try { return JSON.parse(text) as T; } catch {}
+
+  // Tentativa 2 (Camada 1): sanitiza control chars literais dentro de strings
+  // e tenta de novo. Cobre o "Bad control character in string literal" que
+  // aparece quando o judge cita texto do relatório com quebras de linha cruas.
+  const sanitized = sanitizeControlChars(text);
+  try { return JSON.parse(sanitized) as T; }
+  catch (e) {
+    throw new Error(`JSON inválido [${label}]: ${e}\n${sanitized.slice(0, 300)}`);
+  }
 }
 
 // ─── Helpers de coleta de texto da trend ──────────────────────────────────────
@@ -372,7 +445,9 @@ Be precise and conservative. Do NOT flag a claim as unsupported just because the
 differs from the signal — match on factual substance. Only flag genuine invention.
 
 Return VALID JSON ONLY, an array. One object per claim you find problematic
-(supported claims are omitted to keep output small):
+(supported claims are omitted to keep output small). All string values must
+escape internal newlines, tabs and quotes. When quoting text from the report,
+paraphrase or truncate to avoid control characters:
 [
   {
     "field": "<the field path given>",
@@ -595,12 +670,38 @@ async function groundingCheck(
 
   type JudgeItem = { field: string; verdict: string; claim: string; detail: string };
   let items: JudgeItem[] = [];
-  try { items = parseJsonSafe<JudgeItem[]>(text, `judge:trend${trend.rank}`); }
-  catch { return [{
-    id: 'judge_parse_error', severity: 'warning', category: 'grounding',
-    trend_rank: trend.rank, field: '(judge)', claim: '',
-    detail: 'Validador não retornou JSON parseável; revisar manualmente.', lang: null,
-  }]; }
+  try {
+    items = parseJsonSafe<JudgeItem[]>(text, `judge:trend${trend.rank}`);
+  } catch {
+    // Camada 2: nem o parse direto nem a sanitização (Camada 1) salvaram.
+    // UMA retentativa corretiva, com instrução explícita de escapar control
+    // chars. Só dispara no caminho de erro (custo extra apenas neste caso).
+    try {
+      const correctiveNote =
+        '\n\nYour previous response was not valid JSON. Return ONLY a valid JSON array, ' +
+        'with all string values properly escaped (no literal newlines, tabs or unescaped ' +
+        'quotes inside strings). No prose, no markdown.';
+      const { text: retryText } = await anthropicPost({
+        model:      cfg.model,
+        max_tokens: cfg.maxTokens,
+        system: [{ type: 'text', text: JUDGE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: `PERIOD ${PERIOD} SIGNALS`, cache_control: { type: 'ephemeral' } },
+            { type: 'text', text: user + correctiveNote },
+          ],
+        }],
+      });
+      items = parseJsonSafe<JudgeItem[]>(retryText, `judge:trend${trend.rank}:retry`);
+    } catch {
+      return [{
+        id: 'judge_parse_error', severity: 'warning', category: 'grounding',
+        trend_rank: trend.rank, field: '(judge)', claim: '',
+        detail: 'Validador não retornou JSON parseável após retentativa; revisar manualmente.', lang: null,
+      }];
+    }
+  }
 
   return items.map(it => {
     const isTemporal = it.verdict === 'temporal_breach';
@@ -804,6 +905,7 @@ async function main(): Promise<void> {
     }
   }
   console.log('\n' + '═'.repeat(52) + '\n');
+  _printUsageTotal();
 }
 
 // Só roda o CLI se executado diretamente (permite importar validatePersistedReport)

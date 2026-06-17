@@ -2,6 +2,92 @@
 
 ---
 
+## [2026-06-17] - Validador: parse tolerante + retry no judge (judge_parse_error)
+
+### Status
+- [x] `tsc --noEmit -p tsconfig.json`: 0 erros
+- [x] Sem travessões nas linhas adicionadas
+- [x] NÃO commitado (mudanças no diff para revisão)
+
+### Problema
+Batch 2024-H2: 18 de 62 trends (29%) terminaram com `judge_parse_error`. O
+judge usa Sonnet, pede "VALID JSON ONLY", mas o `JSON.parse` em
+`parseJsonSafe` (linha ~174) é estrito e quebra quando o judge cita trechos
+do relatório com quebras de linha cruas ou aspas internas dentro de valores
+string ("Bad control character in string literal"). No fallback
+(`groundingCheck` ~linha 614), em vez de tentar recuperar, marca
+`judge_parse_error` e perde o veredito da trend.
+
+### Mudanças em `validate-report.ts` (no diff, sem commit)
+
+**Camada 1, parse tolerante em `parseJsonSafe`:**
+- Adicionada função `sanitizeControlChars(text)`: percorre o texto fazendo
+  toggle de "estou dentro de string" (aspas não-escapadas) e substitui
+  control chars literais (U+0000..U+001F) por suas formas escapadas
+  (`\n`, `\r`, `\t`, `\b`, `\f`, ou `\u00XX`). Sequências de escape
+  (`\X`) são copiadas como par para não corromper a estrutura.
+- `parseJsonSafe` agora tenta `JSON.parse(text)` primeiro (caminho rápido);
+  se falhar, tenta de novo com `sanitizeControlChars(text)`; só lança o
+  erro original se a segunda tentativa também falhar.
+- Mantém a remoção de cercas de código e o corte até o primeiro `{` ou `[`.
+
+**Camada 2, retentativa corretiva em `groundingCheck`:**
+- Quando o catch original ia direto para `judge_parse_error`, agora faz UMA
+  retentativa no judge: mesma chamada `anthropicPost` (mesmo modelo, mesmo
+  contexto), acrescentando ao user prompt a frase: "Your previous response
+  was not valid JSON. Return ONLY a valid JSON array, with all string
+  values properly escaped (no literal newlines, tabs or unescaped quotes
+  inside strings). No prose, no markdown."
+- Parseia a retentativa com o mesmo `parseJsonSafe` (já com Camada 1). Só
+  cai em `judge_parse_error` se a retentativa também falhar; mantém a
+  honestidade do "revisar manualmente" como último recurso.
+- Custo: a chamada extra só acontece no caminho de erro. Caso comum (JSON
+  válido já no primeiro turno) segue inalterado.
+
+**Reforço leve no prompt do judge (`JUDGE_SYSTEM`):**
+- Após "Return VALID JSON ONLY, an array...", acrescentei: "All string
+  values must escape internal newlines, tabs and quotes. When quoting
+  text from the report, paraphrase or truncate to avoid control
+  characters." Reduz incidência na origem (cache do system invalidado uma
+  vez, depois volta a ser estável).
+
+### Teste prático (2024-07-01 #1, id `2f4ff973`)
+
+Esse relatório veio do batch 2024-H2 com 3 trends afetados por
+`judge_parse_error` (75%). Como o filtro padrão do validador ignora
+`published`, o teste usou um patch temporário status->pending_review +
+limpeza de `published_at`, rodou o validador com NO_AUTO_PUBLISH=1, e
+restaurou status/published_at ao final.
+
+| Métrica                                  | Antes        | Depois       |
+|------------------------------------------|--------------|--------------|
+| `judge_parse_error` na flag list         | 3            | **0**        |
+| `judge_error` na flag list               | 0            | **0**        |
+| Trends afetados por erro de judge        | 3/4 (75%)    | **0/4 (0%)** |
+| Total de flags                           | 3            | 2            |
+| Verdict                                  | stale        | fail         |
+| Flags substantivos (não de parse)        | 0            | **2**        |
+
+Os 2 flags substantivos do "depois" são conteúdo real do judge (1
+`source_name` blocking + 1 `partially_supported` warning sobre signal
+[12]), exatamente o que a Camada 2 viabiliza: o judge agora consegue
+emitir o veredito em vez de cair em `judge_parse_error`.
+
+`USAGE TOTAL` da rodada: `calls=9 input=63204 output=3365 cache_read=0
+cache_write=0` (4 chamadas de judge + corretor por flag corrigível).
+
+### Efeito colateral assumido
+- `validation_flags` de 2024-07-01 #1 foi sobrescrito pelos novos flags
+  (esperado em qualquer revalidação). Status e `published_at` foram
+  restaurados ao valor original. O relatório segue público com a nova flag
+  list (mais informativa do que os 3 parse errors anteriores).
+
+### Arquivos
+- `validate-report.ts`: `sanitizeControlChars` + nova lógica de `parseJsonSafe`
+  + retentativa em `groundingCheck` + reforço no `JUDGE_SYSTEM`.
+
+---
+
 ## [2026-06-16] - /api/trends/top: trends do período publicado mais recente
 
 ### Sintoma
