@@ -5,6 +5,8 @@ import { isSignalWithinPeriod } from './date-check';
 /**
  * TAIME — Signal Analyzer
  * Agrupa sinais do período em 4-12 clusters temáticos via Claude Sonnet 4.6
+ * Cobertura: forma cluster para todo tema coerente com >= 3 sinais (não 8).
+ * Inclui temas técnicos/engenharia (DevOps, containers, tooling), não só negócio.
  *
  * BUG FIX: UUIDs nunca são enviados ao LLM.
  * O LLM trabalha com índices numéricos ("001", "042").
@@ -50,7 +52,7 @@ const cfg = {
   supabaseUrl:         (process.env.SUPABASE_URL ?? '').replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
   supabaseKey:         process.env.SUPABASE_SERVICE_KEY ?? '',
   model:               'claude-sonnet-4-6',
-  maxTokens:           4096,
+  maxTokens:           8192,
   contentPreviewChars: 400,
 };
 
@@ -111,19 +113,41 @@ function resolveToUUIDs(indices: string[], indexMap: IndexMap): string[] {
 const SYSTEM_PROMPT = `You are a senior strategic technology intelligence analyst at TAIME, \
 a platform that democratizes Gartner-level insights for SMEs.
 
-Analyze technology signals from tier-1 sources and identify 3–5 dominant thematic clusters.
+Analyze technology signals from tier-1 sources and group them into thematic clusters.
 
-A "cluster" is a group of signals sharing a common strategic theme with direct implications \
-for SME business operations, technology investment, or competitive positioning.
+A "cluster" is a group of signals sharing a common theme with implications for business \
+operations, technology investment, engineering practice, or competitive positioning.
+
+PERIOD AWARENESS — read carefully:
+- These signals are from a specific historical period (given in the user message).
+- Judge what was strategically or technically relevant AS OF THAT PERIOD, not by today's standards.
+- A theme that looks dated or operational now (e.g. virtualization, containers, a specific \
+framework, an early-stage platform) may have been a defining trend of its time. Cluster it on \
+its own terms. Do NOT impose present-day themes onto an earlier period.
+
+COVERAGE, not selection:
+- Form a cluster for EVERY coherent thematic grouping supported by at least 3 signals.
+- Do not pre-select only the "most strategic" themes and discard the rest. Your job is to map \
+the full thematic shape of the period, not to pick a top handful.
+- Aim to cover as many signals as possible. Signals left in no cluster are lost from the archive, \
+so only leave a signal uncovered if it is genuine noise (navigation pages, author bios, login \
+pages, off-topic content, pure duplicates).
+
+CLUSTER SCOPE — include both kinds of theme:
+- Business/strategy themes (AI adoption, cloud migration, digital transformation, regulation).
+- Technical/engineering themes (DevOps, containers, developer tooling, data engineering, \
+observability, infrastructure). These are valid clusters in their own right, not sub-points of a \
+business theme. They are often the most temporally distinctive signal of a period.
 
 Rules:
-- Identify between 4 and 12 clusters based on signal convergence. Only create a cluster if it has strong signal support (minimum 8 signals). Quality over quantity.
+- Create between 4 and 12 clusters. Minimum 3 signals per cluster (not 8). More clusters covering \
+more real themes is better than a few broad ones, as long as each is coherent.
 - Each cluster references signals using their 3-digit INDEX (e.g., "001", "042", "117")
   — NEVER invent or modify indices — only use indices that appear in the signal list
 - A signal belongs to its PRIMARY cluster only — no duplicates across clusters
 - Cluster names: concise, action-oriented (4–8 words)
-- Descriptions: 2–3 sentences on business relevance and urgency
-- Reasoning: explain why this cluster is dominant THIS period specifically
+- Descriptions: 2–3 sentences on relevance and urgency, framed for the period
+- Reasoning: explain why this cluster is meaningful THIS period specifically
 
 Return VALID JSON ONLY — no markdown, no text outside the JSON.
 
@@ -158,7 +182,11 @@ function formatSignalsForLLM(signals: SignalWithSource[]): string {
 
 async function callClaude(signalsText: string, signalCount: number): Promise<LLMResponse> {
   const userPrompt =
-    `Analyze ${signalCount} technology signals for period ${PERIOD}.\n` +
+    `Analyze ${signalCount} technology signals from the period ${PERIOD}.\n` +
+    `Judge relevance AS OF ${PERIOD} — cluster themes that mattered then, even if they look ` +
+    `dated or operational today (e.g. containers, a specific framework, an early platform).\n` +
+    `Form a cluster for every coherent theme with at least 3 signals — business AND ` +
+    `engineering themes alike. Cover as many signals as possible; leave out only genuine noise.\n` +
     `Use the 3-digit index (e.g., "001") in signal_ids — never invent new indices.\n\n` +
     `SIGNALS:\n\n${signalsText}\n\n` +
     `Return valid JSON only.`;
