@@ -242,11 +242,10 @@ export const en: Translations = {
     h1:       'Strategic intelligence for every profile.',
     subtitle: 'Pricing coming soon. Sign up now to secure special launch conditions.',
     planCards: [
-      { name: 'Free',       price: 'Free',          desc: 'Preview of public reports',              badge: null,           highlight: false },
-      { name: 'Essential',  price: 'Early Access',  desc: 'Complete biweekly intelligence',         badge: 'Most popular', highlight: true  },
-      { name: 'Strategic',  price: 'Early Access',  desc: 'Continuous and historical intelligence', badge: null,           highlight: false },
+      { name: 'Free',       price: 'Free',          desc: 'Preview of public reports',              badge: null,           highlight: false, cta: 'Create account →'  },
+      { name: 'Essential',  price: 'Early Access',  desc: 'Complete biweekly intelligence',         badge: 'Most popular', highlight: true,  cta: 'Request access →' },
+      { name: 'Strategic',  price: 'Early Access',  desc: 'Continuous and historical intelligence', badge: null,           highlight: false, cta: 'Request access →' },
     ],
-    planCtaBtn: 'Request access →',
     featureLabels: [
       'Report previews',
       'General TAIME Score',

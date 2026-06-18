@@ -240,11 +240,10 @@ export const pt = {
     h1:       'Inteligência estratégica para cada perfil.',
     subtitle: 'Preços serão anunciados em breve. Cadastre-se agora para garantir condições especiais de lançamento.',
     planCards: [
-      { name: 'Gratuito',    price: 'Grátis',           desc: 'Preview dos relatórios públicos',     badge: null,          highlight: false },
-      { name: 'Essencial',   price: 'Acesso Antecipado', desc: 'Inteligência completa quinzenal',    badge: 'Mais popular', highlight: true  },
-      { name: 'Estratégico', price: 'Acesso Antecipado', desc: 'Inteligência contínua e histórica',  badge: null,          highlight: false },
+      { name: 'Gratuito',    price: 'Grátis',           desc: 'Preview dos relatórios públicos',     badge: null,           highlight: false, cta: 'Criar conta →'     },
+      { name: 'Essencial',   price: 'Acesso Antecipado', desc: 'Inteligência completa quinzenal',    badge: 'Mais popular', highlight: true,  cta: 'Solicitar acesso →' },
+      { name: 'Estratégico', price: 'Acesso Antecipado', desc: 'Inteligência contínua e histórica',  badge: null,           highlight: false, cta: 'Solicitar acesso →' },
     ],
-    planCtaBtn: 'Solicitar acesso →',
     featureLabels: [
       'Preview dos relatórios',
       'TAIME Score geral',

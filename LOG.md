@@ -2,6 +2,46 @@
 
 ---
 
+## [2026-06-18] - Planos: CTA do free vira "Criar conta" + barra de uso em /conta
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Sem travessões em linhas adicionadas
+- [x] Sem migration (usa `report_views` existente)
+
+### Mudança 1: card FREE da página /planos
+- `taime-web/lib/i18n/pt.ts` e `en.ts`: removido `planCtaBtn` compartilhado.
+  Cada item de `planCards` ganhou um campo `cta` próprio.
+  - PT: free = `Criar conta →`, essential = `Solicitar acesso →`, strategic = `Solicitar acesso →`.
+  - EN: free = `Create account →`, essential = `Request access →`, strategic = `Request access →`.
+- `taime-web/app/planos/page.tsx`: passou a usar `cta` desestruturado de cada card
+  em vez do `p.planCtaBtn` global. Destino do CTA (`/login?plan=<key>`) intacto.
+- Home (`app/page.tsx`) já usava `h.plans[].cta` com texto correto. Não tocado.
+
+### Mudança 2: /conta com barra de uso só para FREE
+- `taime-web/app/conta/page.tsx`: para `planKey === 'free'`, conta `report_views`
+  distintas do user nos últimos 30 dias (mesma fórmula de
+  `app/reports/[id]/page.tsx:69-84`: cutoff `now() - 30d`, `Set` por
+  `report_id`). Limite `FREE_LIMIT = 2`.
+- Render dentro do Plan card (debaixo do bloco de plano/status, mesma `section`):
+  texto bilíngue "X de 2 relatórios completos usados" / "X of 2 complete reports
+  used", percentual à direita, barra de progresso 2px de altura
+  (`h-2 bg-zinc-100`), preenchimento em `taime-500` (1 usado) / `taime-600` (cheia)
+  e `bg-amber-500` quando bate no limite. Hint discreto "Renova em janela móvel
+  de 30 dias" / "Renews on a rolling 30-day window".
+- Atributos ARIA: `role="progressbar"` + `aria-valuemin/max/now`.
+- Para essential/strategic: bloco simplesmente não renderiza (condicional
+  `planKey === 'free'`). Plan card permanece como antes (label + status).
+- Leitura-apenas: nenhuma alteração no upsert de `report_views` (segue em
+  `app/reports/[id]/page.tsx`). Nenhum schema novo.
+
+### Arquivos
+- `taime-web/lib/i18n/pt.ts`, `taime-web/lib/i18n/en.ts`
+- `taime-web/app/planos/page.tsx`
+- `taime-web/app/conta/page.tsx`
+
+---
+
 ## [2026-06-18] - Free: suprime email de fila e adiciona boas-vindas no callback
 
 ### Decisão

@@ -61,7 +61,7 @@ export default function PlanosPage() {
       {/* ── CARDS DE PLANOS ──────────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-6 pb-16">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
-          {p.planCards.map(({ name, price, desc, badge, highlight }, idx) => {
+          {p.planCards.map(({ name, price, desc, badge, highlight, cta }, idx) => {
             const planKey = PLAN_KEYS[idx] ?? 'free'
             return (
               <div
@@ -89,7 +89,7 @@ export default function PlanosPage() {
                     ? 'btn-primary w-full justify-center py-3'
                     : 'btn-secondary w-full justify-center py-3'
                   }>
-                  {p.planCtaBtn}
+                  {cta}
                 </Link>
               </div>
             )
