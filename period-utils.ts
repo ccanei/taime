@@ -130,9 +130,9 @@ export function generatePeriods(fromStr: string, toStr: string): PeriodInfo[] {
     else                    startDays = [1, 16]
 
     for (const sd of startDays) {
-      const pKey   = toKey(year, month, sd)
-      const pStart = new Date(year, month - 1, sd)
-      if (pStart < fromDate || pStart > toDate) continue
+      const pKey = toKey(year, month, sd)
+      // String compare on YYYY-MM-DD avoids timezone pitfalls
+      if (pKey < fromStr || pKey > toStr) continue
       if (seen.has(pKey)) continue
       seen.add(pKey)
       periods.push(parsePeriod(pKey))
