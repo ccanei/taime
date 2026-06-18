@@ -68,11 +68,14 @@ interface AnthropicUsage {
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
+// PILOT 2026-06-15: Opus on generation only (revert to claude-sonnet-4-6 to undo).
+const GENERATION_MODEL = 'claude-opus-4-8';
+
 const cfg = {
   anthropicKey:        process.env.ANTHROPIC_API_KEY ?? '',
   supabaseUrl:         (process.env.SUPABASE_URL ?? '').replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
   supabaseKey:         process.env.SUPABASE_SERVICE_KEY ?? '',
-  model:               'claude-sonnet-4-6',
+  model:               GENERATION_MODEL,
   maxTokens:           16000,
   contentPreviewChars: 600,
 };
@@ -664,7 +667,7 @@ async function callClaudeTrend(
   const { text, usage } = await anthropicPost({
     model:       cfg.model,
     max_tokens:  cfg.maxTokens,
-    temperature: 0.1,
+    // temperature: 0.1, // PILOT: claude-opus-4-8 deprecated `temperature`. Restore when reverting to Sonnet.
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{
       role: 'user',
@@ -725,7 +728,7 @@ async function callClaudeMetadata(
   const { text, usage } = await anthropicPost({
     model:       cfg.model,
     max_tokens:  2048,
-    temperature: 0.1,
+    // temperature: 0.1, // PILOT: claude-opus-4-8 deprecated `temperature`. Restore when reverting to Sonnet.
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: prompt }],
   });
