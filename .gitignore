@@ -37,3 +37,21 @@ output/
 
 # Lockfile raiz — Next.js usa apenas taime-web/package-lock.json
 package-lock.json
+
+# Scripts descartáveis de tarefa pontual (revalidação, batch ad-hoc,
+# inspeções one-off). Convenção de nome para serem ignorados:
+check-*.ts
+cleanup-*.ts
+cost-*.ts
+inspect-*.ts
+regen-*.sh
+batch-2*.sh
+analyze-2*.ts
+analyze-signals-debug.ts
+find-pending-*.ts
+get-report-ids.ts
+patch-status.ts
+restore-published-at.ts
+test-judge-*.sh
+pipeline-2*.sh
+check-state-*.ts
