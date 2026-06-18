@@ -51,7 +51,7 @@
 
 ### Build / commit
 - `npm run build` em taime-web: Compiled successfully, 0 erros TypeScript.
-- Commit: COMMIT_HASH_PLACEHOLDER (push na main; deploy automático pela Vercel).
+- Commit: e0a7d9b (push na main; deploy automático pela Vercel).
 
 ### Plano de teste
 - Novo signup free: recebe SOMENTE o magic link (sem email de fila); clica;
