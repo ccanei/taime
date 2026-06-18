@@ -186,7 +186,11 @@ function LoginPageInner() {
       email: normalizedEmail,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/dashboard`,
+        // Passa pelo /auth/callback (e não direto ao /dashboard) para que o
+        // code seja trocado por sessão, o perfil seja enriquecido e o email de
+        // boas-vindas do free seja disparado na primeira sessão. O callback
+        // redireciona ao /dashboard ao final.
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
           full_name:          normalizedName,    // consumido por handle_new_user
           company:            normalizedCompany, // consumidos pelo callback

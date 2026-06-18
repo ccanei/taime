@@ -2,6 +2,66 @@
 
 ---
 
+## [2026-06-18] - Free: suprime email de fila e adiciona boas-vindas no callback
+
+### Decisão
+- O free NÃO recebe mais o email "You are on the TAIME waitlist". Ele entra
+  direto via magic link; a mensagem de fila era contraditória.
+- O free passa a receber um email de boas-vindas próprio, disparado no callback
+  de login (primeira sessão real, depois de clicar no magic link), não no submit.
+- O email ao admin (notificação de lead) continua para TODOS os planos, free
+  incluso.
+- Essential/strategic seguem recebendo o email de fila (de fato aguardam
+  aprovação manual) e não recebem o boas-vindas.
+
+### Controle de reenvio (sem migration)
+- Flag `welcome_email_sent: true` gravada no `user_metadata` do auth.users via
+  endpoint admin (`PUT /auth/v1/admin/users/{id}`), preservando o metadata
+  existente por spread. Persiste entre logins e NÃO exige coluna nova nem
+  migration. Marcado logo após o envio para evitar reenvio em logins
+  concorrentes.
+- NENHUMA migration necessária. Funciona em produção imediatamente após o deploy.
+
+### FREE detectado via subscription
+- Envia o boas-vindas quando o plano ativo NÃO é essential/strategic. Ausência
+  de subscription ativa conta como free (convenção do app: null = free),
+  cobrindo o signup recém-criado.
+
+### Roteamento corrigido
+- `app/login/page.tsx`: o free signup agora usa `emailRedirectTo=/auth/callback`
+  (antes ia direto a `/dashboard`, pulando a troca de code por sessão, o
+  enriquecimento de perfil e o boas-vindas). O callback redireciona ao
+  `/dashboard` ao final, então o destino do usuário não muda.
+
+### Arquivos tocados
+- `taime-web/app/api/admin/waitlist/route.ts` - email de fila ao usuário só com
+  `!isFree`; admin sempre.
+- `taime-web/app/auth/callback/route.ts` - template inline (estilo do
+  userEmailHtml, fundo #0F172A, Georgia, CTA novo), `sendWelcomeEmail`, detecção
+  de free por subscription, flag `welcome_email_sent` no metadata.
+- `taime-web/app/login/page.tsx` - `emailRedirectTo` do free para `/auth/callback`.
+
+### Copy (sem travessão, listas em prosa)
+- PT-BR · Subject "Bem-vindo ao TAIME" · "Olá, {nome}," · CTA "Acessar o painel"
+  · assinatura "Equipe TAIME".
+- EN · Subject "Welcome to TAIME" · "Hello, {name}," · CTA "Open your dashboard"
+  · assinatura "The TAIME team".
+- Footer idêntico ao userEmailHtml: "TAIME · Strategic Technology Intelligence" /
+  "contact@taime.tech · taime.tech".
+
+### Build / commit
+- `npm run build` em taime-web: Compiled successfully, 0 erros TypeScript.
+- Commit: COMMIT_HASH_PLACEHOLDER (push na main; deploy automático pela Vercel).
+
+### Plano de teste
+- Novo signup free: recebe SOMENTE o magic link (sem email de fila); clica;
+  entra; recebe o boas-vindas no idioma de preferred_language. Admin recebe a
+  notificação de lead.
+- Segundo login do mesmo free: NÃO recebe boas-vindas (flag já marcada).
+- Signup essential: CONTINUA recebendo o email de fila, sem boas-vindas.
+
+---
+
 ## [2026-06-18] - Fix 2 furos do batch 2023-H2 (2023-08-01 e 2023-08-16)
 
 ### Status

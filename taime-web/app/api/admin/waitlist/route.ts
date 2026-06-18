@@ -204,11 +204,21 @@ export async function POST(req: Request) {
     }
 
     // Envio paralelo. Falhas individuais silenciadas dentro de sendEmail
-    // via .catch — Promise.all nunca rejeita, não bloqueia o cadastro.
-    await Promise.all([
-      sendEmail(email, 'You are on the TAIME waitlist', userEmailHtml(name)),
+    // via .catch; Promise.all nunca rejeita, não bloqueia o cadastro.
+    //
+    // O email ao ADMIN vai para todos os planos (inclusive free), pois é a
+    // notificação de lead. Já o email de fila ao USUÁRIO ("You are on the
+    // TAIME waitlist") só faz sentido para quem realmente aguarda aprovação
+    // manual (essential/strategic). O free entra direto via magic link e
+    // recebe um boas-vindas próprio no callback de login, então suprimimos
+    // aqui o email de fila para evitar a mensagem contraditória.
+    const sends = [
       sendEmail(ADMIN_EMAIL, 'New TAIME waitlist signup', adminEmailHtml({ name, email, company, role, interest, requested_plan })),
-    ])
+    ]
+    if (!isFree) {
+      sends.unshift(sendEmail(email, 'You are on the TAIME waitlist', userEmailHtml(name)))
+    }
+    await Promise.all(sends)
 
     return NextResponse.json({ success: true })
   } catch (e) {
