@@ -250,10 +250,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Carrega sinais
-  process.stdout.write('Carregando sinais... ');
+  // Carrega sinais — ignora os marcados como ruído pelo filter-signals.ts.
+  // is_noise default=false, então períodos nunca filtrados continuam vindo inteiros.
+  process.stdout.write('Carregando sinais (is_noise=false)... ');
   const signals = await dbGet<SignalWithSource>(
-    `signals?period=eq.${PERIOD}&select=id,title,content,metadata,sources(name,category)`,
+    `signals?period=eq.${PERIOD}&is_noise=eq.false&select=id,title,content,metadata,sources(name,category)`,
   );
   console.log(`${signals.length} encontrado(s).`);
 
@@ -270,8 +271,21 @@ async function main(): Promise<void> {
   const llmResult = await callClaude(signalsText, signals.length);
 
   const clusters = llmResult.clusters ?? [];
-  if (clusters.length < 4 || clusters.length > 12) {
-    throw new Error(`LLM retornou ${clusters.length} cluster(s) — esperado 4-12.`);
+
+  // Piso: menos de 4 clusters é suspeito (período pobre ou falha do modelo) — aborta.
+  if (clusters.length < 4) {
+    throw new Error(`LLM retornou ${clusters.length} cluster(s) — mínimo esperado 4.`);
+  }
+
+  // Teto: signal_clusters não tem constraint de rank, então pode guardar bastante.
+  // O limite de publicação (12) é aplicado depois no generate-report (report_trends.rank).
+  // Se vier acima do teto, MANTÉM os mais densos em vez de rejeitar tudo (não desperdiça a chamada).
+  const MAX_CLUSTERS = 18;
+  if (clusters.length > MAX_CLUSTERS) {
+    clusters.sort((a, b) => b.signal_ids.length - a.signal_ids.length);
+    const dropped = clusters.length - MAX_CLUSTERS;
+    console.warn(`  ⚠ LLM retornou ${clusters.length} clusters; mantendo os ${MAX_CLUSTERS} mais densos (descartados ${dropped} menores).`);
+    clusters.length = MAX_CLUSTERS;
   }
 
   // Resolve índices → UUIDs e descarta inválidos
