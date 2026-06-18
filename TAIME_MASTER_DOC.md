@@ -75,13 +75,25 @@ Chat estratégico contextualizado com IA (Claude Sonnet 4.6):
 - **Resposta idiomática**: detecta o idioma da mensagem e responde no mesmo
 - **Visão futura**: planos estratégicos personalizados, acompanhamento semanal automático
 
+### Camada 4: Newsletter do Radar (envio diário)
+
+Implementada. A captura de inscritos vive em `/radar` (componente `NewsletterSignup`) e o envio é diário, automático, com histórico próprio.
+
+**Fluxo real**:
+
+1. **Briefing diário** já existe via `/api/cron/radar-briefing` (11:00 UTC, 08:00 BRT). Gera 1 linha em `radar_briefings` com `title_pt/en` e `body_pt/en` a partir dos sinais das últimas 24h. Idempotente por `briefing_date`.
+2. **Envio** roda 30 min depois em `/api/cron/newsletter-send` (11:30 UTC, 08:30 BRT). Lê o briefing do dia, lista os inscritos ativos, monta um e-mail por idioma (template dark table-based, mesmo padrão visual dos e-mails de aprovação) e dispara em lotes via endpoint `/emails/batch` do Resend (até 100 por chamada). Skip seguro quando: não há briefing do dia, não há ativos, ou o envio do dia já saiu (idempotência por `briefing_date` + status `sent` ou `partial`).
+3. **Rodapé** carrega link de unsubscribe por inscrito, derivado do `unsubscribe_token` da `newsletter_subscribers`. Clicar marca `status='unsubscribed'` e a página de confirmação é bilíngue (`/api/newsletter/unsubscribe?token=...`). Token inválido cai em página neutra que não revela se o e-mail existe.
+4. **Histórico** próprio. Cada envio grava 1 linha em `newsletter_sends` com snapshot do conteúdo (subject + body PT e EN) e contagens (`recipient_count`, `sent_count`, `failed_count`, `status`). Cada destinatário do envio vira 1 linha em `newsletter_send_recipients` com `delivered` e `error`. O snapshot é deliberado: preserva o que foi enviado mesmo que o briefing seja editado depois.
+5. **Admin** em `/admin/newsletter` com duas seções: Inscritos (filtros por status, busca por email, bloquear/reativar/remover com rastro de quem mudou e quando) e Envios (cada envio expansível, mostrando conteúdo enviado e a lista de destinatários por GET sob demanda). Inscrição já entra `active`, sem fila de aprovação. Ver seção 12 (Admin) e seção 7 (Banco).
+
 -----
 
 ## 3. FRAMEWORK TAIME
 
 ### TAIME Score (0–100)
 
-Score de convergência estratégica calculado sobre 5 dimensões:
+Score de **urgência estratégica semântica** ("Semantic Urgency"), resultado de **julgamento analítico ponderado** sobre 5 dimensões. NÃO é fórmula nem média aritmética (ver detalhamento em "Como o Score é gerado e auditado", abaixo):
 
 |Dimensão            |Descrição                                                |
 |--------------------|---------------------------------------------------------|
@@ -118,6 +130,48 @@ Score de convergência estratégica calculado sobre 5 dimensões:
 |**THEN**|Ponto de inflexão estratégico — quando o consenso estava errado. Datas ABSOLUTAS. Nunca “há X meses”. Inclui PERIOD_LABEL como subtítulo.|
 |**NOW** |Estado do mercado NO período do relatório. Present tense ancorado naquela data.                                                          |
 |**NEXT**|Projeção com “sinais apontavam para…”, “a trajetória sugeria…”. NUNCA certeza ou hindsight.                                              |
+
+### Como o Score é gerado e auditado
+
+_Documentado em 2026-06-16. Fonte: SYSTEM_PROMPT e lógica de `generate-report.ts`, validado contra dados reais do report `a1452c28` (período 2026-06-01)._
+
+**Natureza do score.** O TAIME Score (0–100) de uma trend é uma medida de urgência estratégica semântica, produzida por **julgamento ponderado de especialista — NÃO uma fórmula e NÃO a média aritmética** das dimensões (SYSTEM_PROMPT: "Overall score = weighted expert judgment, not arithmetic mean"). Não existe valor "correto" calculável: duas trends podem ter o mesmo score geral (ex: 84) por combinações de dimensões completamente diferentes. A ponderação entre dimensões é decidida pelo modelo trend a trend, conforme qual fator domina o quadro. Temperatura de geração: **0.1**.
+
+**Faixas semânticas das dimensões.** Cada dimensão recebe `{ score: 0-100, label: "RÓTULO EM CAPS" }`. Exemplo das faixas de Market Maturity: 0–30 Lab · 31–60 Early production · 61–85 Scaling · 86–100 Table stakes. As dimensões dominantes (apontadas no rationale como "fator dominante") puxam o geral mais que as demais e aparecem com destaque visual no site (verde para altas/dominantes, laranja para menores). Não há peso fixo por dimensão: o peso é contextual a cada trend.
+
+**SCORING SCOPE.** Pontua relativo ao mercado **global** por padrão. Quando os sinais são predominantemente regionais/setoriais, pontua dentro daquele escopo E o declara explicitamente no `taime_score_rationale` (ex: "maturidade avaliada dentro do mercado brasileiro").
+
+**Fluxo de geração (PT canônico → EN herda).** (1) A análise PT-BR gera os valores canônicos (`taime_score` + 5 `score_dimensions`). (2) A geração EN recebe esses números como constraints fixos e gera apenas os labels em inglês, proibida de recalcular. (3) Enforcement duplo (`enforceScoresFromPt()` + `verifyScores()`) garante PT = EN nos números; só os labels mudam de idioma. Isso resolve o "BUG 1" histórico (scores divergentes PT/EN).
+
+**ONDE VIVEM AS DIMENSÕES (crítico para auditoria).**
+- A coluna `report_trends.score_dimensions` (jsonb) é **legada e fica vazia (`{}`)** em toda a base. NÃO usar — sempre retorna null.
+- As dimensões reais ficam dentro do campo **`taime_framework_pt_br`** (e `taime_framework_en` para os labels em inglês), num objeto `score_dimensions` aninhado.
+- O `taime_score_rationale_pt_br` é texto em prosa (nomeia as dimensões dominantes), NÃO contém o JSON estruturado de forma confiável. Não auditar por ele.
+- O `taime_score` (geral da trend) é coluna própria em `report_trends` — esse é direto.
+
+**Como auditar (3 testes de coerência, não de cálculo).**
+
+_Teste 1 — Diferenciação interna (ancoragem vs. legítimo)._ Extrair as 5 dimensões e ver se variam:
+
+```sql
+SELECT rank, taime_score,
+  substring(taime_framework_pt_br::text from '"market_maturity"[^}]*"score":\s*([0-9]+)')      AS maturidade,
+  substring(taime_framework_pt_br::text from '"competitive_pressure"[^}]*"score":\s*([0-9]+)') AS pressao,
+  substring(taime_framework_pt_br::text from '"strategic_impact"[^}]*"score":\s*([0-9]+)')      AS impacto,
+  substring(taime_framework_pt_br::text from '"execution_complexity"[^}]*"score":\s*([0-9]+)')  AS complexidade,
+  substring(taime_framework_pt_br::text from '"competitive_lag_risk"[^}]*"score":\s*([0-9]+)')   AS lag_risk
+FROM report_trends
+WHERE report_id = '<REPORT_ID>'
+ORDER BY rank;
+```
+
+Scores gerais iguais (ex: vários 84) são LEGÍTIMOS se as dimensões por trás forem diferentes (cada trend chega ao mesmo geral por caminho distinto); são suspeitos de ANCORAGEM só se as cinco dimensões forem quase idênticas entre trends. Exemplo real (report `a1452c28`, quatro trends com geral 84): dimensões 72/82/80/68/78, 82/88/80/62/78, 72/80/85/68/82, 78/88/82/72/85 — perfis distintos, logo os 84 são legítimos (convergência real de período quente, não ancoragem).
+
+_Teste 2 — Coerência score ↔ dimensões ↔ rationale ↔ faixa._ O rationale deve nomear as dimensões dominantes, e os labels devem bater com as faixas (ex: maturidade 72 → faixa "Scaling" 61-85).
+
+_Teste 3 — Comparabilidade temporal (crítico)._ Um 84 em qualquer período deve significar a mesma régua que um 84 em outro ano. Ao mudar base de fontes ou comparar períodos, verificar se a régua não inflou. Quebra de comparabilidade temporal é a falha mais grave, pois o diferencial do TAIME é a memória estratégica comparável no tempo.
+
+**Dívida técnica registrada.** Popular a coluna `score_dimensions` (hoje vazia) com o JSON extraído de `taime_framework_pt_br`, via migração, tornaria as dimensões consultáveis de forma limpa (`score_dimensions->>'market_maturity'`) — beneficiando auditoria, filtros por dimensão e o Executive Advisor. Não urgente; recomendado antes de o Advisor raciocinar sobre dimensões.
 
 -----
 
@@ -354,6 +408,9 @@ Há um script de back-fill (`backfill-trend-theme.ts`) que preenche `category`/`
 |`waitlist`        |Lista de espera com nome, empresa, cargo, interesse                    |
 |`contacts`        |Formulário de contato                                                  |
 |`admins`          |Controle de acesso ao painel admin                                     |
+|`newsletter_subscribers`|Inscritos no Radar (`status` active/blocked/unsubscribed/removed, `unsubscribe_token`, `blocked_reason`, `status_changed_at`, `status_changed_by`)|
+|`newsletter_sends`|Histórico de envios diários da newsletter. Snapshot do conteúdo (subject + body PT e EN), contagens (`recipient_count`, `sent_count`, `failed_count`), `status` (sent/partial/skipped/failed) e `resend_reference` para cruzar no painel do Resend|
+|`newsletter_send_recipients`|Lista de destinatários por envio com `delivered` e `error`. FK em `newsletter_sends.id`|
 
 ### Constraints críticas de reports
 
@@ -400,45 +457,34 @@ ADMIN_NOTIFICATION_EMAIL=notify@taime.tech
 
 ## 9. PLANOS E PREÇOS
 
-|Plano          |Preço (faixa, não público)|O que inclui                                                                                                                                 |
-|---------------|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-|**Free**       |Grátis                    |2 relatórios completos/mês (janela rolling de 30 dias); completos só até 1 ano de idade; sem Advisor                                          |
-|**Essential**  |R$197 / $39               |Relatórios completos até 2 anos, preview 2-5 anos, sem preview acima de 5; Advisor 30 mensagens/mês com contexto limitado à janela de 2 anos  |
-|**Strategic**  |R$649 / $129              |Relatórios: arquivo completo sem limite; Advisor 400 mensagens/mês com arquivo completo (pgvector quando pronto) + plano estratégico Fase 2   |
+|Plano          |Preço            |O que inclui                                                                                                          |
+|---------------|-----------------|----------------------------------------------------------------------------------------------------------------------|
+|**Gratuito**   |Grátis           |2 relatórios completos por mês (janela rolling de 30 dias), preview dos demais, Radar de hoje                          |
+|**Essencial**  |Acesso Antecipado|Limites atuais do site (completo até 1 ano, preview 1-5 anos) + Executive Advisor com quantidade limitada de mensagens *(fase futura)*|
+|**Estratégico**|Acesso Antecipado|Histórico completo desde 2000 + Executive Advisor com volume ampliado de mensagens                                     |
 
-Preços são faixa de trabalho interna; nada público até Stripe + Strategic completo + formalização.
+Preços em USD e BRL serão anunciados quando Stripe for integrado.
 
-### Decisão de estrutura de planos - 2026-06-15 (substitui a de 2026-06-11)
+### Decisão de estrutura de planos - 2026-06-11
 
-- **Três planos:** FREE, ESSENTIAL e STRATEGIC. Plano "Advisory" separado permanece eliminado.
-- **Essential = único plano pago no lançamento.** Relatórios completos até 2 anos,
-  preview 2-5 anos, sem preview acima de 5 anos. Advisor: **30 mensagens/mês**,
-  contexto limitado à **janela de 2 anos** (recusa honesta + CTA de upgrade se pedir
-  período mais antigo). Faixa R$197 / $39.
-- **Strategic = fora de venda agora, em vitrine "em breve".** Continua visível no
-  site para ancorar valor e captar interesse na waitlist (`requested_plan = strategic`),
-  mas sem botão de compra. Relatórios: arquivo completo sem limite. Advisor: 400
-  mensagens/mês com arquivo completo (via pgvector quando pronto) + plano estratégico
-  Fase 2 (futuro). Faixa R$649 / $129, não pública.
-- **Limites de mensagem (30/400)** são marcadores de plano e trava anti-abuso, não
-  contenção de custo (custo de inferência medido é trivial, ~$0,0157/msg em Sonnet).
-- **Diferenciador real entre planos = janela de histórico**, não contagem de
-  mensagens. Essential vê 2 anos; Strategic vê o arquivo completo.
-- **Regra de acesso única (Opção C):** o Advisor herda a mesma janela de relatórios
-  do plano. Para Essential, o catálogo enviado ao router e o contexto carregado são
-  filtrados pela janela de 2 anos; pedido fora da janela → recusa honesta + CTA de upgrade.
-- **Estado atual:** Advisor liberado **somente para Strategic** (subscription ativa).
-  Limites de mensagem e filtro de janela por plano **ainda não implementados** —
-  entram junto com a ativação paga do Essential.
+- **Três planos** (não quatro): **FREE** (2 relatórios completos/mês), **ESSENTIAL**
+  (limites atuais do site + Advisor com quantidade limitada de mensagens, em fase
+  futura) e **STRATEGIC** (histórico completo + Advisor com volume ampliado de
+  mensagens).
+- **Plano "Advisory" separado: eliminado.** O Executive Advisor deixa de ser um
+  plano à parte e passa a ser distribuído entre Essential (acesso limitado) e
+  Strategic (acesso ampliado).
+- **Estado atual:** Advisor liberado **somente para Strategic** (subscription
+  ativa), em desenvolvimento/calibração. Essential e Free veem o estado "em breve"
+  (sem chat, sem onboarding).
 - **Gate técnico:** centralizado em `lib/plan.ts` (`getUserPlan` + `hasAdvisorAccess`).
-  Server-side em `/api/advisor/chat` (403) + espelhado na UI
-  (`app/dashboard/advisor/page.tsx` e card em `app/dashboard/page.tsx`). Lê a tabela
-  `subscriptions` (status `active`), compatível com Stripe futuro.
-- **Cobrança (decidido):** começa com **Stripe Brasil + conta CPF**, recebimento em
-  BRL. Preço exibido segue o idioma detectado (PT → R$, default EN → US$) via Stripe
-  multi-currency; vendas em USD são convertidas e creditadas em BRL. Estrutura
-  internacional (LLC + Stripe US + conta USD) fica para quando houver tração
-  internacional, com orientação contábil.
+  `hasAdvisorAccess` hoje retorna `true` apenas para `strategic`; quando os limites
+  de mensagens do Essential existirem, o ajuste é nesse único ponto. O gate real é
+  server-side em `/api/advisor/chat` (403 para quem não tem acesso) e espelhado na
+  UI (`app/dashboard/advisor/page.tsx` e card em `app/dashboard/page.tsx`).
+- **Stripe: pendente.** O gate lê a tabela `subscriptions` (status `active`),
+  compatível com a futura integração, sem necessidade de mudança no gate quando
+  o Stripe entrar.
 
 -----
 
@@ -446,54 +492,18 @@ Preços são faixa de trabalho interna; nada público até Stripe + Strategic co
 
 ### Status atual
 
-- Interface pronta (onboarding enxuto + perfil progressivo + chat com markdown)
-- **Liberado para Strategic** (subscription ativa), calibrado e estável (v4.x)
+- Interface pronta (onboarding 4 etapas + chat)
+- **Liberado para Strategic** (subscription ativa), em desenvolvimento/calibração
 - Essential/Free veem o estado "em breve" (sem chat, sem onboarding)
 - Gate centralizado em `lib/plan.ts`; gate real server-side em `/api/advisor/chat` (403)
-- **Limites por plano (decisão 2026-06-15, ainda não implementados):** Essential 30
-  mensagens/mês + janela de 2 anos; Strategic 400 mensagens/mês + arquivo completo.
-  Entram junto com a ativação paga do Essential.
 
 ### Como funciona (quando ativo)
 
-1. Onboarding enxuto (empresa, setor, objetivo; campos avançados sob demanda via perfil progressivo)
-1. Router Haiku seleciona os relatórios relevantes por pergunta (fallback: 3 mais recentes); contexto = perfil + histórico + relatórios selecionados
-1. Claude Sonnet 4.6 responde como consultor estratégico com framework TAIME; grounding rígido (cita período de origem, fontes e ferramentas por categoria, sem inventar números/preços)
-1. Detecta idioma da mensagem e responde no mesmo; prompt caching em blocos estáveis; `usage` instrumentado em `context_metadata`
-1. Histórico salvo em `advisory_memory` por sessão; metadados (título, última atividade, contagem, archived_at) em `advisor_sessions`
-1. **Quando Essential ativar:** catálogo e contexto filtrados pela janela do plano; pedido fora da janela → recusa honesta + CTA de upgrade
-
-### Navegação entre sessões + arquivamento (2026-06-16)
-
-- Sidebar lateral no `AdvisorChat` lista as sessões anteriores do usuário com
-  título derivado (primeiros ~80 caracteres da primeira mensagem do usuário),
-  última atividade ("há Xd") e contagem de mensagens. Clicar carrega aquele
-  `session_id`; "Novo contexto" cria um id novo e limpa a tela.
-- Aba "Ativas / Arquivadas" no topo da sidebar alterna o filtro.
-- **Fonte de verdade:** tabela `advisor_sessions` (uma linha por sessão), criada
-  em `taime-web/add-advisor-session-archive.sql`. `advisory_memory` continua
-  imutável como log de mensagens; mensagens NUNCA são apagadas.
-- **Regra de arquivamento (não destrutiva):** sessão sem atividade há **mais de
-  90 dias** é considerada arquivada e sai da lista padrão de ativas. O campo
-  `archived_at` é reservado para arquivamento explícito (uso futuro); a regra
-  de 90 dias é aplicada como predicado em tempo de leitura, sem preencher o campo.
-- **Endpoint:** `GET /api/advisor/sessions?archived=0|1` retorna a lista do
-  usuário autenticado, ordenada por última atividade. Tolera a tabela ainda
-  não existir (retorna `{sessions: [], migration_pending: true}` em vez de 500),
-  para não quebrar a UI antes da migração rodar.
-- **Sync:** o chat route (`/api/advisor/chat`) chama `advisor_session_upsert`
-  (RPC) após persistir as duas linhas de cada turno; failure é logado e segue
-  sem bloquear a resposta.
-- **Histórico como ativo do TAIME:** archive remove da vista principal, mas o
-  conteúdo continua disponível na aba "Arquivadas" para o cliente acessar.
-
-### Fase futura (não nesta entrega): sessões arquivadas como memória
-
-Usar o conteúdo de sessões arquivadas como contexto adicional do Advisor (além
-do histórico da sessão atual) exige sumarização do diálogo + indexação semântica
-(pgvector). É entrega separada que depende dessa infraestrutura. O dado já está
-organizado e marcado em `advisor_sessions`, pronto para receber colunas como
-`summary` e `summary_embedding` quando chegar a hora.
+1. Cliente completa onboarding: empresa, setor, tamanho, infraestrutura, objetivo, maturidade
+1. Cada mensagem carrega: perfil + últimas 20 mensagens da sessão + últimos 3 relatórios TAIME
+1. Claude Sonnet 4.6 responde como consultor estratégico com framework TAIME
+1. Detecta idioma da mensagem e responde no mesmo
+1. Histórico salvo em `advisory_memory` por sessão
 
 ### Roadmap do Advisor
 
@@ -607,6 +617,13 @@ organizado e marcado em `advisor_sessions`, pronto para receber colunas como
 - Notificações de waitlist: [notify@taime.tech](mailto:notify@taime.tech)
 - Tabela `admins` no Supabase controla acesso
 - Aprovação manual via /admin/waitlist
+- Painéis admin disponíveis (gate `isAdmin(user.email)` em todos):
+  - `/admin/waitlist` — fila de pedidos de acesso, aprovação, rejeição e mudança de plano
+  - `/admin/reports` — curadoria de relatórios em `pending_review`, com flags do validador
+  - `/admin/feedback` — feedback dos usuários, revisão e arquivamento
+  - `/admin/newsletter` — inscritos do Radar (filtros, bloquear/reativar/remover) e histórico de envios (snapshot + destinatários por envio)
+  - `/admin/engagement` — atividade mensal por usuário e custo do Advisor
+- Menu compartilhado em `components/AdminNav.tsx` (fonte única; qualquer página nova em `/admin/*` renderiza este componente em vez de duplicar links)
 
 ### Contato
 
@@ -644,7 +661,7 @@ Preços de referência (USD/1M tokens, padrão): Haiku 4.5 $1/$5 · Sonnet 4.6 $
 
 Caso de uso premium: a partir do perfil (receita, valor, tamanho, headcount, **budget de investimento**, **horizonte temporal**), o Advisor diagnostica, lista as iniciativas de IA, **prioriza** e devolve um plano sequenciado por ano com quick wins.
 
-**Estado atual (produção, v4.x):** `chat/route.ts` usa Sonnet 4.6 com `max_tokens` dinâmico (1.536 padrão / 4.096 quando pede plano ou detalhe), router Haiku para seleção de relatórios, prompt caching e instrumentação de `usage`. O **chat** está calibrado e estável. O **caso de uso de plano** (Fase 2) continua pendente: exige endpoint dedicado, Opus e tabela própria, conforme abaixo.
+**Estado atual (produção):** `chat/route.ts` usa Sonnet 4.6, `max_tokens: 1024`, contexto = perfil + últimas 20 mensagens + 3 relatórios. **Insuficiente para o caso de uso de plano.**
 
 **Duas mudanças estruturais planejadas:**
 

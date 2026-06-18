@@ -16,6 +16,7 @@ const ADMIN_LINKS: AdminLink[] = [
   { href: '/admin/waitlist',   label: 'Waitlist'   },
   { href: '/admin/reports',    label: 'Reports'    },
   { href: '/admin/feedback',   label: 'Feedback'   },
+  { href: '/admin/newsletter', label: 'Newsletter' },
   { href: '/admin/engagement', label: 'Engagement' },
 ]
 

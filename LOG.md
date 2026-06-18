@@ -2,6 +2,316 @@
 
 ---
 
+## [2026-06-18] - Fix 2 furos do batch 2023-H2 (2023-08-01 e 2023-08-16)
+
+### Status
+- [x] Os 2 furos preenchidos: 2023-08-01 R1+R2, 2023-08-16 R1+R2 (4 relatórios novos)
+- [x] 0 `judge_parse_error` em 16 trends julgadas
+- [x] NO_AUTO_PUBLISH=1 honrado em geração e validação (todos `pending_review`)
+- [x] Sem travessões em texto novo · NÃO commitado
+
+### Estado pré-fix
+- `2023-08-01`: 1 relatório (id `dc327a66`, pending_review, 4 trends, verdict pass).
+  Os demais períodos do batch 2023-H2 têm 2 relatórios; este ficou com R2 perdido.
+- `2023-08-16`: 0 relatórios (período inteiro perdido pela hibernação do laptop).
+
+### Limpeza cirúrgica (só 2023-08-01)
+- `report_trends` WHERE `report_id = 'dc327a66'`: 4 linhas (ranks 1, 2, 3, 4) apagadas.
+- `reports` WHERE `id = 'dc327a66'`: 1 linha apagada.
+- Guards no script: bloqueia DELETE se o id não fosse desse período ou já estivesse `published`.
+- Pós: 0 relatórios em 2023-08-01. Signals e clusters do período preservados (reuso).
+
+### Regeração
+- `generate-periods.ts 2023-08-01 2023-08-16`: 2 períodos biweekly.
+- `batch-pipeline.ts` com `NO_AUTO_PUBLISH=1`, Opus 4.8, temperature comentada.
+- Run 1: 1 concluído (2023-08-01 OK), 1 falha (2023-08-16 falhou no metadata Opus
+  com "Expected double-quoted property name at position 4767" no trend
+  "AI Governance, Ethics, and Regulation Tightening").
+- Run 2 (`--resume`): 2023-08-16 recuperado (mesma classe de erro que apareceu
+  no batch 2024-H1; resume sempre resolve com a nondeterminismo do Opus).
+- Run 3 (`--resume`): no-op idempotente.
+
+### Resultados por período
+
+#### 2023-08-01 (2 relatórios)
+
+| # | id | trends | scores | Score médio | sinais | verdict | flags totais | det | grnd | temporal | source | judge_parse |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `cee7953f` | 4 | 87, 79, 78, 71 | 78.8 | 237 | fail | 2 | 0 | 1 | 0 | 1 | 0 |
+| 2 | `1e86cbb1` | 4 | 84, 82, 79, 79 | 81.0 | 237 | fail | 15 | 0 | 12 | **2*** | 1 | 0 |
+
+Agregado: 8 trends · score médio **79.9** · 17 flags (0 det / 13 grnd / 2 temporal / 2 source / 0 judge_parse).
+
+\* Os 2 `temporal_breach` (R2, trend 1, fields `then_now_next_pt_br.next` e
+`then_now_next_en.next`) parecem falsos positivos do judge sendo restritivo
+demais com o campo NEXT, que por definição é forward-looking. As claims usam
+o padrão permitido pela spec ("os sinais indicavam... nos meses seguintes",
+"the trajectory suggested... would move"). Não é o caso óbvio do 2024-04-01
+em que o próprio judge admitiu no detail "no flag warranted", então deixo
+para curadoria manual decidir.
+
+#### 2023-08-16 (2 relatórios)
+
+| # | id | trends | scores | Score médio | sinais | verdict | flags totais | det | grnd | temporal | source | judge_parse |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `5543983b` | 4 | 86, 79, 79, 82 | 81.5 | 204 | pass | **0** | 0 | 0 | 0 | 0 | 0 |
+| 2 | `d26595e8` | 4 | 82, 82, 79, 84 | 81.8 | 204 | fail | 6 | 0 | 5 | 0 | 1 | 0 |
+
+Agregado: 8 trends · score médio **81.6** · 6 flags (0 det / 5 grnd / 0 temporal / 1 source / 0 judge_parse).
+
+Todos os 4 relatórios em `status=pending_review` com `published_at=null`.
+
+### Custo Opus 4.8 (com retry de 2023-08-16)
+
+| input | output | cache_write | cache_read | Custo USD |
+|---|---|---|---|---|
+| 320685 | 97329 | 184103 | 1979223 | **$18.53** |
+
+Inclui geração dobrada do 2023-08-16 (run 1 + run 2 do resume após falha de
+metadata). Sem o retry, o custo nominal de 2 períodos novos seria ~$15.
+Serper essencialmente $0: signals dos períodos já existiam (32 novos no
+primeiro run, 16 novos no resume sobre uma base de 237 / 204).
+
+### Observações
+- O fix do judge (v94a0640) continua firme: **0 `judge_parse_error` em 16
+  trends** julgadas. Camada 1 + Camada 2 funcionando.
+- Padrão de falha do metadata Opus ("Bad control character" / "Expected
+  double-quoted property name") segue idêntico ao do batch 2024-H1:
+  `generate-report.ts` tem o mesmo parser estrito que `validate-report.ts`
+  tinha antes do fix. O retry resolve em uma tentativa, mas dobra o custo
+  do período. Vale aplicar o mesmo padrão de parse tolerante em
+  `generate-report.ts` em iteração futura (fora deste escopo).
+- 2023-08-16 R1 com pass + 0 flags é o segundo período recente sem nenhum
+  flag (junto com 2024-02-16). Indica que Opus + o judge atualizado
+  conseguem produzir relatórios limpos quando o conteúdo dos sinais está
+  bem alinhado.
+
+### Arquivos
+- `generate-report.ts`: sem mudança nesta entrega (segue como no batch 2024-H1).
+  NÃO commitado.
+
+---
+
+## [2026-06-18] - Newsletter do Radar: envio diário + unsubscribe público + admin de gestão
+
+### Decisão
+Fechar o "outro lado" da newsletter do Radar (a captura via `/radar` + `POST /api/newsletter/subscribe` já existia). Agora há envio diário automático, página pública de unsubscribe por inscrito e painel admin para verificar/bloquear/remover inscritos e consultar histórico de envios. Inscrição já entra como ativa, sem fila de aprovação.
+
+### Fluxo implementado
+1. `radar-briefing` (existente, 11:00 UTC) gera o conteúdo do dia em `radar_briefings`.
+2. `newsletter-send` (novo, 11:30 UTC) lê o briefing, lista os inscritos ativos, monta o e-mail por idioma (template dark, mesmo padrão visual dos e-mails de aprovação), envia via Resend batch e grava histórico em `newsletter_sends` + `newsletter_send_recipients` com snapshot do conteúdo.
+3. Skip seguro quando não há briefing, não há ativos ou já foi enviado hoje (idempotência por `briefing_date` + status sent/partial).
+4. Rodapé do e-mail tem link de unsubscribe único por inscrito, derivado do `unsubscribe_token`.
+5. `/api/newsletter/unsubscribe?token=...` faz PATCH no inscrito (status='unsubscribed', rastro em `status_changed_at/by='self'`) e devolve página HTML bilíngue. Token inválido cai em página neutra que não revela existência do email.
+6. `/admin/newsletter` lista inscritos com filtros (Todos/Ativos/Bloqueados/Saíram/Removidos), busca por email e ações por linha (Bloquear com motivo opcional, Reativar, Remover com confirm). Envios em cards expansíveis: ao abrir mostra snapshot PT+EN lado a lado, metadados (timestamps, referência Resend) e lista de destinatários daquele envio carregada sob demanda.
+
+### Arquivos novos (taime-web)
+- `app/api/cron/newsletter-send/route.ts`: auth Bearer CRON_SECRET, fluxo idempotente, lotes via `/emails/batch` do Resend, snapshot do conteúdo gravado mesmo em skip por 0 ativos, status sent/partial/failed/skipped.
+- `app/api/newsletter/unsubscribe/route.ts`: GET por token, PATCH best-effort, HTML bilíngue (PT em cima, EN embaixo, separados por divisor). Página neutra única para token inválido/ausente/inexistente.
+- `app/admin/newsletter/page.tsx`: server component, gate `isAdmin`, busca paralela de subscribers + sends via service key, instrução de SQL pendente quando tabelas ausentes (padrão `/admin/engagement`).
+- `app/admin/newsletter/NewsletterAdmin.tsx`: client component bilíngue via `useLocale`, duas abas (Inscritos / Envios), badges de status, ações com flash de confirmação por linha e rastro de erro.
+- `app/api/admin/newsletter/subscriber-action/route.ts`: POST `{ id, action, reason? }`, `action ∈ block|reactivate|remove`. Mapeia para status, grava `status_changed_at`, `status_changed_by` (email do admin), `blocked_reason` (set em block, limpa em reactivate, preserva em remove para auditoria).
+- `app/api/admin/newsletter/send-recipients/route.ts`: GET sob demanda dos destinatários por `send_id`, gate `isAdmin`, ordenado por email.
+
+### Arquivos modificados
+- `components/AdminNav.tsx`: link Newsletter adicionado entre Feedback e Engagement; aparece automaticamente nas demais telas admin.
+- `vercel.json`: novo cron `/api/cron/newsletter-send` às 30 11 * * * (11:30 UTC, 08:30 BRT). Crons existentes intactos.
+
+### Verificação
+- `cd taime-web && npm run build`: ✓ Compiled successfully in 4.5s, 0 erros TypeScript.
+- Rotas novas confirmadas no output: `/api/cron/newsletter-send`, `/api/newsletter/unsubscribe`, `/api/admin/newsletter/subscriber-action`, `/api/admin/newsletter/send-recipients`, `/admin/newsletter`.
+- Em dash (U+2014) nas linhas adicionadas em qualquer arquivo do diff: 0. Auditado com `git diff --unified=0 | grep "^+" | grep -P "\\x{2014}"`.
+- Fontes sempre por categoria no template do e-mail (o conteúdo vem do briefing, que já segue essa regra).
+- `package.json` não consolidado. Triggers, função `handle_new_user`, fluxo de subscribe e demais áreas admin não tocadas.
+
+### Não commitado (a pedido do usuário)
+Tudo fica local para revisão. Arquivos prontos para `git add` quando aprovado:
+- novos: `taime-web/app/api/cron/newsletter-send/route.ts`, `taime-web/app/api/newsletter/unsubscribe/route.ts`, `taime-web/app/admin/newsletter/page.tsx`, `taime-web/app/admin/newsletter/NewsletterAdmin.tsx`, `taime-web/app/api/admin/newsletter/subscriber-action/route.ts`, `taime-web/app/api/admin/newsletter/send-recipients/route.ts`
+- modificados: `taime-web/components/AdminNav.tsx`, `taime-web/vercel.json`, `TAIME_MASTER_DOC.md`, `LOG.md`
+
+---
+
+## [2026-06-18] - Regen 2024-02-16 (recuperação do R2 perdido no batch 2024-H1)
+
+### Status
+- [x] R1 + R2 gerados (2 relatórios completos, conforme os 8 clusters do período)
+- [x] 0 temporal_breach · 0 judge_parse_error · 0 flags totais
+- [x] NO_AUTO_PUBLISH=1 honrado em geração e validação
+- [x] Sem travessões em texto novo · NÃO commitado
+
+### Limpeza cirúrgica (passo 1)
+Apaguei só o id incompleto, sem tocar em signals/clusters do período (reusados
+na regeração, custo Serper essencialmente nulo).
+
+- `report_trends` WHERE `report_id = '681ce76b-e76b-4827-8c8c-bd55e797dd14'`: 4 linhas (ranks 1, 2, 3, 4) apagadas.
+- `reports` WHERE `id = '681ce76b-e76b-4827-8c8c-bd55e797dd14'`: 1 linha apagada.
+- Pré-flight bloqueou o delete se o id não fosse desse período OU se já tivesse
+  voltado a `published`. Pós: 0 relatórios em 2024-02-16. OK para regerar.
+
+### Regeração (passo 2)
+- `generate-periods.ts 2024-02-16 2024-02-16`: 1 período biweekly.
+- `batch-pipeline.ts` com `NO_AUTO_PUBLISH=1` (Opus 4.8, temperature comentada).
+- Run 1: concluído em uma tentativa. Run 2 e 3 (`--resume`): no-op.
+- Coleta: 57 sinais novos (delta sobre o que já estava persistido para o período).
+
+### Resultados
+
+| # | id | trends | scores | Score médio | sinais | verdict | flags |
+|---|---|---|---|---|---|---|---|
+| 1 | f1c30e0f | 4 | 86, 84, 84, 84 | 84.5 | 183 | pass | 0 |
+| 2 | e1d1daae | 4 | 79, 84, 84, 74 | 80.3 | 183 | pass | 0 |
+
+**Agregado do período:** 8 trends · score médio 82.4 · **0 flags** (0 deterministic,
+0 grounding, 0 temporal_breach, 0 source, 0 judge_parse_error).
+
+Ambos os relatórios em `status=pending_review` e `published_at=null` ao final.
+
+### Custo Opus 4.8 (geração)
+
+| input | output | cache_write | cache_read | Custo USD |
+|---|---|---|---|---|
+| 125495 | 45518 | 50644 | 780136 | $7.42 |
+
+Coerente com o original do batch 2024-H1 ($7.35 para o run que ficou incompleto).
+Serper essencialmente $0 (signals/clusters do período já estavam persistidos;
+só 57 deltas novos coletados). Sonnet do validador inline: ~$0.50 estimado
+(8 trends julgadas, 0 corretor por flag corrigível porque flags=0).
+
+### Observações
+- Resultado raro: **0 flags em ambos os relatórios.** O período é janeiro/2024
+  e o Opus respeitou estritamente o boundary 2024-02-29 sem cair em projeções
+  forward-looking não suportadas. Score médio 82.4 dentro da faixa do batch
+  2024-H1 (81.6).
+- O fix do judge (v94a0640) continua estável: 0 `judge_parse_error` em 8 trends
+  julgadas, sem precisar da Camada 2.
+- Nenhum side effect: signals e clusters originais preservados, R1 anterior
+  (id `681ce76b`) era pending_review e foi descartado limpo.
+
+### Arquivos
+- Sem mudança em código de pipeline. `generate-report.ts` segue como deixei no
+  batch 2024-H1 (Opus, temperature comentada). NÃO commitado.
+
+---
+
+## [2026-06-17] - Batch 2024-H1 (Opus 4.8 geração, sem publicar)
+
+### Status
+- [x] 11/11 períodos gerados (2024-01-16 a 2024-06-16, quinzenal)
+- [x] NO_AUTO_PUBLISH=1 honrado pelo validador inline em todas as chamadas
+- [x] Sem travessões em texto novo
+- [x] NÃO commitado (instrução do briefing)
+
+### Pré-voo
+- `generate-report.ts` GENERATION_MODEL = `claude-opus-4-8` (já estava). As linhas
+  de `temperature: 0.1` foram comentadas (Opus 4.8 deprecou o param, igual ao
+  piloto que funcionou).
+- `generate-periods.ts 2024-01-16 2024-06-16` retornou 11 períodos biweekly OK.
+- 2024-01-01 estava `published`, fora do range, intacto.
+
+### Execução
+- Run 1: 9/11 concluídos. 2 falhas no metadata Opus por "Bad control character
+  in string literal" (mesma classe de erro que motivou o fix v94a0640 no
+  validador mas que persiste em `generate-report.ts`, fora deste escopo):
+  - `2024-02-16`: falhou no metadata do R2, R1 foi salvo antes do erro
+  - `2024-05-16`: falhou no metadata do R1
+- Run 2 (`--resume`): 11/11 (recuperou os dois). 2024-05-16 re-rodou inteiro;
+  2024-02-16 foi pulado porque o R1 do run 1 já estava no banco como published.
+- Run 3 (`--resume`): no-op (idempotente).
+
+### Resultados por período
+
+| Período | #R | Trends | Score médio | Sinais | Status | Verdict | Flags | Block | Warn | Det | Grnd | Temporal | Source | Judge_parse |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2024-01-16 | 1 | 7 | 82.0 | 195 | published | stale | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2024-02-01 | 2 | 8 | 81.5 | 289 | published | stale+pass | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 2024-02-16 | 1 (R2 faltando) | 4 | 83.0 | 183 | published | pass | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2024-03-01 | 2 | 8 | 81.9 | 222 | pending_review | pass+fail | 18 | 5 | 13 | 0 | 16 | 0 | 2 | 0 |
+| 2024-03-16 | 2 | 8 | 79.9 | 254 | pending_review | pass | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2024-04-01 | 2 | 8 | 79.1 | 264 | pending_review | fail | 19 | 5 | 14 | 3 | 13 | **1*** | 2 | 1 |
+| 2024-04-16 | 2 | 8 | 83.1 | 214 | pending_review | fail+pass | 3 | 1 | 2 | 0 | 2 | 0 | 1 | 0 |
+| 2024-05-01 | 2 | 8 | 82.5 | 213 | pending_review | pass | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2024-05-16 | 2 | 8 | 82.1 | 232 | pending_review | pass+needs_review | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 |
+| 2024-06-01 | 2 | 8 | 81.5 | 209 | pending_review | pass+needs_review | 6 | 0 | 6 | 6 | 0 | 0 | 0 | 0 |
+| 2024-06-16 | 2 | 8 | 81.6 | 222 | pending_review | fail | 10 | 5 | 5 | 0 | 7 | 0 | 3 | 0 |
+
+\* O `temporal_breach=1` em 2024-04-01 é falso positivo do judge: o próprio
+campo `detail` do flag admite "No breach. This is forward-looking framing
+acceptable at the time. No flag warranted." (a frase flagada é "the trajectory
+points toward GenAI becoming a baseline expectation through late 2024", legítima
+para um relatório fechado em 2024-04-15). **Opus efetivamente não cometeu
+nenhuma violação temporal real no batch.**
+
+### Agregados
+- Trends totais: **83** (média 7.5/período)
+- Score médio ponderado: **81.6**
+- Flags totais: **58** (10 deterministic, 38 grounding, 1 temporal, 9 source)
+- `judge_parse_error` trends afetados: **1/83 (1.2%)**, vs baseline 29% no
+  batch 2024-H2 pré-fix. O fix do judge (commit `94a0640`) entregou.
+
+### Custo Opus 4.8 (geração)
+Tarifas usadas: input $15/MTok, output $75/MTok, cache_write $18.75/MTok,
+cache_read $1.50/MTok. Sonnet do validador inline não foi capturado (não
+imprime USAGE TOTAL quando chamado por `generate-report.ts`); estimativa
+adicional ~$5 a $11 no batch inteiro.
+
+| Período | input | output | cache_write | cache_read | Custo USD |
+|---|---|---|---|---|---|
+| 2024-01-16 | 126143 | 38305 | 52867 | 697509 | $6.80 |
+| 2024-02-01 | 181275 | 45332 | 77314 | 1180182 | $9.34 |
+| 2024-02-16 | 125539 | 44663 | 50644 | 780136 | $7.35 |
+| 2024-03-01 | 141432 | 45643 | 58327 | 895377 | $7.98 |
+| 2024-03-16 | 163248 | 45543 | 68968 | 1054996 | $8.74 |
+| 2024-04-01 | 167724 | 45888 | 70887 | 1083777 | $8.91 |
+| 2024-04-16 | 137332 | 46248 | 56369 | 866011 | $7.88 |
+| 2024-05-01 | 141540 | 45977 | 58388 | 896292 | $8.01 |
+| 2024-05-16 | 293620 | 88300 | 122942 | 1874844 | $16.14 |
+| 2024-06-01 | 144755 | 45390 | 59987 | 920277 | $8.08 |
+| 2024-06-16 | 150392 | 45849 | 62657 | 960331 | $8.31 |
+| **TOTAL** | 1773000 | 537138 | 739350 | 11209732 | **$97.56** |
+
+Média $8.87/período (faixa $6.80 a $9.34 nos runs normais). 2024-05-16 destoa
+em $16.14 porque rodou DUAS vezes (run 1 falhou no metadata e o resume
+re-executou trends+metadata; gastou Opus dobrado nesse período). Sem o
+outlier, média $8.13. Estimativa de $7 a $8 por período do briefing foi
+levemente otimista; faixa real $7 a $9 com cache funcionando bem (cache_read
+6.3x maior que input cru, ou seja, eficiência ~86%).
+
+### Observações que precisam de atenção
+
+1. **2024-02-16 com R2 faltando.** Em run 1, o R1 foi salvo antes do erro
+   de metadata do R2. Em run 2, `reportExists` viu R1 como published e
+   pulou o período inteiro. O período tem 8 clusters mas só 4 trends
+   persistidas. Recuperar exige tirar 2024-02-16 #1 do `published`, deletar
+   ou reaproveitar, e re-rodar `generate-report.ts` pra regerar os dois
+   R1 e R2. Fora do escopo deste batch.
+
+2. **3 períodos publicados externamente.** 2024-01-16 #1, 2024-02-01 #1 e #2,
+   2024-02-16 #1 estão `status=published`. A `validatePersistedReport`
+   honrou NO_AUTO_PUBLISH=1 (gravou `pending_review` + verdict). As
+   publicações aconteceram **14 a 25 minutos depois** da validação, em
+   timing irregular durante o batch, com pelo menos um item virando `stale`
+   logo após (verdict=stale indica edição posterior). Padrão consistente
+   com curadoria manual (admin clicando "Publicar"), não com cron periódico
+   nem com falha do flag. Não revertido. Os 8 períodos restantes (16 de 19
+   relatórios) permanecem `pending_review`.
+
+3. **`temporal_breach=1` em 2024-04-01 é falso positivo do próprio judge.**
+   Mesmo `detail` do flag declara "No flag warranted" mas o flag foi
+   gravado mesmo assim. Sugere uma melhoria no prompt do judge: ignorar
+   itens cuja explicação do próprio veredito admite que não deveria ser
+   flagueado. Fora deste escopo.
+
+4. **`judge_parse_error: 1/83`** mostra que a Camada 1 + Camada 2 do fix
+   do validador cobre o caso comum. O único restante (2024-04-01 trend 2)
+   é depois da retentativa corretiva, com `detail` específico para esse
+   caminho ("após retentativa; revisar manualmente"). Aceitável.
+
+### Arquivos
+- `generate-report.ts`: temperature comentada (alinha com piloto Opus). Sem
+  commit, no diff.
+
+---
+
 ## [2026-06-17] - Free self-signup: form completo + waitlist-first + perfil enriquecido no callback
 
 ### Contexto e correção
