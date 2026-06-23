@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
+import { embedQuery } from '@/lib/embeddings'
 
 interface AdvisorProfile {
   company_name:           string | null
@@ -55,6 +56,24 @@ interface RouterResult {
   temporal_scope: 'recent' | 'historical' | 'specific_period'
   language:       'pt' | 'en'
 }
+
+// Chunk de trend retornado pela busca vetorial (match_trend_chunks).
+// Cada chunk = uma trend de um relatorio, num idioma (pt|en).
+interface TrendChunk {
+  trend_id:   string
+  report_id:  string
+  period:     string
+  rank:       number
+  lang:       'pt' | 'en'
+  theme_slug: string | null
+  category:   string | null
+  content:    string
+  similarity: number
+}
+
+// 'vector' = contexto montado pela busca semantica no arquivo inteiro.
+// 'router_fallback' = busca vetorial falhou ou veio vazia; caiu no router por titulo.
+type SelectionSource = 'vector' | 'router_fallback'
 
 interface Usage {
   input_tokens:                number
@@ -315,6 +334,155 @@ async function routeContext(
   }
 }
 
+// ── Busca vetorial (pgvector) ───────────────────────────────────────────────
+// Passo 3: gera o embedding da mensagem e chama match_trend_chunks sobre o
+// arquivo inteiro. period_floor permissivo (2000-01-01) para trazer tudo;
+// SEM filtro de plano ainda (isso e Passo 4). Nunca lanca: devolve error para
+// o chamador decidir o fallback.
+const VECTOR_MATCH_COUNT = 16
+const VECTOR_PERIOD_FLOOR = '2000-01-01'
+
+async function vectorSearchChunks(
+  service: ReturnType<typeof createSupabaseService>,
+  message: string,
+): Promise<{ chunks: TrendChunk[]; error: string | null }> {
+  const emb = await embedQuery(message)
+  if (!emb.ok) return { chunks: [], error: `embed: ${emb.error}` }
+
+  try {
+    const { data, error } = await service.rpc('match_trend_chunks', {
+      query_embedding: emb.vector,
+      period_floor:    VECTOR_PERIOD_FLOOR,
+      match_count:     VECTOR_MATCH_COUNT,
+    })
+    if (error) return { chunks: [], error: `rpc: ${error.message}` }
+    return { chunks: (data ?? []) as TrendChunk[], error: null }
+  } catch (e) {
+    return { chunks: [], error: e instanceof Error ? e.message : 'rpc exception' }
+  }
+}
+
+// Dedup: a mesma trend volta como pt e en. Mantem uma so, preferindo o idioma
+// da pergunta; empate por similaridade. Reordena por similaridade desc.
+function dedupeChunks(chunks: TrendChunk[], preferLang: Lang): TrendChunk[] {
+  const byTrend = new Map<string, TrendChunk>()
+  for (const c of chunks) {
+    const cur = byTrend.get(c.trend_id)
+    if (!cur) { byTrend.set(c.trend_id, c); continue }
+    const curPref = cur.lang === preferLang
+    const newPref = c.lang === preferLang
+    if (newPref && !curPref) byTrend.set(c.trend_id, c)
+    else if (newPref === curPref && c.similarity > cur.similarity) byTrend.set(c.trend_id, c)
+  }
+  return [...byTrend.values()].sort((a, b) => b.similarity - a.similarity)
+}
+
+// ── Refinador de chunks (Haiku) ─────────────────────────────────────────────
+// Mantem a inteligencia temporal da v4.3: para perguntas historicas / de
+// trajetoria, prioriza DIVERSIDADE de periodo e agrupa por theme_slug quando o
+// tema se repete entre periodos. Para "estado atual", prioriza recencia.
+// Devolve selecao vazia em qualquer falha; o chamador usa ordem por similaridade.
+const CHUNK_REFINER_INSTRUCTIONS = `You are a context refiner for a strategic advisor. You receive a user message and a list of candidate intelligence chunks retrieved by semantic search from TAIME's archive. Each chunk is one trend from one report period. Select and order up to 8 chunks that best answer the message. Prefer sharp relevance over volume.
+
+Respond with PURE JSON only, no markdown, no prose, in exactly this shape:
+{"selected":[<indexes>],"temporal_scope":"recent|historical|specific_period","language":"pt|en"}
+
+Detecting the user's temporal intent:
+- "recent": the message is about the current moment, latest state, or has no temporal cue. Prioritize the most recent periods and the highest similarity.
+- "historical": the message asks how something evolved, its trajectory or older state. Markers in PT: "ao longo do tempo", "evolucao", "como evoluiu", "trajetoria", "historico", "como era antes". Markers in EN: "over time", "how did X evolve", "history of", "trajectory", "back when". Prioritize PERIOD DIVERSITY: pick chunks from distinct periods. When the same theme_slug repeats across periods, keep that group adjacent so the advisor can trace one arc (then, now, next).
+- "specific_period": the message names a year, quarter, half-year or month. Prioritize chunks whose period falls inside the named window; if none match, pick the closest available and still return scope="specific_period".
+
+Selection rules:
+- selected must be indexes that exist in the candidate list. Up to 8. Order them best first.
+- For historical intent, do not return many chunks from the same period; spread across early, middle and recent when possible.
+- language: detect from the user message.`
+
+function buildChunkList(chunks: TrendChunk[]): string {
+  return chunks.map((c, i) => {
+    const snippet = c.content.replace(/\s+/g, ' ').slice(0, 320)
+    return `[${i}] period: ${c.period} | rank: ${c.rank} | theme: ${c.theme_slug ?? 'n/a'} | category: ${c.category ?? 'n/a'} | lang: ${c.lang} | sim: ${c.similarity.toFixed(3)}\n${snippet}`
+  }).join('\n---\n')
+}
+
+async function refineChunks(
+  message: string,
+  chunks: TrendChunk[],
+): Promise<{ selected: TrendChunk[]; language: Lang | null; usage: Usage | null }> {
+  const refinerSystem: SystemBlock[] = [
+    { type: 'text', text: CHUNK_REFINER_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+  ]
+
+  try {
+    const res = await fetch(ANTHROPIC_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta':    'prompt-caching-2024-07-31',
+      },
+      body: JSON.stringify({
+        model:      ROUTER_MODEL,
+        max_tokens: 256,
+        system:     refinerSystem,
+        messages:   [{ role: 'user', content: `USER MESSAGE:\n${message}\n\nCANDIDATE CHUNKS:\n${buildChunkList(chunks)}` }],
+      }),
+    })
+
+    if (!res.ok) {
+      console.error('[advisor-refiner] non-ok:', await res.text())
+      return { selected: [], language: null, usage: null }
+    }
+
+    const data = await res.json() as {
+      content: Array<{ type: string; text: string }>
+      usage?:  Partial<Usage>
+    }
+    const usage = normalizeUsage(data.usage)
+    const raw   = data.content.find(b => b.type === 'text')?.text?.trim() ?? ''
+
+    const jsonStr = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
+    const parsed  = JSON.parse(jsonStr) as { selected?: unknown; language?: string }
+
+    if (!Array.isArray(parsed.selected)) return { selected: [], language: null, usage }
+
+    const seen     = new Set<number>()
+    const selected: TrendChunk[] = []
+    for (const idx of parsed.selected) {
+      if (typeof idx === 'number' && Number.isInteger(idx) && idx >= 0 && idx < chunks.length && !seen.has(idx)) {
+        seen.add(idx)
+        selected.push(chunks[idx])
+      }
+      if (selected.length >= 8) break
+    }
+    const language: Lang | null = parsed.language === 'pt' || parsed.language === 'en' ? parsed.language : null
+    return { selected, language, usage }
+  } catch (e) {
+    console.error('[advisor-refiner] error:', e)
+    return { selected: [], language: null, usage: null }
+  }
+}
+
+// Monta o bloco de contexto a partir dos chunks selecionados. Mantem as regras
+// existentes: cita o periodo de origem (grounding) e linka a ancora da trend
+// (/reports/{report_id}#trend-{rank}, v4). Mesmo header de "URLs apenas abaixo".
+function buildTrendContextBlock(chunks: TrendChunk[]): string {
+  if (chunks.length === 0) {
+    return 'TAIME INTELLIGENCE LOADED FOR THIS TURN: none.'
+  }
+  const periods = [...new Set(chunks.map(c => c.period))]
+  const body = chunks.map(c => {
+    const url  = `/reports/${c.report_id}#trend-${c.rank}`
+    const tags = [c.period, c.theme_slug, c.category].filter(Boolean).join(' | ')
+    return `Trend [${tags}] [URL: ${url}]:\n${c.content}`
+  }).join('\n\n---\n\n')
+
+  return `TAIME INTELLIGENCE LOADED FOR THIS TURN (semantic match across the archive; periods: ${periods.join(', ')}):
+Use only the URLs below when linking. Do not invent URLs.
+
+${body}`
+}
+
 // ── Chamada principal (Sonnet) ──────────────────────────────────────────────
 async function callMain(
   system: SystemBlock[],
@@ -408,63 +576,95 @@ export async function POST(req: NextRequest) {
 
   const history = ((historyData ?? []) as MemoryRow[]).slice().reverse()
 
-  // ── Catálogo enxuto p/ o roteador (sem conteúdo completo) ──────────────────
-  // v4.3: limite parcial subido para 100. Cobre o arquivo atual e dá ao roteador
-  // visibilidade dos relatórios de 2024 quando o usuário pede histórico. Solução
-  // completa = pgvector + semantic search sobre o arquivo inteiro.
-  const { data: candidateData } = await service
-    .from('reports')
-    .select('id, period, period_label, title_en, title_pt_br, report_trends(title_en, category, theme_slug)')
-    .eq('status', 'published')
-    .order('period', { ascending: false })
-    .limit(100)
+  // ── Seleção de contexto: busca vetorial primeiro, router como fallback ─────
+  // Passo 3: a busca semantica sobre o arquivo inteiro (match_trend_chunks)
+  // recupera as trends mais proximas da pergunta, em qualquer periodo. Se ela
+  // falhar (OpenAI, RPC, timeout) OU vier vazia, cai no router por titulo
+  // exatamente como antes. O Advisor NUNCA fica sem contexto.
+  let selectionSource:       SelectionSource
+  let contextBlock:          string
+  let lang:                  Lang
+  let routerUsage:           Usage | null = null
+  let reportIdsUsed:         string[]     = []
+  let trendIdsUsed:          string[]     = []
+  let similarities:          number[]     = []
+  let vectorError:           string | null = null
+  let routerSelection:       'router' | 'fallback' | null = null
 
-  const candidates   = (candidateData ?? []) as CandidateReport[]
-  const candidateIds = new Set(candidates.map(c => c.id))
-  const mostRecentId = candidates[0]?.id
+  const preferLang = detectLanguage(userMessage)
+  const { chunks, error: vErr } = await vectorSearchChunks(service, userMessage)
+  vectorError = vErr
+  const deduped = chunks.length > 0 ? dedupeChunks(chunks, preferLang) : []
 
-  // ── Roteamento: Haiku escolhe; fallback = 3 mais recentes ──────────────────
-  const { result: routed, usage: routerUsage } = await routeContext(userMessage, candidates)
-  let selectionSource: 'router' | 'fallback'
-  let selectedIds: string[]
+  if (deduped.length > 0) {
+    // ── Caminho vetorial ──────────────────────────────────────────────────
+    const refined  = await refineChunks(userMessage, deduped)
+    routerUsage    = refined.usage
+    const selected = refined.selected.length > 0 ? refined.selected : deduped.slice(0, 8)
 
-  if (routed && routed.report_ids.length > 0) {
-    selectedIds = routed.report_ids.filter(id => candidateIds.has(id)).slice(0, 3)
-    selectionSource = selectedIds.length > 0 ? 'router' : 'fallback'
+    selectionSource = 'vector'
+    lang            = refined.language ?? preferLang
+    contextBlock    = buildTrendContextBlock(selected)
+    reportIdsUsed   = [...new Set(selected.map(c => c.report_id))]
+    trendIdsUsed    = selected.map(c => c.trend_id)
+    similarities    = selected.map(c => Number(c.similarity.toFixed(4)))
   } else {
-    selectedIds = []
-    selectionSource = 'fallback'
-  }
-
-  if (selectionSource === 'fallback') {
-    selectedIds = candidates.slice(0, 3).map(c => c.id)
-  } else if (mostRecentId && !selectedIds.includes(mostRecentId)) {
-    // O mais recente entra sempre, para o Advisor saber "onde estamos".
-    selectedIds = [mostRecentId, ...selectedIds].slice(0, 3)
-  }
-
-  // ── Carrega conteúdo completo apenas dos selecionados ──────────────────────
-  let reports: ReportRow[] = []
-  if (selectedIds.length > 0) {
-    const { data: reportsData } = await service
+    // ── Fallback: router por título (comportamento atual, intacto) ─────────
+    // v4.3: limite parcial em 100. Cobre o arquivo atual e dá ao roteador
+    // visibilidade dos relatórios mais antigos quando o usuário pede histórico.
+    const { data: candidateData } = await service
       .from('reports')
-      .select(`id, period, period_label, title_en, executive_summary_en,
-               report_trends(rank, title_en, taime_score, taime_framework_en, then_now_next_en)`)
-      .in('id', selectedIds)
+      .select('id, period, period_label, title_en, title_pt_br, report_trends(title_en, category, theme_slug)')
+      .eq('status', 'published')
       .order('period', { ascending: false })
-    reports = (reportsData ?? []) as ReportRow[]
+      .limit(100)
+
+    const candidates   = (candidateData ?? []) as CandidateReport[]
+    const candidateIds = new Set(candidates.map(c => c.id))
+    const mostRecentId = candidates[0]?.id
+
+    const { result: routed, usage: ru } = await routeContext(userMessage, candidates)
+    routerUsage = ru
+    let selectedIds: string[]
+
+    if (routed && routed.report_ids.length > 0) {
+      selectedIds     = routed.report_ids.filter(id => candidateIds.has(id)).slice(0, 3)
+      routerSelection = selectedIds.length > 0 ? 'router' : 'fallback'
+    } else {
+      selectedIds     = []
+      routerSelection = 'fallback'
+    }
+
+    if (routerSelection === 'fallback') {
+      selectedIds = candidates.slice(0, 3).map(c => c.id)
+    } else if (mostRecentId && !selectedIds.includes(mostRecentId)) {
+      // O mais recente entra sempre, para o Advisor saber "onde estamos".
+      selectedIds = [mostRecentId, ...selectedIds].slice(0, 3)
+    }
+
+    let reports: ReportRow[] = []
+    if (selectedIds.length > 0) {
+      const { data: reportsData } = await service
+        .from('reports')
+        .select(`id, period, period_label, title_en, executive_summary_en,
+                 report_trends(rank, title_en, taime_score, taime_framework_en, then_now_next_en)`)
+        .in('id', selectedIds)
+        .order('period', { ascending: false })
+      reports = (reportsData ?? []) as ReportRow[]
+    }
+
+    selectionSource = 'router_fallback'
+    lang            = routed?.language ?? preferLang
+    contextBlock    = buildReportsBlock(reports)
+    reportIdsUsed   = selectedIds
   }
 
-  // ── Idioma da resposta: router primeiro, heurística como fallback ──────────
-  const lang: Lang = routed?.language ?? detectLanguage(userMessage)
-
-  // ── System em blocos: regras + perfil + relatórios (cacheáveis) e idioma ───
-  // Calculamos reportsBlock uma vez para reuso na rede de segurança de grounding.
-  const reportsBlock = buildReportsBlock(reports)
+  // ── System em blocos: regras + perfil + contexto (cacheáveis) e idioma ─────
+  // contextBlock e reusado na rede de segurança de grounding (mesmo texto).
   const system: SystemBlock[] = [
     { type: 'text', text: RULES_BLOCK,                cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: reportsBlock,               cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: contextBlock,               cache_control: { type: 'ephemeral' } },
     { type: 'text', text: languageInstruction(lang) }, // dinâmico, fora do cache
   ]
 
@@ -494,7 +694,7 @@ export async function POST(req: NextRequest) {
   //    atribuição + preço/prazo sem backing + ferramenta fora do contexto
   //    TAIME em uma checagem única, com UMA retentativa corretiva.
   let groundingViolations: GroundingViolation[] = []
-  const check = runGroundingChecks(reply, reportsBlock)
+  const check = runGroundingChecks(reply, contextBlock)
   if (check.flagged) {
     const bullets = check.violations.map(v => {
       switch (v.type) {
@@ -519,7 +719,7 @@ export async function POST(req: NextRequest) {
       reply      = retry.reply
       stopReason = retry.stopReason
       mainUsage  = retry.usage
-      groundingViolations = runGroundingChecks(reply, reportsBlock).violations
+      groundingViolations = runGroundingChecks(reply, contextBlock).violations
     } else {
       groundingViolations = check.violations
     }
@@ -540,8 +740,12 @@ export async function POST(req: NextRequest) {
   // uma vez por transação e os dois rows ficam com timestamp idêntico, deixando
   // a ordem da reabertura não-determinística. 1ms já basta para o tiebreaker.
   const contextMeta = {
-    report_ids_used:      selectedIds,
+    report_ids_used:      reportIdsUsed,
+    trend_ids_used:       trendIdsUsed,
+    similarities,
     selection_source:     selectionSource,
+    router_selection:     routerSelection,
+    vector_error:         vectorError,
     attribution_flag:     attributionFlag,
     grounding_violations: groundingViolations,
     truncated,

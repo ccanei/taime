@@ -2,6 +2,70 @@
 
 ---
 
+## [2026-06-23] - pgvector Passo 3: busca vetorial no Advisor (hibrido com fallback)
+
+### O que entrou
+- O Advisor agora seleciona contexto por BUSCA SEMANTICA sobre o arquivo inteiro,
+  nao mais so pelos top titulos. Caminho hibrido: vetorial primeiro, router por
+  titulo como rede de seguranca. O Advisor NUNCA fica sem contexto.
+- SEM filtro de plano ainda: period_floor permissivo (2000-01-01) traz todo o
+  acervo. O gate por plano e o Passo 4.
+- NAO mexi em `lib/advisor-grounding.ts` nem no system prompt v4.4 (RULES_BLOCK).
+  Confirmado que o RULES_BLOCK segue valido sem ajuste: o texto ja e agnostico
+  ao mecanismo ("trends e relatorios presentes no contexto"), entao a troca de
+  router por busca vetorial nao exige reescrita.
+
+### Fluxo novo (app/api/advisor/chat/route.ts)
+1. `vectorSearchChunks`: embeda a mensagem (text-embedding-3-small, 1536) e chama
+   a RPC `match_trend_chunks(embedding, '2000-01-01', 16)`. Nunca lanca; devolve
+   `{ chunks, error }`.
+2. `dedupeChunks`: a mesma trend volta como pt e en; mantem uma so, preferindo o
+   idioma da pergunta, empate por similaridade.
+3. `refineChunks` (Haiku): escolhe/ordena as melhores ~8. Mantem a heuristica
+   temporal da v4.3: pergunta historica -> diversidade de periodo + agrupa por
+   theme_slug; estado atual -> recencia. Se o Haiku falhar, usa a ordem por
+   similaridade (top 8). Isso NAO e o fallback do router: o caminho vetorial
+   segue valido.
+4. `buildTrendContextBlock`: monta o contexto com snippet + metadados (period,
+   report_id, rank, theme_slug, category) e o link de ancora
+   `/reports/{report_id}#trend-{rank}` (v4). Mesmo header de "use so as URLs abaixo".
+
+### Fallback (obrigatorio, nao-negociavel)
+- Se a busca vetorial falha (OpenAI, RPC, timeout) OU vem vazia, cai no router
+  por titulo EXATAMENTE como antes (catalogo top-100, Haiku escolhe ate 3, mais
+  recente entra sempre, senao 3 mais recentes).
+- `selection_source`: `'vector' | 'router_fallback'` gravado em context_metadata.
+
+### Instrumentacao (context_metadata)
+- Novos campos: `selection_source`, `trend_ids_used` (trends recuperadas),
+  `similarities`, `router_selection` ('router'|'fallback' quando caiu no fallback),
+  `vector_error` (motivo da queda). Mantidos: report_ids_used, usage, router_usage,
+  attribution_flag, grounding_violations, truncated, language, profile_snapshot.
+- A rede de grounding (`runGroundingChecks`) agora recebe o `contextBlock` ativo
+  (vetorial ou router), entao produtos citados nos chunks continuam reconhecidos.
+
+### Arquivos
+- `taime-web/lib/embeddings.ts` - NOVO. Helper minimo `embedQuery` (mesmo modelo
+  e dims do pipeline). Existe porque o `embeddings-shared` do root nao e
+  importavel do taime-web (pacotes/tsconfig separados). Resultado discriminado,
+  nunca lanca, para o fallback ficar limpo.
+- `taime-web/app/api/advisor/chat/route.ts` - caminho vetorial + fallback +
+  instrumentacao. `routeContext`, `buildReportsBlock` e RULES_BLOCK intactos.
+
+### Validacao
+- `validate-trend-search.ts` (RPC ao vivo, espelha o caminho vetorial): as 3
+  queries retornam diversidade temporal forte. "AI coding evolution over time" ->
+  8 periodos distintos (2024-09 a 2026-04), todos theme=ia-assistentes-codificacao
+  (arco temporal coerente). "cybersecurity quantum risk" -> 2023-09 a 2025-12.
+  Query PT "governanca de IA" -> chunks PT de 2023-10 a 2026-05 (dedupe por idioma
+  ok). selection_source esperado = 'vector' nos tres.
+- Falha forcada (chave OpenAI invalida) -> embed falha -> chunks=[] -> caminho
+  cai em router_fallback. Endpoint exige sessao Strategic autenticada, entao a
+  validacao end-to-end do HTTP fica para teste manual no app.
+- `npm run build`: 0 erros.
+
+---
+
 ## [2026-06-23] - pgvector Passo 2: embedding por trend (busca semantica fina)
 
 ### O que entrou (sem tocar no Advisor)
