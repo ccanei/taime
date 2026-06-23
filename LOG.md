@@ -2,6 +2,179 @@
 
 ---
 
+## [2026-06-23] - pgvector Passo 2: embedding por trend (busca semantica fina)
+
+### O que entrou (sem tocar no Advisor)
+- Camada fina de busca: um chunk de embedding por trend E por idioma (PT/EN),
+  separado do embedding por relatorio (reports.embedding). Objetivo: no Passo 3
+  o Advisor busca trends individuais de qualquer periodo, superando o router
+  atual que so ve os top-6 titulos.
+- NAO toquei em `app/api/advisor/chat/route.ts` nem em report_trends. A
+  substituicao do router e o Passo 3.
+
+### Arquivos
+- `add-trend-embeddings.sql` - tabela `report_trend_embeddings` (entregue, NAO
+  executada pelo pipeline; aplicada manualmente no Supabase SQL Editor).
+- `match-trend-chunks.sql` - RPC `match_trend_chunks(query_embedding, period_floor, match_count)`.
+- `embeddings-shared.ts` - helpers compartilhados (embed OpenAI text-embedding-3-small,
+  vectorLiteral, makeRest, sleep). Unico padrao de embedding do projeto.
+- `generate-trend-embeddings.ts` - backfill idempotente por (trend_id, lang).
+- `validate-trend-search.ts` - prova de busca (3 queries).
+- `generate-embeddings.ts` (relatorio) ficou INTOCADO de proposito, para nao
+  arriscar o pipeline ja completo (130/130).
+
+### Schema report_trend_embeddings
+- id uuid pk; trend_id uuid FK->report_trends (cascade); report_id uuid
+  FK->reports (cascade); period date (herdado do relatorio, gate de plano);
+  rank smallint (ancora #trend-{rank}); lang text CHECK ('pt'|'en'); theme_slug
+  text (continuidade temporal); category text (uma das 14); content text;
+  embedding vector(1536); created_at timestamptz.
+- UNIQUE (trend_id, lang) para idempotencia.
+- Indices: ivfflat (embedding vector_cosine_ops, lists=100) + btree em period,
+  theme_slug, report_id. Alternativa hnsw comentada no arquivo.
+- RLS: ENABLE + policy de SELECT para assinante ativo com relatorio publicado
+  (espelha report_trends). Backend acessa via service_role (bypassa RLS).
+
+### content embeddado (so semantica, sem scores)
+- Ordem: title, taime_score_rationale, taime_framework (type/act/impact/move/exit),
+  then_now_next (then/now/next), org_implications (technology/hr/finance/
+  marketing/operations), recommended_move. PT usa *_pt_br; EN usa *_en.
+
+### Backfill (resultado real)
+- 581 trends publicadas -> 1162 chunks (PT+EN). Persistidos: 1162, 0 com
+  embedding NULL. Idempotencia confirmada (re-run = "Nada a fazer").
+- Custo: ~1,49M tokens em 1 passada = US$ 0,0297 (~3,0 centavos de dolar).
+  Levemente acima do 1-2 cents previsto porque o content da trend e mais rico
+  que o do relatorio (framework + then/now/next + org_implications + rationale).
+- BUG corrigido durante o backfill: o helper REST fazia r.json() no corpo VAZIO
+  que o PostgREST devolve em POST com return=minimal (201 sem body), lancando
+  "Unexpected end of JSON input" DEPOIS de o insert ja ter persistido. Efeito
+  colateral: cada chunk re-tentou ate 3x (3x chamadas OpenAI), entao o custo
+  REAL faturado foi ~3x = ~US$ 0,089 (~8,9 centavos). Fix: ler o corpo como
+  texto e so parsear se houver conteudo. Re-run pos-fix nao gera mais erro.
+
+### Validacao da busca (match_trend_chunks, period_floor Strategic, top 8)
+- "AI coding evolution over time": 8 trends do tema ia-assistentes-codificacao,
+  periodos 2024-09, 2024-10, 2024-12, 2025-01, 2025-04, 2025-06, 2026-01,
+  2026-04. Traz periodos antigos que o router top-6 nao pegava. sim ~0,49-0,51.
+- "cybersecurity quantum risk": temas computacao-quantica-comercial e
+  ia-ciberseguranca-corrida-armamentista (cat Infrastructure/Cybersecurity),
+  periodos 2023-09 ate 2025-12. sim ~0,63-0,65.
+- "governanca de IA" (query PT): retorna chunks lang=pt do tema governanca-ia
+  (cat Regulation), periodos 2023-10, 2024-04, 2024-05, 2025-12, 2026-02,
+  2026-05, 2026-06. sim ~0,63-0,65. Como cada trend tem chunk PT e EN, toda
+  trend e recuperavel em qualquer idioma de query (infra bilingue).
+
+### Desacoplamento (mantido)
+- Embedding por trend e manual, roda por script apos publish. NAO foi plugado no
+  publish automatico (mesma postura do embedding por relatorio). Apos novo batch:
+  rodar `npx ts-node generate-trend-embeddings.ts` (idempotente).
+
+---
+
+## [2026-06-23] - Batch 2023-06 (Opus 4.8, 1º batch com filter encadeado)
+
+### Status
+- [x] 2/2 períodos completos (2023-06-01 + 2023-06-16)
+- [x] 6 relatórios gerados, todos `pending_review` + `published_at=null`
+- [x] temporal_breach agregado: **0**
+- [x] judge_parse_error agregado: **0** (em 33 trends julgadas)
+- [x] NO_AUTO_PUBLISH=1 honrado em geração e validação
+- [x] Sem travessões em texto novo · NÃO commitado
+
+### Pré-voo
+- `generate-report.ts` com `GENERATION_MODEL = 'claude-opus-4-8'` e `temperature`
+  comentada (alinhado com batches Opus anteriores).
+- `period-utils.ts` confirma `biweekly` para 2022+.
+- `caffeinate -i -w $$` ligado dentro do shell do batch para o laptop não hibernar.
+- Range vazio antes do start: nenhum relatório prévio em 2023-06.
+
+### Pipeline executado
+Primeira execução real do batch com a chain `collect → filter → analyze →
+generate → validate` (commit `283e6ef` do filter encadeado). Cada período
+passou pelo filter ANTES do clustering pela primeira vez.
+
+- Run 1: 1/2 concluídos. 2023-06-01 saiu inteiro; 2023-06-16 falhou no metadata
+  Opus ("Expected double-quoted property name at position 4419" no trend
+  "Data Lakehouse, Governance, and Unity Catalog"). Mesma classe de erro
+  dos batches anteriores, fora deste escopo.
+- Run 2 (`--resume`): 2023-06-16 recuperado, 3 relatórios gerados.
+- Run 3 (`--resume`): no-op idempotente.
+
+### Efeito do filter is_noise (primeiro batch com ele encadeado)
+
+| Período | Sinais total | Ruído | % ruído | Úteis (analyze) |
+|---|---|---|---|---|
+| 2023-06-01 | 582 | 112 | **19.2%** | 470 |
+| 2023-06-16 | 615 | 91  | **14.8%** | 524 |
+| Agregado   | 1197 | 203 | **17.0%** | 994 |
+
+O filter removeu ~17% do volume bruto antes do clustering. O analyze rodou
+sobre signal-to-noise melhor, e os clusters cobriram mais sinais úteis:
+339/470 (72%) em 06-01 e 324/480 (67%) em 06-16. Sem o filter, esses mesmos
+clusters teriam absorvido ruído ou aumentado o "Sem cluster" descartado.
+
+### Resultados por período
+
+#### 2023-06-01 (3 relatórios, 15 trends)
+
+| # | id | trends | scores | Score médio | sinais | verdict | flags | temporal |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `c6211061` | 5 | 89, 82, 84, 74, 84 | 82.6 | 339 | fail | 14 | 0 |
+| 2 | `fc9b2063` | 5 | 79, 79, 42, 72, 74 | 69.2 | 339 | fail | 6 | 0 |
+| 3 | `20378daa` | 5 | 64, 74, 82, 84, 71 | 75.0 | 339 | needs_review | 4 | 0 |
+
+Score médio do período: **75.6**. Flags: 24 totais (1 det, 22 grnd, 0 temporal, 1 source, 0 judge_parse).
+Clusters formados: 15. Sinais cobertos: 339/470.
+
+#### 2023-06-16 (3 relatórios, 18 trends)
+
+| # | id | trends | scores | Score médio | sinais | verdict | flags | temporal |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `641f5d2f` | 6 | 89, 84, 72, 84, 74, 79 | 80.3 | 324 | needs_review | 1 | 0 |
+| 2 | `04864391` | 6 | 79, 79, 74, 84, 72, 68 | 76.0 | 324 | fail | 4 | 0 |
+| 3 | `e1fa2ae8` | 6 | 54, 79, 64, 68, 44, 68 | 62.8 | 324 | needs_review | 4 | 0 |
+
+Score médio do período: **73.1**. Flags: 9 totais (1 det, 7 grnd, 0 temporal, 1 source, 0 judge_parse).
+Clusters formados: 18. Sinais cobertos: 324/480.
+
+### Custo Opus 4.8
+
+| Período | input | output | cache_write | cache_read | Custo USD |
+|---|---|---|---|---|---|
+| 2023-06-01 | 244784 | 83022  | 93657  | 2746761 | $15.77 |
+| 2023-06-16 | 399136 | 160020 | 174758 | 5011317 | $28.78 |
+| **TOTAL** | 643920 | 243042 | 268415 | 7758078 | **$44.56** |
+
+2023-06-16 destoa porque o resume re-executou trends e metadata após a falha
+do run 1 (mesmo padrão do batch 2024-H1). Sem retry, ~$15-16 seria o custo
+nominal. 3 relatórios por período significam ~5-6 trends extras vs. períodos
+de 2 relatórios, então o custo nominal por período (com 3 splits) sobe para
+~$15, contra ~$8-9 dos períodos de 2 splits.
+
+### Observações
+- **Filter encadeado funcionou:** primeiro batch real com a chain completa,
+  sem nenhum problema de orquestração. is_noise gravado em todos os sinais,
+  analyze leu correto (`is_noise=eq.false`), clusters formados sobre o
+  conjunto filtrado. Idempotência confirmada (run 3 no-op).
+- **3 relatórios por período** (split em vez de 2): 2023-06 tem 15-18
+  clusters, divididos em 3 reports de 5-6 trends cada. Comportamento normal
+  do generate-report quando o pipeline forma muitos clusters.
+- **temporal_breach: 0 em todos os 6 relatórios.** Opus continua firme no
+  boundary.
+- **judge_parse_error: 0 em 33 trends julgadas.** Fix v94a0640 (Camada 1 +
+  Camada 2 do parse) segue 100% efetivo.
+- Trend de score 42 em 2023-06-01 R2 e scores 44/54/64 em 2023-06-16 R3
+  estão abaixo da faixa típica (60+), o que costuma indicar temas
+  emergentes ou de baixa convergência. Esperado para período histórico
+  (jun/2023 = pré-GPT-4 enterprise rollout, pré-Anthropic Claude 2);
+  curadoria humana decide se aceita ou recusa pelos critérios usuais.
+
+### Arquivos
+- Sem mudança em código de pipeline. NÃO commitado.
+
+---
+
 ## [2026-06-23] - Backfill de embeddings dos relatórios (78/130 -> 130/130)
 
 ### Resultado
