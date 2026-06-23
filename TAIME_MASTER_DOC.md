@@ -81,8 +81,8 @@ Implementada. A captura de inscritos vive em `/radar` (componente `NewsletterSig
 
 **Fluxo real**:
 
-1. **Briefing diário** já existe via `/api/cron/radar-briefing` (11:00 UTC, 08:00 BRT). Gera 1 linha em `radar_briefings` com `title_pt/en` e `body_pt/en` a partir dos sinais das últimas 24h. Idempotente por `briefing_date`.
-2. **Envio** roda 30 min depois em `/api/cron/newsletter-send` (11:30 UTC, 08:30 BRT). Lê o briefing do dia, lista os inscritos ativos, monta um e-mail por idioma (template dark table-based, mesmo padrão visual dos e-mails de aprovação) e dispara em lotes via endpoint `/emails/batch` do Resend (até 100 por chamada). Skip seguro quando: não há briefing do dia, não há ativos, ou o envio do dia já saiu (idempotência por `briefing_date` + status `sent` ou `partial`).
+1. **Briefing diário** via `/api/cron/radar-briefing` (11:00 UTC, 08:00 BRT). Gera 1 linha em `radar_briefings` com `title_pt/en` e `body_pt/en` a partir dos sinais das últimas 24h. Idempotente por `briefing_date`. Ao final, **encadeia o envio da newsletter** (ver item 2).
+2. **Envio** roda encadeado ao briefing, no mesmo cron, logo após `radar_briefings` ser persistido com sucesso. A lógica vive em `lib/newsletter/send-daily.ts` (função `sendDailyNewsletter()`): lê o briefing do dia, lista os inscritos ativos, monta um e-mail por idioma (template dark table-based, mesmo padrão visual dos e-mails de aprovação) e dispara em lotes via endpoint `/emails/batch` do Resend (até 100 por chamada). Skip seguro quando: não há briefing do dia, não há ativos, ou o envio do dia já saiu (idempotência por `briefing_date` + status `sent` ou `partial`). A chamada está em try/catch próprio dentro do cron do briefing, então uma falha no envio não derruba o sucesso do briefing já gravado. Por que encadeado: o plano Hobby da Vercel garante apenas precisão per-hour (±59 min); dois crons agendados na mesma janela 11h UTC ficam fora de ordem (o envio podia disparar antes do briefing existir, caindo em `no_briefing_today`). A rota `/api/cron/newsletter-send` continua existindo como gatilho **manual** (curl com Bearer `CRON_SECRET`) e usa a mesma `sendDailyNewsletter()`, servindo para teste e reenvio manual.
 3. **Rodapé** carrega link de unsubscribe por inscrito, derivado do `unsubscribe_token` da `newsletter_subscribers`. Clicar marca `status='unsubscribed'` e a página de confirmação é bilíngue (`/api/newsletter/unsubscribe?token=...`). Token inválido cai em página neutra que não revela se o e-mail existe.
 4. **Histórico** próprio. Cada envio grava 1 linha em `newsletter_sends` com snapshot do conteúdo (subject + body PT e EN) e contagens (`recipient_count`, `sent_count`, `failed_count`, `status`). Cada destinatário do envio vira 1 linha em `newsletter_send_recipients` com `delivered` e `error`. O snapshot é deliberado: preserva o que foi enviado mesmo que o briefing seja editado depois.
 5. **Admin** em `/admin/newsletter` com duas seções: Inscritos (filtros por status, busca por email, bloquear/reativar/remover com rastro de quem mudou e quando) e Envios (cada envio expansível, mostrando conteúdo enviado e a lista de destinatários por GET sob demanda). Inscrição já entra `active`, sem fila de aprovação. Ver seção 12 (Admin) e seção 7 (Banco).
@@ -485,6 +485,36 @@ Preços em USD e BRL serão anunciados quando Stripe for integrado.
 - **Stripe: pendente.** O gate lê a tabela `subscriptions` (status `active`),
   compatível com a futura integração, sem necessidade de mudança no gate quando
   o Stripe entrar.
+
+### Atualização de janelas e Advisor por plano - 2026-06-18
+
+Refina os limites de histórico e o acesso do Advisor por plano (substitui as
+janelas mencionadas na decisão de 2026-06-11):
+
+- **FREE:** 2 relatórios completos por mês (janela móvel de 30 dias) · histórico
+  completo de **1 ano** (12 meses) · **sem** Executive Advisor.
+- **ESSENTIAL:** histórico completo de **3 anos** (36 meses) · **preview de todo o
+  arquivo restante** (períodos mais antigos que 36 meses, borrados, como gancho de
+  upgrade) · Executive Advisor com **uso mensal limitado** e **contexto de 36
+  meses** (recusa honesta + CTA de upgrade quando o usuário pedir período que está
+  em modo preview).
+- **STRATEGIC:** arquivo **completo na íntegra** (sem preview) · Executive Advisor
+  **ampliado**, com acesso ao acervo completo (via pgvector quando pronto).
+
+Racional: o diferencial do Strategic é ler TODO o arquivo na íntegra (que, com o
+histórico 2000-2024 completo, chega a ~25 anos) vs. o preview borrado do Essential.
+Os 36 meses do Essential e o contexto de 36 meses do Advisor são intencionalmente
+iguais, mantendo a coerência "o Advisor enxerga exatamente o que o plano dá acesso
+completo".
+
+Dependência de acervo: a promessa de 36 meses completos exige o histórico real até
+36 meses atrás. Em 2026-06, isso significa gerar até junho/2023 (2023-H2 já gerado;
+falta fechar junho/2023). Preview depende do acervo 2020+ existir.
+
+Estado de implementação: a regra de janelas por plano (renderização completo vs.
+preview) e os limites de mensagens do Advisor (Essential limitado / Strategic
+ampliado) são desenvolvimento futuro; hoje o gate é binário (só Strategic vê o
+Advisor). O site comunica a estrutura-alvo enquanto o acervo é populado.
 
 -----
 

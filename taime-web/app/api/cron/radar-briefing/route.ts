@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { sendDailyNewsletter } from '@/lib/newsletter/send-daily'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -212,7 +213,28 @@ export async function GET(request: Request) {
       throw new Error(`Supabase briefing insert: ${insertRes.status}: ${err}`)
     }
 
-    return NextResponse.json({ success: true, count: signals.length, briefing_date: briefingDate })
+    // ── 6. Encadeia o envio da newsletter no mesmo cron ────────────────────
+    // Plano Hobby da Vercel tem precisão per-hour (±59 min); ordenar dois
+    // crons agendados na mesma janela 11h UTC é impossível. Chamando o envio
+    // aqui, briefing antes, envio depois, sempre. Try/catch próprio garante
+    // que falha no envio não derruba o sucesso do briefing já persistido.
+    let newsletterResult: unknown = null
+    try {
+      const sendOutcome = await sendDailyNewsletter()
+      console.log('Chained newsletter send result:', JSON.stringify(sendOutcome))
+      newsletterResult = sendOutcome
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('Chained newsletter send threw:', msg)
+      newsletterResult = { ok: false, error: msg }
+    }
+
+    return NextResponse.json({
+      success:       true,
+      count:         signals.length,
+      briefing_date: briefingDate,
+      newsletter:    newsletterResult,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error('Radar briefing cron error:', msg)

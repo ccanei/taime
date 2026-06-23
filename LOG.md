@@ -2,6 +2,68 @@
 
 ---
 
+## [2026-06-22] - Newsletter encadeada ao briefing (cron único, limite Hobby)
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Rota `/api/cron/newsletter-send` ainda presente no output do build (gatilho manual)
+- [x] Sem travessões em linhas adicionadas
+
+### Problema
+Plano Hobby da Vercel garante apenas precisão per-hour (±59 min). Os dois
+crons `radar-briefing` (agendado 11:00 UTC, observado rodando ~11:44 UTC)
+e `newsletter-send` (agendado 11:30 UTC) caíam na mesma janela e o envio
+podia disparar antes do briefing existir, caindo em `no_briefing_today` e
+não enviando. Disparo manual já funcionava, confirmando que o código de
+envio estava correto: o defeito era o encadeamento por agendamento.
+
+### Correção
+Eliminar `/api/cron/newsletter-send` como cron agendado e chamar o envio
+em sequência no fim do `/api/cron/radar-briefing`, no mesmo cron. Ordem
+garantida pelo código, imune à imprecisão do Hobby.
+
+### Mudanças
+
+1. **Nova lib `taime-web/lib/newsletter/send-daily.ts`**: função
+   `sendDailyNewsletter()` extraída da rota antiga, comportamento idêntico
+   (lê briefing do dia, idempotência por `briefing_date` + status
+   `sent`/`partial`, lista assinantes ativos, envia em lote via Resend
+   `/emails/batch`, grava `newsletter_sends` + `newsletter_send_recipients`
+   com snapshot). Retorna `SendDailyResult` estruturado (skipped+reason,
+   ou sent/failed/recipient_count/status, ou ok=false+error).
+
+2. **`taime-web/app/api/cron/radar-briefing/route.ts`**: depois do INSERT
+   bem-sucedido em `radar_briefings`, chama `sendDailyNewsletter()` em
+   try/catch isolado. Falha no envio é logada mas não derruba o sucesso
+   do briefing já gravado. O retorno do cron agora inclui `newsletter`
+   com o resultado da chamada.
+
+3. **`taime-web/app/api/cron/newsletter-send/route.ts`**: refatorada para
+   wrapper fino que continua exigindo Bearer `CRON_SECRET` e chama a
+   mesma `sendDailyNewsletter()`. Mantida como gatilho manual para teste
+   e reenvio, conforme briefing.
+
+4. **`taime-web/vercel.json`**: removida a entrada
+   `{ "path": "/api/cron/newsletter-send", "schedule": "30 11 * * *" }`.
+   Resultam **2 crons agendados**: `radar` (10:00 UTC) e `radar-briefing`
+   (11:00 UTC, que dispara o envio em seguida).
+
+### Comportamento garantido
+- Geração do briefing falhou: envio **não é chamado**.
+- Geração OK, envio falha: briefing fica gravado, exception capturada e
+  logada, cron retorna `success: true` com `newsletter.ok=false` no payload.
+- Geração OK, envio OK: tudo fica consistente, retorna `success: true` com
+  `newsletter.ok=true` e contadores no payload.
+
+### Arquivos
+- `taime-web/lib/newsletter/send-daily.ts` (novo)
+- `taime-web/app/api/cron/radar-briefing/route.ts` (import + chamada encadeada)
+- `taime-web/app/api/cron/newsletter-send/route.ts` (wrapper manual)
+- `taime-web/vercel.json` (remove 3º cron)
+- `TAIME_MASTER_DOC.md` (Camada 4 atualizada)
+
+---
+
 ## [2026-06-22] - Advisor v4.4: calibração de raciocínio (analítico, sem afrouxar grounding)
 
 ### Status
