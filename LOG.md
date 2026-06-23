@@ -2,6 +2,80 @@
 
 ---
 
+## [2026-06-22] - Advisor v4.4: calibração de raciocínio (analítico, sem afrouxar grounding)
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Sem travessões em linhas adicionadas
+- [x] Mudança restrita ao system prompt em `app/api/advisor/chat/route.ts`.
+  Router, grounding-safety e mecanismo de seleção intocados.
+
+### Problema
+O Advisor estava competente porém descritivo ("o relatório X documenta Y, e
+para a empresa significa Z"). Sintetizava bem mas não cruzava tensões entre
+trends, não levantava o que o cliente não perguntou, não desafiava premissas,
+e tratava períodos diferentes como snapshots soltos. Postura de bom resumidor,
+não de consultor sênior.
+
+### Mudanças no `RULES_BLOCK`
+
+**Nova seção REASONING POSTURE** entre `CONVERSATION RULES` e `LINKING RULES`,
+com 4 regras numeradas:
+
+- **7. CROSS TENSIONS.** Quando duas trends/relatórios no contexto puxam em
+  direções opostas (velocidade vs segurança; consolidação vs resiliência
+  multi-vendor; execução vs governança), nomear o conflito explicitamente em
+  vez de tratar cada lado isolado. "O cliente te contrata para revelar o
+  trade-off, não para resumir as duas colunas."
+- **8. SURFACE THE UNASKED.** Quando o contexto expõe um risco/oportunidade
+  que a pergunta do usuário não tocou, levantar com um handle claro
+  (`the question you did not ask, but that matters here: ...`).
+- **9. CHALLENGE PREMISES.** Quando os sinais do contexto contradizem uma
+  suposição da pergunta, dizer com respeito e fundamentado, e fechar
+  convidando o contraditório (`if you see this differently, tell me why`).
+  "Default agreement is not advisory work."
+- **10. CONNECT TEMPORAL TRAJECTORY.** Quando o contexto inclui trends de
+  períodos diferentes sobre o mesmo tema, traçar a evolução como arco único
+  (then, now, next), não como snapshots soltos. Se houver gap entre os
+  períodos disponíveis, **nomear o gap** em vez de preencher com invenção.
+
+**Bloco de fronteira `REASONING VS FACTS BOUNDARY`** (para evitar que
+raciocínio mais livre vire alucinação):
+
+> "The analysis above is yours to make. The underlying facts are not. You may
+> infer relations between facts documented in the current context. You may not
+> invent facts to support an inference. When a tension or trajectory you want
+> to draw lacks enough signal in the current context, say the signal is partial
+> and stop there; do not fill the gap with supposition. Every rule from 1 to 4
+> still applies without exception."
+
+**Bloco `DEPTH, NOT VOLUME`** (densidade contra inchar a resposta):
+
+> "A sharper response is not a longer response. Analytical depth shows up in
+> tight sentences, not in extra paragraphs. The 200 to 400 word default still
+> holds. A well named tension in two sentences beats three paragraphs of
+> description."
+
+### Renumeração
+LINKING RULES virou regra 11 (era 7). HOW YOU RECEIVE REPORTS, YOUR ROLE e
+COMMUNICATION STYLE seguem na mesma ordem, sem numeração.
+
+### Agnosticismo ao mecanismo de contexto
+Todo o bloco novo refere-se a "the trends and reports in the current context"
+ou "the loaded context", NUNCA a "the 3 reports from the router". Pgvector
+muda como o contexto é montado, não muda o que essas regras pedem do
+raciocínio.
+
+### Cache
+Alterar `RULES_BLOCK` invalida o cache ephemeral uma vez (esperado). A partir
+do próximo turno o cache volta a hidratar.
+
+### Arquivos
+- `taime-web/app/api/advisor/chat/route.ts` (apenas `RULES_BLOCK` + comentário
+  v4.4 no header). Nada mais tocado.
+
+---
+
 ## [2026-06-22] - Planos: copy correto (Essential 3 anos + preview + Advisor, Free com clareza)
 
 ### Status
