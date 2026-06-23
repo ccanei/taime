@@ -199,7 +199,16 @@ async function main(): Promise<void> {
       ok = false;
     }
 
-    // Step 2: analyze (only if collect succeeded)
+    // Step 2: filter (triagem de ruído antes do clustering; idempotente,
+    // regrava is_noise em todos os sinais do período, safe para --resume).
+    if (ok) {
+      console.log(`  → filter-signals.ts`);
+      if (!runStep(path.join(scriptBase, 'filter-signals.ts'), key, info.labelPt)) {
+        ok = false;
+      }
+    }
+
+    // Step 3: analyze (lê is_noise=false; só roda se collect+filter passaram)
     if (ok) {
       console.log(`  → analyze-signals.ts`);
       if (!runStep(path.join(scriptBase, 'analyze-signals.ts'), key, info.labelPt)) {
@@ -207,7 +216,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // Step 3: generate (only if both previous steps succeeded)
+    // Step 4: generate (só se todos os anteriores passaram)
     if (ok) {
       console.log(`  → generate-report.ts`);
       if (!runStep(path.join(scriptBase, 'generate-report.ts'), key, info.labelPt)) {
