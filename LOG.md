@@ -2,6 +2,74 @@
 
 ---
 
+## [2026-06-22] - Planos: copy correto (Essential 3 anos + preview + Advisor, Free com clareza)
+
+### Status
+- [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
+- [x] Sem travessões em linhas adicionadas
+
+### Estrutura de planos consolidada
+- FREE: 2 relatórios completos/mês, histórico de 1 ano, sem Advisor.
+- ESSENTIAL: histórico completo de 3 anos + preview de todo o arquivo
+  anterior; Executive Advisor com uso mensal limitado.
+- STRATEGIC: arquivo completo na íntegra; Executive Advisor ampliado.
+
+### Mudanças
+
+**Cards da home (`taime-web/lib/i18n/{pt,en}.ts` em `home.plans`):**
+
+- Free:
+  - desc PT: "Comece a decidir com dados reais" (era "Preview dos relatórios públicos")
+  - desc EN: "Start deciding with real data"
+  - features PT: `['2 relatórios completos por mês', 'Histórico de 1 ano', 'Score e framework completos']`
+  - features EN: `['2 full reports per month', '1 year of history', 'Full score and framework']`
+  - CTA inalterado.
+- Essential:
+  - features PT: substituí `Histórico de 1 ano` por `Histórico completo de 3 anos`;
+    adicionei `Preview de todo o histórico anterior` e `Executive Advisor (uso limitado)`.
+  - features EN: `3 years of full history`, `Preview of the full prior archive`,
+    `Executive Advisor (limited use)`.
+- Strategic:
+  - features PT: `['Tudo do Essencial', 'Arquivo histórico completo', 'Executive Advisor ampliado']`.
+  - features EN: `['Everything in Essential', 'Full historical archive', 'Extended Executive Advisor']`.
+
+**Página /planos (`taime-web/app/planos/page.tsx` + i18n `planos`):**
+
+- `planCards[0].desc` (free) atualizado para "Comece a decidir com dados reais" / "Start deciding with real data".
+- `featureLabels` (string[]) + `FEATURE_VALUES` (const local) substituídos por
+  `planFeatures` (objeto único por linha) no i18n. Ganha valores localizados
+  por linha sem hardcode na página.
+- 3 linhas trocadas/adicionadas:
+  - `Histórico` (era boolean): Free `1 ano`, Essential `3 anos`, Strategic `Completo`. EN: `1 year` / `3 years` / `Full`.
+  - `Preview do histórico` (linha nova): Free vazio, Essential `Todo o arquivo`, Strategic vazio. EN: `Archive preview` com `Full archive`.
+  - `Executive Advisor` (linha nova): Free vazio, Essential `Uso limitado`, Strategic `Ampliado`. EN: `Limited` / `Extended`.
+- Linhas redundantes removidas: `Histórico 1 ano`, `Relatórios quinzenais`,
+  `Histórico completo desde 2000` (todas absorvidas pela nova linha `Histórico`).
+- `Check` component preservado: renderiza traço para boolean false, check para true, texto literal para string.
+
+**Explicação do Executive Advisor (i18n `advisorExplain`):**
+
+PT: "Executive Advisor: assistente estratégico que responde suas perguntas com
+base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos
+recomendados de cada período. Em breve."
+
+EN: "Executive Advisor: a strategic assistant that answers your questions using
+TAIME's report archive, bringing context, scores and recommended moves from
+every period. Coming soon."
+
+Inserida em dois lugares, ambos como nota curta (sem reescrever layout):
+- Home (`app/page.tsx`): centralizada debaixo de `plansNote`, na mesma seção
+  de planos (`text-xs text-zinc-500 max-w-3xl mx-auto`).
+- /planos (`app/planos/page.tsx`): debaixo da tabela comparativa,
+  alinhada à esquerda (`text-xs text-zinc-500 max-w-3xl`).
+
+### Arquivos
+- `taime-web/lib/i18n/pt.ts`, `taime-web/lib/i18n/en.ts`
+- `taime-web/app/page.tsx`
+- `taime-web/app/planos/page.tsx`
+
+---
+
 ## [2026-06-18] - Planos: CTA do free vira "Criar conta" + barra de uso em /conta
 
 ### Status

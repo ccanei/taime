@@ -870,6 +870,9 @@ export default async function LandingPage() {
             })}
           </div>
           <p className="text-center text-xs text-zinc-400">{h.plansNote}</p>
+          <p className="mt-4 text-xs text-zinc-500 leading-relaxed max-w-3xl mx-auto text-center">
+            {h.advisorExplain}
+          </p>
         </div>
       </section>
 

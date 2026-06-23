@@ -10,20 +10,6 @@ import { useLocale } from '@/lib/useLocale'
 // Mapeamos o índice para a chave de plano usada pelo /login?plan=...
 const PLAN_KEYS = ['free', 'essential', 'strategic'] as const
 
-const FEATURE_VALUES: { free: boolean | string; essential: boolean | string; strategic: boolean | string }[] = [
-  { free: true,  essential: true,  strategic: true  }, // Preview dos relatórios
-  { free: true,  essential: true,  strategic: true  }, // TAIME Score geral
-  { free: false, essential: true,  strategic: true  }, // Análise completa das trends
-  { free: false, essential: true,  strategic: true  }, // Framework
-  { free: false, essential: true,  strategic: true  }, // Score dimensions
-  { free: false, essential: true,  strategic: true  }, // THEN / NOW / NEXT
-  { free: false, essential: true,  strategic: true  }, // Implicações organizacionais
-  { free: false, essential: true,  strategic: true  }, // Gatilhos de decisão
-  { free: false, essential: true,  strategic: true  }, // Histórico 1 ano
-  { free: false, essential: false, strategic: true  }, // Relatórios quinzenais
-  { free: false, essential: false, strategic: true  }, // Histórico completo desde 2000
-]
-
 function Check({ val }: { val: boolean | string }) {
   if (val === false) return <span className="text-zinc-300 text-lg font-light">—</span>
   if (val === true)  return <span className="text-emerald-600 font-bold">✓</span>
@@ -35,10 +21,7 @@ export default function PlanosPage() {
   const p = t.planos
   const [open, setOpen] = useState<number | null>(null)
 
-  const featureRows = FEATURE_VALUES.map((vals, i) => ({
-    label: (p.featureLabels as readonly string[])[i] ?? '',
-    ...vals,
-  }))
+  const featureRows = p.planFeatures
 
   return (
     <div className="min-h-screen bg-white">
@@ -125,6 +108,9 @@ export default function PlanosPage() {
             </table>
           </div>
         </div>
+        <p className="mt-5 text-xs text-zinc-500 leading-relaxed max-w-3xl">
+          {p.advisorExplain}
+        </p>
       </section>
 
       {/* ── FAQ DE PLANOS ────────────────────────────────────────────── */}
