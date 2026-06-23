@@ -2,7 +2,41 @@
 
 ---
 
-## [2026-06-22] - Newsletter encadeada ao briefing (cron único, limite Hobby)
+## [2026-06-23] - Backfill de embeddings dos relatórios (78/130 -> 130/130)
+
+### Resultado
+- 52 relatórios publicados sem `reports.embedding` foram embeddados. Agora
+  130/130 publicados têm vetor. 0 falhas.
+- Pipeline reusado, sem criar nada novo: `generate-embeddings.ts`
+  (text-embedding-3-small, 1536 dims). Idempotente por construção: seleciona
+  `status=eq.published&embedding=is.null`, pula os que já têm vetor.
+- Custo: menos de 1 centavo (~0.2 cent). text-embedding-3-small custa US$ 0,02
+  por 1M tokens; os 52 relatórios somam dezenas de milhares de tokens de input
+  (título + executive summary PT/EN + títulos/categorias das trends).
+
+### Causa da defasagem
+- A geração de embedding é um passo MANUAL e desacoplado: só roda quando alguém
+  executa `generate-embeddings.ts` à mão. Nem `generate-report.ts` nem a ação de
+  publish do admin (`taime-web/app/api/admin/report-action/route.ts`) disparam
+  embedding.
+- O script foi rodado uma vez (cobriu os 78 primeiros). Depois disso, o backfill
+  histórico (períodos de 2023, 2024, além de 2015-06 e 2016-06), criado entre
+  2026-06-16 e 2026-06-18, entrou como published sem nunca passar pelo script.
+  Por isso parou em 78: não é falha do script, é ausência de gatilho automático
+  no fluxo de publish.
+
+### Onde plugar daqui pra frente (NÃO auto-disparado ainda)
+- Ponto natural: `report-action/route.ts`, no ramo `newStatus === 'published'`
+  (onde já se grava `published_at`). Ali caberia disparar o embedding do
+  relatório recém-publicado.
+- Não foi conectado agora porque não é trivial: a lógica de embedding vive num
+  script CLI (fetch direto ao PostgREST/OpenAI) e a rota é serverless; conectar
+  exigiria extrair `buildEmbedText` + `embed` + `saveEmbedding` para um módulo
+  compartilhado (ex.: `taime-web/lib/embeddings.ts`) e tratar custo/latência no
+  caminho da request. Fica como recomendação, sem alterar o Advisor nem
+  report_trends.
+- Alternativa de baixo risco: manter manual e rodar `generate-embeddings.ts`
+  após cada batch de publish (ele é idempotente e só processa os pendentes).
 
 ### Status
 - [x] `npm run build` (taime-web): ✓ Compiled successfully, 0 erros
