@@ -2,6 +2,58 @@
 
 ---
 
+## [2026-06-23] - pgvector Passo 4: filtro de plano no Advisor (period_floor por plano)
+
+### Regra de produto (Opcao C)
+- A janela de contexto do Advisor = a janela de relatorios do plano. strategic ve
+  todo o arquivo; essential ve os ultimos 36 meses. Hoje so existe usuario
+  Strategic, entao isto fica DORMENTE ate o Essential ativar, mas deixa a infra de
+  plano completa antes do Stripe.
+
+### TAREFA 0 - janela centralizada (lib/plan.ts)
+- `getAdvisorWindowMonths(plan)`: strategic -> null (sem limite); essential e
+  qualquer outro caso que chegue aqui -> 36. UNICO lugar onde o numero 36 vive.
+- `getAdvisorPeriodFloor(plan, now)`: deriva o piso. strategic -> piso permissivo
+  `ADVISOR_PERMISSIVE_FLOOR` ('2000-01-01'); essential -> 'YYYY-MM-01' de
+  (hoje - 36 meses), calculado em UTC.
+
+### TAREFA 1 - period_floor derivado do plano (route.ts)
+- `vectorSearchChunks` virou `matchTrendChunks(service, embedding, periodFloor,
+  matchCount)`: embedding gerado UMA vez no handler e reusado. period_floor agora
+  vem de `getAdvisorPeriodFloor(plan)`. Strategic = permissivo (identico ao Passo 3).
+
+### TAREFA 2 - recusa construtiva no preview (so Essential)
+- Quando o plano e restrito (windowMonths !== null), uma SEGUNDA busca leve com
+  piso permissivo detecta trends relevantes ANTES da janela. `collectOutOfWindow`
+  guarda so a existencia (period, theme_slug, title da primeira linha do content),
+  NAO o conteudo completo. Max 4 itens, dedupe por period+theme.
+- `buildOutOfWindowBlock`: bloco condicional injetado no system (dinamico, fora do
+  cache) mandando responder o que cabe na janela E sinalizar honestamente que ha
+  analise mais profunda/antiga no Strategic. Recusa parcial e construtiva, nunca
+  seca, sem fabricar o conteudo fora da janela. Strategic nunca recebe este bloco.
+
+### TAREFA 3 - instrumentacao (context_metadata)
+- Novos: `plan`, `period_floor` usado, `out_of_window_hit` (bool). Mantidos os
+  campos do Passo 3 (selection_source, trend_ids_used, similarities, etc.).
+
+### Preservado / sem regressao
+- Strategic (unico plano ativo): period_floor permissivo, sem segunda busca, sem
+  bloco de upgrade. Comportamento identico ao Passo 3. Fallback, grounding-safety
+  e calibracao v4.4/v4.5 intactos.
+
+### Validacao (validate-plan-window.ts, RPC ao vivo)
+- period_floor: strategic -> 2000-01-01; essential (hoje=2026-06-23) -> 2023-06-01.
+- Janela respeitada: a RPC nao retorna nada antes do piso (essential e piso apertado).
+- out_of_window HOJE com 36 meses = false: o arquivo comeca ~2023-08, dentro da
+  janela. Com piso apertado de demonstracao (2025-06-01) o mecanismo dispara e
+  coleta so itens fora da janela (ex: quantica 2023-12, 2024-01, 2025-01/02), sem
+  conteudo completo. Strategic nunca dispara.
+- `npm run build`: 0 erros.
+- Validacao end-to-end via HTTP exige sessao Essential real (nao existe ainda);
+  fica para quando o Stripe criar o primeiro Essential.
+
+---
+
 ## [2026-06-23] - Advisor v4.5: re-elaborar perguntas repetidas (fim do "role para cima")
 
 ### Sintoma

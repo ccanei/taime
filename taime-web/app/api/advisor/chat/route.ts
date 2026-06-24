@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
-import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
+import {
+  getUserPlan,
+  hasAdvisorAccess,
+  getAdvisorWindowMonths,
+  getAdvisorPeriodFloor,
+  ADVISOR_PERMISSIVE_FLOOR,
+} from '@/lib/plan'
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
 
@@ -342,31 +348,76 @@ async function routeContext(
 }
 
 // ── Busca vetorial (pgvector) ───────────────────────────────────────────────
-// Passo 3: gera o embedding da mensagem e chama match_trend_chunks sobre o
-// arquivo inteiro. period_floor permissivo (2000-01-01) para trazer tudo;
-// SEM filtro de plano ainda (isso e Passo 4). Nunca lanca: devolve error para
-// o chamador decidir o fallback.
+// Passo 3: busca semantica por trend (match_trend_chunks). Passo 4: o period_floor
+// passa a refletir o plano (janela de contexto). Strategic -> piso permissivo
+// (ve tudo, comportamento identico ao Passo 3); Essential -> hoje menos 36 meses.
+// Nunca lanca: devolve error para o chamador decidir o fallback.
 const VECTOR_MATCH_COUNT = 16
-const VECTOR_PERIOD_FLOOR = '2000-01-01'
 
-async function vectorSearchChunks(
+async function matchTrendChunks(
   service: ReturnType<typeof createSupabaseService>,
-  message: string,
+  embedding: number[],
+  periodFloor: string,
+  matchCount: number,
 ): Promise<{ chunks: TrendChunk[]; error: string | null }> {
-  const emb = await embedQuery(message)
-  if (!emb.ok) return { chunks: [], error: `embed: ${emb.error}` }
-
   try {
     const { data, error } = await service.rpc('match_trend_chunks', {
-      query_embedding: emb.vector,
-      period_floor:    VECTOR_PERIOD_FLOOR,
-      match_count:     VECTOR_MATCH_COUNT,
+      query_embedding: embedding,
+      period_floor:    periodFloor,
+      match_count:     matchCount,
     })
     if (error) return { chunks: [], error: `rpc: ${error.message}` }
     return { chunks: (data ?? []) as TrendChunk[], error: null }
   } catch (e) {
     return { chunks: [], error: e instanceof Error ? e.message : 'rpc exception' }
   }
+}
+
+// Passo 4: sinalizacao de "fora da janela". Para planos restritos (Essential),
+// uma segunda busca com piso permissivo detecta se existe trend relevante ANTES
+// do period_floor do plano. NAO trazemos o conteudo completo dessas trends, so a
+// existencia (period, theme_slug, title) para a recusa construtiva no preview.
+interface OutOfWindowItem {
+  period:     string
+  theme_slug: string | null
+  title:      string
+}
+
+function collectOutOfWindow(chunks: TrendChunk[], periodFloor: string): OutOfWindowItem[] {
+  const items: OutOfWindowItem[] = []
+  const seen  = new Set<string>()
+  for (const c of chunks) {
+    if (c.period >= periodFloor) continue // dentro da janela, ja disponivel
+    const key = `${c.period}|${c.theme_slug ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push({
+      period:     c.period,
+      theme_slug: c.theme_slug,
+      title:      c.content.split('\n')[0].slice(0, 100),
+    })
+    if (items.length >= 4) break
+  }
+  return items
+}
+
+// Bloco condicional (so quando ha trend relevante fora da janela do Essential).
+// Manda recusa construtiva: responde o que cabe na janela E sinaliza honestamente
+// que ha analise mais profunda/antiga disponivel no Strategic. Dinamico por turno,
+// fora do cache. Mantem a disciplina de brevidade (v4.4).
+function buildOutOfWindowBlock(items: OutOfWindowItem[], windowMonths: number): string {
+  const lines = items
+    .map(i => `- ${i.period}${i.theme_slug ? ` (${i.theme_slug})` : ''}: ${i.title}`)
+    .join('\n')
+  return `PLAN WINDOW NOTICE (the client is on a plan with a ${windowMonths}-month context window):
+The semantic search found TAIME analysis relevant to this question in periods OUTSIDE the client's plan window. You do NOT have the full content of these, only that they exist:
+${lines}
+
+How to handle this, mandatory for this turn:
+- Answer with the intelligence you DO have inside the plan window. Deliver real substance; never refuse outright.
+- Then, in one or two sentences, signal honestly that deeper or older analysis on this theme exists in the period(s) listed above and is available on the Strategic plan. Frame it as a constructive note, not a hard wall.
+- Do not fabricate the content of the out-of-window periods. You only know they exist, not what they say. Do not cite findings or link to them.
+- Keep the brevity discipline. This notice does not license a longer answer.`
 }
 
 // Dedup: a mesma trend volta como pt e en. Mantem uma so, preferindo o idioma
@@ -598,9 +649,33 @@ export async function POST(req: NextRequest) {
   let vectorError:           string | null = null
   let routerSelection:       'router' | 'fallback' | null = null
 
+  // Passo 4: janela de contexto por plano. Strategic -> piso permissivo (ve
+  // tudo); Essential -> hoje menos 36 meses. Ponto unico de verdade em lib/plan.
+  const windowMonths = getAdvisorWindowMonths(plan)
+  const periodFloor  = getAdvisorPeriodFloor(plan)
+
   const preferLang = detectLanguage(userMessage)
-  const { chunks, error: vErr } = await vectorSearchChunks(service, userMessage)
-  vectorError = vErr
+
+  // Embedding gerado UMA vez e reusado nas duas buscas (dentro e fora da janela).
+  let chunks: TrendChunk[] = []
+  let outOfWindowItems: OutOfWindowItem[] = []
+  const emb = await embedQuery(userMessage)
+  if (!emb.ok) {
+    vectorError = `embed: ${emb.error}`
+  } else {
+    const inWindow = await matchTrendChunks(service, emb.vector, periodFloor, VECTOR_MATCH_COUNT)
+    vectorError = inWindow.error
+    chunks       = inWindow.chunks
+
+    // So planos restritos (Essential) detectam material fora da janela. Para
+    // Strategic (windowMonths === null) este passo nem roda: zero custo extra.
+    if (windowMonths !== null) {
+      const wide = await matchTrendChunks(service, emb.vector, ADVISOR_PERMISSIVE_FLOOR, VECTOR_MATCH_COUNT)
+      if (!wide.error) outOfWindowItems = collectOutOfWindow(wide.chunks, periodFloor)
+    }
+  }
+  const outOfWindowHit = outOfWindowItems.length > 0
+
   const deduped = chunks.length > 0 ? dedupeChunks(chunks, preferLang) : []
 
   if (deduped.length > 0) {
@@ -672,8 +747,13 @@ export async function POST(req: NextRequest) {
     { type: 'text', text: RULES_BLOCK,                cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
     { type: 'text', text: contextBlock,               cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: languageInstruction(lang) }, // dinâmico, fora do cache
   ]
+  // Passo 4: aviso de recusa construtiva quando ha analise relevante fora da
+  // janela do plano (so Essential). Dinamico por turno, fora do cache.
+  if (outOfWindowHit && windowMonths !== null) {
+    system.push({ type: 'text', text: buildOutOfWindowBlock(outOfWindowItems, windowMonths) })
+  }
+  system.push({ type: 'text', text: languageInstruction(lang) }) // dinâmico, fora do cache
 
   const conversationMessages = [
     ...history.map(m => ({
@@ -753,6 +833,9 @@ export async function POST(req: NextRequest) {
     selection_source:     selectionSource,
     router_selection:     routerSelection,
     vector_error:         vectorError,
+    plan:                 plan ?? 'free',
+    period_floor:         periodFloor,
+    out_of_window_hit:    outOfWindowHit,
     attribution_flag:     attributionFlag,
     grounding_violations: groundingViolations,
     truncated,
