@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-06-23] - Advisor v4.5: re-elaborar perguntas repetidas (fim do "role para cima")
+
+### Sintoma
+- Ao refazer a mesma pergunta numa sessao, o Advisor respondia "ja respondi essa
+  pergunta, role para cima" em vez de re-elaborar. Com a busca semantica (Passo 3)
+  ativa, uma pergunta repetida pode recuperar trends/periodos diferentes, entao
+  recusar repetir desperdica a busca e frustra o usuario.
+
+### O que mudou (so o system prompt / RULES_BLOCK)
+- Regra 5 ("ANSWER ONLY THE LATEST MESSAGE") recalibrada: mantem o foco na ultima
+  mensagem e o nao-resgate de tangentes antigas, mas REMOVE a clausula que mandava
+  nao re-responder perguntas ja abordadas.
+- Regra 5a NOVA ("RE-ELABORATE REPEATED QUESTIONS, NEVER REFUSE"): se a mensagem
+  repete uma pergunta ja respondida na sessao, o Advisor responde de novo. Proibido
+  mandar rolar para cima ou recusar. Quando a busca traz material novo, lidera com
+  o que ha de novo; quando e o mesmo material, da uma sintese mais enxuta e oferece
+  outro angulo, sem colar a resposta anterior verbatim. Re-elaborar = sintese fresca
+  ou aprofundamento, mantendo a disciplina de brevidade (v4.4: densidade, nao volume).
+
+### Preservado
+- Espirito da regra original (nao re-despejar a mesma resposta longa): explicito em
+  "not a verbatim repeat" + brevidade.
+- v4.4 (REASONING POSTURE) intacta. Busca vetorial, fallback e grounding-safety nao
+  tocados. So o texto do RULES_BLOCK mudou (invalida o cache do bloco 1 uma vez,
+  esperado).
+
+### Validacao
+- `npm run build`: 0 erros. Sem travessao em texto novo.
+
+---
+
 ## [2026-06-23] - pgvector Passo 3: busca vetorial no Advisor (hibrido com fallback)
 
 ### O que entrou
