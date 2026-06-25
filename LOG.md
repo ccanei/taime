@@ -46,6 +46,22 @@
 - PARADO aqui de proposito. Aguardando validacao dos resumos antes de seguir para
   Fase 2 (injetar ultima sessao no contexto) e Fase 3 (match_session_summaries).
 
+### FASE 2 - ultima sessao sempre no contexto (route.ts)
+- Apos aprovacao dos resumos e backfill real (4 resumos gravados + embeddados,
+  US$0.00005), o route passa a injetar o resumo da ULTIMA sessao fechada do
+  usuario em todo turno.
+- `fetchLastSessionSummary(service, userId, currentSessionId)`: le
+  advisor_session_summaries com o advisor_sessions embutido, filtra por user_id,
+  exclui a sessao atual, ordena por last_activity_at desc e devolve o mais recente.
+  Estritamente por user_id (jamais cruza usuarios). Falha silenciosa -> null se a
+  tabela nao existe ou nao ha resumos; o chat segue sem memoria.
+- `buildMemoryBlock`: bloco "MEMORY OF PRIOR CONVERSATIONS" rotulado por sessao.
+  Injetado como CONTEXTO (nao cache estavel), fora do prefixo cacheado, junto aos
+  outros blocos dinamicos. A calibracao de tom vai no RULES_BLOCK (Fase 4).
+- Instrumentacao: `memory_summaries_used` (session_ids cujos resumos entraram).
+- Validado: ordenacao por last_activity_at escolhe a sessao mais recente excluindo
+  a atual; isolamento por usuario confirmado (uid aleatorio -> 0 linhas).
+
 ---
 
 ## [2026-06-23] - pgvector Passo 4: filtro de plano no Advisor (period_floor por plano)

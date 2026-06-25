@@ -25,6 +25,15 @@ interface MemoryRow {
   content: string
 }
 
+// Resumo de uma sessao anterior do MESMO usuario (memoria de cliente).
+// Origem: advisor_session_summaries (gerada por generate-session-summaries.ts).
+interface SessionSummaryRow {
+  session_id:       string
+  summary:          string
+  last_activity_at: string | null
+  title:            string | null
+}
+
 interface ReportTrendRow {
   rank:               number
   title_en:           string
@@ -219,6 +228,61 @@ Annual revenue: ${profile.annual_revenue ?? 'Not specified'}
 Infrastructure: ${profile.current_infrastructure ?? 'Not described'}
 Strategic objective: ${profile.strategic_objective ?? 'Not specified'}
 Technology maturity: ${profile.maturity_level ?? 'Not specified'}`
+}
+
+// ── Memoria de cliente (Fase 2) ─────────────────────────────────────────────
+// Busca o resumo da ULTIMA sessao fechada deste usuario (a mais recente por
+// last_activity_at, excluindo a sessao atual). Memoria e estritamente por
+// user_id: o filtro .eq('user_id') garante que jamais cruza usuarios. Falha
+// silenciosa (return null) se a tabela ainda nao existe ou nao ha resumos:
+// o chat segue funcionando sem memoria.
+async function fetchLastSessionSummary(
+  service: ReturnType<typeof createSupabaseService>,
+  userId: string,
+  currentSessionId: string,
+): Promise<SessionSummaryRow | null> {
+  const { data, error } = await service
+    .from('advisor_session_summaries')
+    .select('session_id, summary, advisor_sessions(last_activity_at, title)')
+    .eq('user_id', userId)
+    .neq('session_id', currentSessionId)
+
+  if (error || !data || data.length === 0) return null
+
+  type Raw = {
+    session_id: string
+    summary:    string
+    advisor_sessions:
+      | { last_activity_at: string | null; title: string | null }
+      | Array<{ last_activity_at: string | null; title: string | null }>
+      | null
+  }
+  const rows: SessionSummaryRow[] = (data as Raw[]).map(r => {
+    const sess = Array.isArray(r.advisor_sessions) ? r.advisor_sessions[0] : r.advisor_sessions
+    return {
+      session_id:       r.session_id,
+      summary:          r.summary,
+      last_activity_at: sess?.last_activity_at ?? null,
+      title:            sess?.title ?? null,
+    }
+  })
+  rows.sort((a, b) => (b.last_activity_at ?? '').localeCompare(a.last_activity_at ?? ''))
+  return rows[0] ?? null
+}
+
+// Monta o bloco de memoria. Texto factual e neutro; a calibracao de tom
+// (continuidade de TRABALHO, nunca pessoal, nao recitar, nunca inventar) vive
+// no RULES_BLOCK (Fase 4). Aqui so entregamos os resumos rotulados.
+function buildMemoryBlock(summaries: SessionSummaryRow[]): string {
+  const body = summaries.map(s => {
+    const label = s.title?.trim() || s.session_id.slice(0, 8)
+    return `Prior session [${label}]:\n${s.summary}`
+  }).join('\n\n---\n\n')
+
+  return `MEMORY OF PRIOR CONVERSATIONS WITH THIS CLIENT (your own working memory; not TAIME report content):
+Structured summaries of earlier advisory sessions with this same client. Use them only for WORK continuity: recall decisions already taken, open threads and company context already established, so you do not re-ask what you already know. This is background context to inform you, never a script to recite and never something to quote back verbatim. Do not state or imply anything about prior conversations beyond what these summaries say.
+
+${body}`
 }
 
 function buildReportsBlock(reports: ReportRow[]): string {
@@ -634,6 +698,13 @@ export async function POST(req: NextRequest) {
 
   const history = ((historyData ?? []) as MemoryRow[]).slice().reverse()
 
+  // ── Memoria de cliente (Fase 2): resumo da ultima sessao fechada ──────────
+  // Sempre injetado quando existe. Estritamente por user_id (nunca cruza
+  // usuarios). Fase 3 acrescenta resumos antigos relevantes por busca semantica.
+  const lastSummary       = await fetchLastSessionSummary(service, user.id, sessionId)
+  const memorySummaries   = lastSummary ? [lastSummary] : []
+  const memorySummariesUsed = memorySummaries.map(s => s.session_id)
+
   // ── Seleção de contexto: busca vetorial primeiro, router como fallback ─────
   // Passo 3: a busca semantica sobre o arquivo inteiro (match_trend_chunks)
   // recupera as trends mais proximas da pergunta, em qualquer periodo. Se ela
@@ -748,6 +819,12 @@ export async function POST(req: NextRequest) {
     { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
     { type: 'text', text: contextBlock,               cache_control: { type: 'ephemeral' } },
   ]
+  // Fase 2: memoria de conversas anteriores. Contexto, NAO cache estavel
+  // (muda por usuario/sessao e e dinamica por turno). Entra apos os blocos
+  // cacheados, fora do cache.
+  if (memorySummaries.length > 0) {
+    system.push({ type: 'text', text: buildMemoryBlock(memorySummaries) })
+  }
   // Passo 4: aviso de recusa construtiva quando ha analise relevante fora da
   // janela do plano (so Essential). Dinamico por turno, fora do cache.
   if (outOfWindowHit && windowMonths !== null) {
@@ -836,6 +913,7 @@ export async function POST(req: NextRequest) {
     plan:                 plan ?? 'free',
     period_floor:         periodFloor,
     out_of_window_hit:    outOfWindowHit,
+    memory_summaries_used: memorySummariesUsed,
     attribution_flag:     attributionFlag,
     grounding_violations: groundingViolations,
     truncated,
