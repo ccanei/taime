@@ -62,6 +62,31 @@
 - Validado: ordenacao por last_activity_at escolhe a sessao mais recente excluindo
   a atual; isolamento por usuario confirmado (uid aleatorio -> 0 linhas).
 
+### FASE 3 - resumos antigos relevantes por busca semantica
+- `match-session-summaries.sql` (NAO aplicado ainda): RPC
+  `match_session_summaries(query_embedding, p_user_id, p_exclude_session, match_count)`.
+  Cosine sobre advisor_session_summaries, LEFT JOIN advisor_sessions p/ title.
+  Filtro `s.user_id = p_user_id` (jamais cruza usuarios) + exclui a sessao atual.
+- `matchSessionSummaries` no route: reusa o embedding ja gerado da query, traz ate
+  3 candidatos e injeta ate 2 resumos antigos RELEVANTES alem da ultima sessao.
+  Dedup por session_id contra a ultima sessao. Falha silenciosa -> [] se a RPC
+  ainda nao existe (degrada para so a Fase 2). memory_summaries_used agora cobre
+  ultima + semanticos.
+- Validado: enquanto a RPC nao existe, retorna 404 (PGRST202) e o route engole
+  (retorna []), mantendo a memoria da ultima sessao funcionando.
+
+### FASE 4 - calibracao de tom (RULES_BLOCK)
+- Novo bloco "HOW YOU USE CLIENT MEMORY" no RULES_BLOCK: continuidade de TRABALHO
+  (nunca pessoal/emocional), memoria e contexto e nao script (nao recitar/citar
+  verbatim), NUNCA inventar o que foi discutido, usar para nao re-perguntar SEM
+  criar dependencia, e reafirma que grounding/sources/brevidade/postura de
+  raciocinio (v4.4)/re-elaboracao (v4.5) seguem sem excecao. Invalida o cache uma
+  vez (esperado, como nas trocas de versao anteriores).
+
+### Pre-requisito para ativar a Fase 3
+- Aplicar `match-session-summaries.sql` no Supabase SQL Editor. Sem isso, so a
+  Fase 2 (ultima sessao) entra. Build 0 erros; sem travessao em texto novo.
+
 ---
 
 ## [2026-06-23] - pgvector Passo 4: filtro de plano no Advisor (period_floor por plano)

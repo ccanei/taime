@@ -205,6 +205,15 @@ When the loaded reports do not cover the topic or period the user asked about, t
 
 FORBIDDEN: claiming you have no autonomous access to the archive, claiming you only see what the user pastes, asking the user to paste or upload report text, or describing any flow where the user must load reports manually. That pipeline does not exist in the product; saying it does is a hallucination about your own architecture.
 
+HOW YOU USE CLIENT MEMORY:
+
+Some turns include a MEMORY block: structured summaries of your earlier sessions with this same client. It is your working memory, present so you keep continuity across conversations.
+- Continuity is about WORK, never about the person. Carry forward decisions taken, open threads and company context already established. Never comment on the relationship, the client's mood, or how much time has passed; stay professional and factual, never personal or emotional about past talks.
+- Memory is context, not a script. Do not recite, list or quote the summaries back. Let them inform your answer silently and surface a past point only when it sharpens the current reply (e.g. "last time you settled on a phased rollout, so the natural next step is...").
+- Never invent what was discussed. State only what the summaries actually contain. If memory is silent on something, treat it as unknown; do not assume or embellish.
+- Use memory to avoid re-asking what you already know, but do not create dependence on it. The client's latest message and the loaded TAIME intelligence remain the focus, and your job is to move the client forward, not to keep them talking.
+- Memory changes nothing about the rules above. Grounding, sources by category, no invented prices or timelines, brevity, reasoning posture and re-elaboration of repeated questions all still apply without exception.
+
 YOUR ROLE:
 - Act as a senior strategic advisor who knows this client's context and the loaded TAIME intelligence.
 - Apply the TAIME framework (TYPE, ACT, IMPACT, MOVE, EXIT) when structuring recommendations.
@@ -434,6 +443,37 @@ async function matchTrendChunks(
     return { chunks: (data ?? []) as TrendChunk[], error: null }
   } catch (e) {
     return { chunks: [], error: e instanceof Error ? e.message : 'rpc exception' }
+  }
+}
+
+// Fase 3 (memoria de cliente): busca semantica de resumos de sessao antigos do
+// MESMO usuario. A RPC ja filtra por user_id e exclui a sessao atual; aqui so
+// repassamos. Nunca lanca: devolve [] em qualquer falha (RPC/tabela ausente).
+interface SemanticSummary {
+  session_id: string
+  summary:    string
+  title:      string | null
+  similarity: number
+}
+
+async function matchSessionSummaries(
+  service: ReturnType<typeof createSupabaseService>,
+  embedding: number[],
+  userId: string,
+  excludeSession: string,
+  matchCount: number,
+): Promise<SemanticSummary[]> {
+  try {
+    const { data, error } = await service.rpc('match_session_summaries', {
+      query_embedding:   embedding,
+      p_user_id:         userId,
+      p_exclude_session: excludeSession,
+      match_count:       matchCount,
+    })
+    if (error) return []
+    return (data ?? []) as SemanticSummary[]
+  } catch {
+    return []
   }
 }
 
@@ -700,10 +740,10 @@ export async function POST(req: NextRequest) {
 
   // ── Memoria de cliente (Fase 2): resumo da ultima sessao fechada ──────────
   // Sempre injetado quando existe. Estritamente por user_id (nunca cruza
-  // usuarios). Fase 3 acrescenta resumos antigos relevantes por busca semantica.
-  const lastSummary       = await fetchLastSessionSummary(service, user.id, sessionId)
-  const memorySummaries   = lastSummary ? [lastSummary] : []
-  const memorySummariesUsed = memorySummaries.map(s => s.session_id)
+  // usuarios). Fase 3 acrescenta resumos antigos relevantes por busca semantica
+  // (mais abaixo, quando o embedding da query ja existe).
+  const lastSummary = await fetchLastSessionSummary(service, user.id, sessionId)
+  const memorySummaries: SessionSummaryRow[] = lastSummary ? [lastSummary] : []
 
   // ── Seleção de contexto: busca vetorial primeiro, router como fallback ─────
   // Passo 3: a busca semantica sobre o arquivo inteiro (match_trend_chunks)
@@ -746,6 +786,22 @@ export async function POST(req: NextRequest) {
     }
   }
   const outOfWindowHit = outOfWindowItems.length > 0
+
+  // Fase 3: alem da ultima sessao (sempre presente), traz ate 2 resumos antigos
+  // RELEVANTES a esta pergunta por busca semantica. Reusa o embedding ja gerado.
+  // Dedup contra a ultima sessao por session_id. Memoria por user_id (a RPC filtra).
+  if (emb.ok) {
+    const SEMANTIC_MEMORY_COUNT = 3
+    const semantic = await matchSessionSummaries(service, emb.vector, user.id, sessionId, SEMANTIC_MEMORY_COUNT)
+    const already  = new Set(memorySummaries.map(s => s.session_id))
+    let added = 0
+    for (const m of semantic) {
+      if (already.has(m.session_id)) continue
+      already.add(m.session_id)
+      memorySummaries.push({ session_id: m.session_id, summary: m.summary, last_activity_at: null, title: m.title })
+      if (++added >= 2) break
+    }
+  }
 
   const deduped = chunks.length > 0 ? dedupeChunks(chunks, preferLang) : []
 
@@ -913,7 +969,7 @@ export async function POST(req: NextRequest) {
     plan:                 plan ?? 'free',
     period_floor:         periodFloor,
     out_of_window_hit:    outOfWindowHit,
-    memory_summaries_used: memorySummariesUsed,
+    memory_summaries_used: memorySummaries.map(s => s.session_id),
     attribution_flag:     attributionFlag,
     grounding_violations: groundingViolations,
     truncated,
