@@ -39,11 +39,16 @@ export async function getUserPlan(userId: string): Promise<Plan | null> {
 /**
  * Decide se o plano tem acesso ao Executive Advisor.
  *
- * HOJE: apenas 'strategic' tem acesso. Essential terá acesso com limite de
- * mensagens em fase futura; ajustar aqui quando os limites existirem.
+ * HOJE: 'essential' e 'strategic' tem acesso. Free/null fica bloqueado.
+ *
+ * QUOTA (futuro, frente do Stripe): o Essential tera limite de 60 mensagens/mes.
+ * Esse teto NAO e verificado aqui (isto e so o gate de acesso binario). Quando o
+ * Stripe trouxer o ciclo de cobranca, a contagem de mensagens do mes corrente
+ * entra em uma checagem propria (ex.: hasAdvisorQuota(plan, usedThisCycle)) no
+ * route.ts, ANTES de chamar o modelo. Strategic permanece ilimitado.
  */
 export function hasAdvisorAccess(plan: Plan | null): boolean {
-  return plan === 'strategic'
+  return plan === 'essential' || plan === 'strategic'
 }
 
 // Piso permissivo: libera todo o arquivo. Ponto unico de verdade para o floor

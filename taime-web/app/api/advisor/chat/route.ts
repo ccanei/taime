@@ -688,12 +688,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Gate de plano: hoje só Strategic. Essential entra com limite de mensagens
-  // numa fase futura (ajustar em lib/plan.ts quando os limites existirem).
+  // Gate de plano: Essential e Strategic. O limite de 60 mensagens/mes do
+  // Essential NAO e verificado aqui; entra com o Stripe (ver lib/plan.ts).
   const plan = await getUserPlan(user.id)
   if (!hasAdvisorAccess(plan)) {
     return NextResponse.json(
-      { error: 'Advisor available on Strategic plan only' },
+      { error: 'Advisor available on Essential and Strategic plans' },
       { status: 403 },
     )
   }

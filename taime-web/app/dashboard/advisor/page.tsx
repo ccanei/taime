@@ -12,7 +12,7 @@ export default async function AdvisorPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Gate de plano: hoje só Strategic tem o Advisor funcional.
+  // Gate de plano: Essential e Strategic tem o Advisor funcional. Free fica bloqueado.
   const plan = await getUserPlan(user.id)
   const hasAccess = hasAdvisorAccess(plan)
 
@@ -48,11 +48,11 @@ export default async function AdvisorPage() {
             <h1 className="text-2xl font-bold text-zinc-900 mb-2">Executive Advisor</h1>
             <p className="text-sm text-zinc-500 max-w-md mx-auto leading-relaxed">
               Consultor estratégico com memória histórica de 25 anos e contexto
-              personalizado para a sua empresa. Disponível no plano Strategic.
+              personalizado para a sua empresa. Disponível nos planos Essential e Strategic.
             </p>
             <div className="mt-6 flex items-center justify-center gap-3">
               <Link href="/planos" className="btn-primary text-sm px-4 py-2">
-                Conhecer o Strategic →
+                Conhecer os planos →
               </Link>
               <Link
                 href="/dashboard"

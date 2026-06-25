@@ -2,6 +2,44 @@
 
 ---
 
+## [2026-06-25] - Advisor: gate liberado para Essential (sem limite de mensagens ainda)
+
+### Objetivo
+- Habilitar o Executive Advisor para o plano Essential pago, alem do Strategic.
+  So o gate de acesso. O teto de 60 mensagens/mes NAO entra agora (depende do
+  ciclo de cobranca do Stripe, frente separada). O filtro de janela de 36 meses
+  do Essential ja existia (Passo 4) e passa a valer automaticamente.
+
+### TAREFA 1 - gate (lib/plan.ts)
+- `hasAdvisorAccess(plan)` agora retorna true para 'essential' E 'strategic'
+  (antes so strategic). Free/null continua bloqueado.
+- Comentario marca onde a quota de 60 msg/mes sera checada no futuro (com o
+  Stripe, ex.: hasAdvisorQuota(plan, usedThisCycle) no route.ts, antes do modelo).
+- Janela NAO reimplementada: getAdvisorWindowMonths ja devolve 36 para essential
+  e null para strategic; getAdvisorPeriodFloor deriva o piso. Ponto unico mantido.
+
+### TAREFA 2 - UI coerente
+- A pagina do Advisor e o card do dashboard ja gateiam por hasAdvisorAccess, entao
+  Essential passa a ver chat + onboarding automaticamente.
+- Textos hardcoded ajustados: pagina do Advisor (estado bloqueado) "Disponivel nos
+  planos Essential e Strategic" + CTA "Conhecer os planos"; card do dashboard
+  (estado bloqueado) "Planos Essential e Strategic" / "Essential and Strategic
+  plans". Mensagem 403 do route: "Advisor available on Essential and Strategic plans".
+
+### TAREFA 3 - fora de escopo (intacto)
+- Sem contagem/limite de mensagens (frente do Stripe). Sem mexer em pgvector,
+  memoria de cliente, grounding ou calibracoes v4.4/v4.5.
+
+### Validacao
+- Logica por plano (hoje = 2026-06-25): free/null access=false; essential
+  access=true, period_floor=2023-06-01 (hoje-36m); strategic access=true,
+  period_floor=2000-01-01 (inalterado). Build 0 erros; sem travessao em texto novo.
+- Teste com subscription real: inserir no Supabase uma subscription
+  status='active', plan='essential' para um user de teste e abrir /dashboard/advisor
+  (ver instrucoes no fim deste commit / mensagem).
+
+---
+
 ## [2026-06-24] - Advisor Memoria de cliente, FASE 1: schema + gerador de resumos (backfill dry-run)
 
 ### Objetivo
