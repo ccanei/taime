@@ -2,6 +2,52 @@
 
 ---
 
+## [2026-06-24] - Advisor Memoria de cliente, FASE 1: schema + gerador de resumos (backfill dry-run)
+
+### Objetivo
+- Fazer o Advisor "lembrar" de conversas passadas via resumos estruturados de
+  sessao. Modelo hibrido (fases seguintes): o resumo da ultima sessao entra
+  sempre; resumos antigos relevantes entram por busca semantica (reusa pgvector).
+- Esta fase entrega so a infra de geracao: schema (NAO aplicado) + gerador +
+  validacao por dry-run. Pausada aqui para revisao dos resumos antes da Fase 2.
+
+### Schema (add-session-summaries.sql, NAO executado)
+- `advisor_session_summaries`: id uuid pk, session_id uuid FK ->
+  advisor_sessions(session_id) ON DELETE CASCADE, user_id uuid FK ->
+  public.users(id) ON DELETE CASCADE, summary text, embedding vector(1536),
+  created_at/updated_at. UNIQUE(session_id) para idempotencia (upsert por sessao).
+- Indices: ivfflat (vector_cosine_ops, lists=100) para busca; btree em user_id.
+- RLS habilitado: cada usuario so le os PROPRIOS resumos (user_id = auth.uid()).
+  Backend acessa via service_role. Memoria e ESTRITAMENTE por usuario.
+- Entregue pronto para rodar manualmente no Supabase SQL Editor. NAO e executado
+  pelo pipeline.
+
+### Gerador (generate-session-summaries.ts)
+- Espelha o padrao dos outros embeddings; reusa embeddings-shared.ts (EMBEDDING_MODEL,
+  embed, vectorLiteral, makeRest, sleep). Sem segundo padrao de embedding.
+- Seleciona sessoes FECHADAS (paradas ha >= STALE_HOURS, default 3) sem resumo;
+  le advisory_memory em ordem cronologica; pede ao Haiku (claude-haiku-4-5) um
+  resumo em 4 secoes fixas: Temas tocados / Decisoes tomadas / Pendencias-proximos
+  passos / Contexto da empresa revelado. Tom profissional e factual; nunca inventar;
+  escreve "Nenhuma"/"Nada novo" quando a secao nao se aplica.
+- Embeda o resumo (text-embedding-3-small, 1536) e faz upsert por session_id.
+  Idempotente. Flags: --all (ignora recencia, backfill), --force (regrava,
+  merge-duplicates), --dry-run (le + resume + imprime, sem embeddar nem gravar).
+- max_tokens do Haiku em 1100 (700 truncava a ultima secao em sessoes longas).
+
+### Backfill (dry-run) - validacao
+- `npx ts-node generate-session-summaries.ts --all --dry-run`: 4 sessoes resumidas
+  (todas do user d7c45260, TAIME TECH). Resumos profissionais e factuais, sem
+  fabricacao. Decisoes corretamente "Nenhuma" salvo a sessao do plano de 90 dias
+  (automacao de relatorio de vendas via no-code). Nenhuma secao truncada.
+- Tabela ainda nao existe, entao dry-run nao consulta resumos existentes nem grava.
+
+### Pausa para revisao
+- PARADO aqui de proposito. Aguardando validacao dos resumos antes de seguir para
+  Fase 2 (injetar ultima sessao no contexto) e Fase 3 (match_session_summaries).
+
+---
+
 ## [2026-06-23] - pgvector Passo 4: filtro de plano no Advisor (period_floor por plano)
 
 ### Regra de produto (Opcao C)
