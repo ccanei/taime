@@ -6,6 +6,7 @@ import {
   getAdvisorWindowMonths,
   getAdvisorPeriodFloor,
   ADVISOR_PERMISSIVE_FLOOR,
+  ADVISOR_PERMISSIVE_CEILING,
 } from '@/lib/plan'
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
@@ -141,6 +142,12 @@ function languageInstruction(lang: Lang): string {
 }
 
 // ── Bloco 1: regras fixas (estável, cacheável) ──────────────────────────────
+// v4.6: bloco "HOW YOU RECEIVE REPORTS" (fóssil pré-pgvector que falava em "um
+// seletor escolhe até 3 relatórios") substituído por "HOW YOU ACCESS THE
+// ARCHIVE": descreve a busca semântica sobre o arquivo inteiro sem citar números
+// de arquitetura, sem expor mecânica de retrieval e sem mandar o usuário
+// reformular para "forçar" a busca. Quando o período/tema não tem conteúdo, o
+// Advisor diz com naturalidade que não há relatório e oferece o mais próximo.
 // v4.5: regra 5 recalibrada. Antes recusava perguntas repetidas ("já respondi,
 // role para cima"). Com a busca vetorial ativa, uma pergunta repetida pode trazer
 // trends/períodos diferentes, então recusar desperdiça a busca. Agora a regra 5
@@ -197,13 +204,13 @@ LINKING RULES:
 
 11. LINK WHAT YOU CITE. Whenever you mention a report, include a markdown link to it. Whenever you mention a specific trend, link to that trend's anchor. Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL.
 
-HOW YOU RECEIVE REPORTS:
+HOW YOU ACCESS THE ARCHIVE:
 
-Every user message is routed through an automatic selector that picks up to 3 TAIME reports from the published archive and inlines them in the intelligence block above. You never depend on the user pasting reports. You never need them to upload anything. The selector decides each turn based on the user's question; if a future turn needs different reports, it will fetch them.
+For every message, the most relevant TAIME intelligence is drawn from the archive by meaning and placed in the intelligence block above. You always have the archive at hand. You never depend on the user pasting or uploading anything, and there is nothing for them to load. When the question names a period, the intelligence you receive is from that period; when it is conceptual, you receive the closest material across the whole archive.
 
-When the loaded reports do not cover the topic or period the user asked about, the correct response is exactly two sentences: state that the reports selected for this question do not cover that period or topic, and offer either (a) to focus the answer on what was loaded, or (b) to have the user rephrase naming the period or topic of interest so the selector can find better matches on the next turn.
+When the question targets a period or topic that has no published report, the intelligence block will be empty or will not cover it. In that case, say plainly that there is no TAIME report for that specific period or topic, and offer the nearest available period, or a related angle you do have. Keep it to a sentence or two and stay natural.
 
-FORBIDDEN: claiming you have no autonomous access to the archive, claiming you only see what the user pastes, asking the user to paste or upload report text, or describing any flow where the user must load reports manually. That pipeline does not exist in the product; saying it does is a hallucination about your own architecture.
+FORBIDDEN: claiming you have no autonomous access to the archive; claiming you only see what the user pastes; asking the user to paste or upload report text; describing internal retrieval mechanics (how many reports load, any "selector", scores or thresholds); or telling the user to rephrase, reword or "force" anything so the system can find results. The user never needs to understand how retrieval works in order to use you. Saying any of this is a hallucination about your own architecture.
 
 HOW YOU USE CLIENT MEMORY:
 
@@ -426,24 +433,173 @@ async function routeContext(
 // (ve tudo, comportamento identico ao Passo 3); Essential -> hoje menos 36 meses.
 // Nunca lanca: devolve error para o chamador decidir o fallback.
 const VECTOR_MATCH_COUNT = 16
+// v4.6: quando o periodo pedido e estreito (<= 3 meses), o universo de candidatos
+// e pequeno; sobe o match_count para garantir que as trends daquele periodo entrem
+// mesmo que nao sejam as semanticamente mais proximas da pergunta conceitual.
+const VECTOR_MATCH_COUNT_NARROW = 24
 
 async function matchTrendChunks(
   service: ReturnType<typeof createSupabaseService>,
   embedding: number[],
   periodFloor: string,
   matchCount: number,
+  periodCeiling: string = ADVISOR_PERMISSIVE_CEILING,
 ): Promise<{ chunks: TrendChunk[]; error: string | null }> {
   try {
     const { data, error } = await service.rpc('match_trend_chunks', {
       query_embedding: embedding,
       period_floor:    periodFloor,
       match_count:     matchCount,
+      period_ceiling:  periodCeiling,
     })
     if (error) return { chunks: [], error: `rpc: ${error.message}` }
     return { chunks: (data ?? []) as TrendChunk[], error: null }
   } catch (e) {
     return { chunks: [], error: e instanceof Error ? e.message : 'rpc exception' }
   }
+}
+
+// ── Intencao de periodo (v4.6) ──────────────────────────────────────────────
+// A busca vetorial e puramente semantica e ignora periodo citado. Aqui detectamos
+// se a pergunta nomeia um periodo explicito (mes+ano, ano, intervalo, "este mes",
+// "ultimo/mais recente") para limitar a busca aquele intervalo. Atemporal -> null
+// (busca ampla, comportamento do Passo 3/4). Reintroduz a sensibilidade temporal
+// que o router Haiku da v4.3 tinha e que a troca para vetorial perdeu.
+type PeriodIntent =
+  | { kind: 'range'; from: string; to: string }  // janela [from,to] em 'YYYY-MM-01'
+  | { kind: 'latest' }                            // resolver para max(period) na janela
+
+const PT_MONTHS: Record<string, number> = {
+  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
+  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+}
+const EN_MONTHS: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7,
+  august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9,
+  oct: 10, nov: 11, dec: 12,
+}
+const ALL_MONTHS: Record<string, number> = { ...PT_MONTHS, ...EN_MONTHS }
+
+function monthStr(y: number, m: number): string {
+  return `${y}-${String(m).padStart(2, '0')}-01`
+}
+
+// span em meses (inclusivo) de um range ['YYYY-MM-01','YYYY-MM-01']
+function rangeSpanMonths(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number)
+  const [ty, tm] = to.split('-').map(Number)
+  return (ty * 12 + tm) - (fy * 12 + fm) + 1
+}
+
+function detectPeriodIntent(message: string, now: Date): PeriodIntent | null {
+  // Normaliza removendo acentos para que \b e os nomes de mes funcionem em ASCII
+  // ("junho", "marco", "ultima", "mes"). Tudo minusculo.
+  const t = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+  // "este mes" / "this month" -> mes corrente (UTC)
+  if (/\b(neste|deste|este)\s+mes\b|\bthis month\b/.test(t)) {
+    const s = monthStr(now.getUTCFullYear(), now.getUTCMonth() + 1)
+    return { kind: 'range', from: s, to: s }
+  }
+
+  // "ultimo relatorio" / "mais recente" / "latest" / "most recent"
+  if (/\bmais recente\b|\bmost recent\b|\blatest\b|\bultim[oa]s?\s+(relatorio|edicao)\b/.test(t)) {
+    return { kind: 'latest' }
+  }
+
+  // intervalo de anos: "entre 2023 e 2024", "between 2023 and 2024",
+  // "de 2023 a 2024", "from 2023 to 2024", "2023-2024", "2023 ate 2024"
+  const interval = t.match(/\b(19|20)(\d{2})\s*(?:-|–|a|to|e|and|ate)\s*(19|20)(\d{2})\b/)
+  if (interval) {
+    const y1 = Number(interval[1] + interval[2])
+    const y2 = Number(interval[3] + interval[4])
+    const lo = Math.min(y1, y2), hi = Math.max(y1, y2)
+    return { kind: 'range', from: monthStr(lo, 1), to: monthStr(hi, 12) }
+  }
+
+  // mes + ano: "junho de 2026", "June 2026", "jun 2026", "junho 2026"
+  const monthNames = Object.keys(ALL_MONTHS).sort((a, b) => b.length - a.length).join('|')
+  const monthYear = t.match(new RegExp(`\\b(${monthNames})\\b(?:\\s+(?:de|of))?\\s+((?:19|20)\\d{2})`))
+  if (monthYear) {
+    const s = monthStr(Number(monthYear[2]), ALL_MONTHS[monthYear[1]])
+    return { kind: 'range', from: s, to: s }
+  }
+
+  // numerico MM/YYYY ou YYYY-MM
+  const mmYYYY = t.match(/\b(0?[1-9]|1[0-2])\/((?:19|20)\d{2})\b/)
+  if (mmYYYY) {
+    const s = monthStr(Number(mmYYYY[2]), Number(mmYYYY[1]))
+    return { kind: 'range', from: s, to: s }
+  }
+  const yyyyMM = t.match(/\b((?:19|20)\d{2})-(0?[1-9]|1[0-2])\b/)
+  if (yyyyMM) {
+    const s = monthStr(Number(yyyyMM[1]), Number(yyyyMM[2]))
+    return { kind: 'range', from: s, to: s }
+  }
+
+  // ano isolado: "em 2024", "in 2024", "2024"
+  const year = t.match(/\b((?:19|20)\d{2})\b/)
+  if (year) {
+    const y = Number(year[1])
+    return { kind: 'range', from: monthStr(y, 1), to: monthStr(y, 12) }
+  }
+
+  return null
+}
+
+// max(period) do acervo do usuario dentro da janela do plano. Usado para resolver
+// "ultimo / mais recente" sem assumir uma data fixa.
+async function maxPeriodInWindow(
+  service: ReturnType<typeof createSupabaseService>,
+  planFloor: string,
+): Promise<string | null> {
+  const { data } = await service
+    .from('report_trend_embeddings')
+    .select('period')
+    .gte('period', planFloor)
+    .order('period', { ascending: false })
+    .limit(1)
+  return (data as Array<{ period: string }> | null)?.[0]?.period ?? null
+}
+
+// Periodo publicado mais proximo do range pedido, dentro da janela do plano.
+// Usado na Tarefa 4 (oferecer o disponivel mais proximo quando o pedido e vazio).
+async function nearestAvailablePeriod(
+  service: ReturnType<typeof createSupabaseService>,
+  planFloor: string,
+  reqFrom: string,
+  reqTo: string,
+): Promise<string | null> {
+  const [{ data: belowData }, { data: aboveData }] = await Promise.all([
+    service.from('report_trend_embeddings').select('period')
+      .gte('period', planFloor).lt('period', reqFrom)
+      .order('period', { ascending: false }).limit(1),
+    service.from('report_trend_embeddings').select('period')
+      .gt('period', reqTo)
+      .order('period', { ascending: true }).limit(1),
+  ])
+  const below = (belowData as Array<{ period: string }> | null)?.[0]?.period ?? null
+  const above = (aboveData as Array<{ period: string }> | null)?.[0]?.period ?? null
+  if (!below) return above
+  if (!above) return below
+  const dist = (p: string, ref: string) => {
+    const [py, pm] = p.split('-').map(Number)
+    const [ry, rm] = ref.split('-').map(Number)
+    return Math.abs((py * 12 + pm) - (ry * 12 + rm))
+  }
+  return dist(below, reqFrom) <= dist(above, reqTo) ? below : above
+}
+
+// Bloco dinamico (Tarefa 4): o periodo pedido nao tem relatorio no acervo do
+// usuario. Manda dizer com naturalidade e oferecer o periodo mais proximo. Nunca
+// expoe o mecanismo de busca nem manda reformular.
+function buildPeriodEmptyBlock(from: string, to: string, nearest: string | null): string {
+  const range = from === to ? from.slice(0, 7) : `${from.slice(0, 7)} to ${to.slice(0, 7)}`
+  const nearMo = nearest ? nearest.slice(0, 7) : null
+  return `PERIOD AVAILABILITY NOTICE:
+The client asked about ${range}, but there is no TAIME report published in that period within their access.${nearMo ? ` The nearest period that does have a report is ${nearMo}.` : ''}
+For this turn: state plainly and naturally that no report covers ${range}${nearMo ? `, and offer the nearest available period (${nearMo}) or a related angle you do have` : ''}. Do not fabricate findings for the missing period. Do not describe how retrieval works and do not ask the user to rephrase. One or two sentences.`
 }
 
 // Fase 3 (memoria de cliente): busca semantica de resumos de sessao antigos do
@@ -767,6 +923,29 @@ export async function POST(req: NextRequest) {
 
   const preferLang = detectLanguage(userMessage)
 
+  // v4.6: intencao de periodo. Se a pergunta cita um periodo explicito, a busca e
+  // limitada aquele intervalo. O floor efetivo e o MAIS restritivo entre o periodo
+  // pedido e o piso do plano (Passo 4): um Essential pedindo periodo fora dos 36
+  // meses continua caindo na recusa construtiva, nunca fura a janela.
+  const periodIntent = detectPeriodIntent(userMessage, new Date())
+  let reqFrom: string | null = null
+  let reqTo:   string | null = null
+  let narrowPeriod = false
+  if (periodIntent) {
+    if (periodIntent.kind === 'latest') {
+      const maxP = await maxPeriodInWindow(service, periodFloor)
+      if (maxP) { reqFrom = maxP; reqTo = maxP; narrowPeriod = true }
+    } else {
+      reqFrom = periodIntent.from
+      reqTo   = periodIntent.to
+      narrowPeriod = rangeSpanMonths(reqFrom, reqTo) <= 3
+    }
+  }
+  const effectiveFloor   = reqFrom && reqFrom > periodFloor ? reqFrom : periodFloor
+  const effectiveCeiling = reqTo ?? ADVISOR_PERMISSIVE_CEILING
+  const matchCount       = narrowPeriod ? VECTOR_MATCH_COUNT_NARROW : VECTOR_MATCH_COUNT
+  let periodEmptyNotice: { from: string; to: string; nearest: string | null } | null = null
+
   // Embedding gerado UMA vez e reusado nas duas buscas (dentro e fora da janela).
   let chunks: TrendChunk[] = []
   let outOfWindowItems: OutOfWindowItem[] = []
@@ -774,12 +953,14 @@ export async function POST(req: NextRequest) {
   if (!emb.ok) {
     vectorError = `embed: ${emb.error}`
   } else {
-    const inWindow = await matchTrendChunks(service, emb.vector, periodFloor, VECTOR_MATCH_COUNT)
+    const inWindow = await matchTrendChunks(service, emb.vector, effectiveFloor, matchCount, effectiveCeiling)
     vectorError = inWindow.error
     chunks       = inWindow.chunks
 
     // So planos restritos (Essential) detectam material fora da janela. Para
     // Strategic (windowMonths === null) este passo nem roda: zero custo extra.
+    // Busca ampla (sem teto/periodo pedido) so para sinalizar o que existe antes
+    // do piso do PLANO; independe do periodo citado na pergunta.
     if (windowMonths !== null) {
       const wide = await matchTrendChunks(service, emb.vector, ADVISOR_PERMISSIVE_FLOOR, VECTOR_MATCH_COUNT)
       if (!wide.error) outOfWindowItems = collectOutOfWindow(wide.chunks, periodFloor)
@@ -817,6 +998,24 @@ export async function POST(req: NextRequest) {
     reportIdsUsed   = [...new Set(selected.map(c => c.report_id))]
     trendIdsUsed    = selected.map(c => c.trend_id)
     similarities    = selected.map(c => Number(c.similarity.toFixed(4)))
+  } else if (periodIntent && emb.ok) {
+    // ── Periodo explicito sem conteudo (v4.6) ─────────────────────────────
+    // O usuario citou um periodo, a busca vetorial naquele intervalo voltou
+    // vazia e o embedding funcionou. NAO caimos no router por titulo: ele
+    // ignora periodo e janela do plano e poderia trazer material fora do
+    // pedido (ou furar a janela de um Essential). Em vez disso, contexto vazio
+    // + aviso de disponibilidade, deixando o Advisor dizer com naturalidade que
+    // nao ha relatorio para aquele periodo e oferecer o mais proximo.
+    selectionSource = 'vector'
+    lang            = preferLang
+    contextBlock    = buildTrendContextBlock([])
+    // Se o periodo pedido esta DENTRO da janela do plano (sem out-of-window
+    // hit), buscamos o periodo disponivel mais proximo para oferecer. Quando ha
+    // out-of-window hit, a recusa construtiva do Passo 4 ja cobre o caso.
+    if (!outOfWindowHit && reqFrom && reqTo) {
+      const nearest  = await nearestAvailablePeriod(service, periodFloor, reqFrom, reqTo)
+      periodEmptyNotice = { from: reqFrom, to: reqTo, nearest }
+    }
   } else {
     // ── Fallback: router por título (comportamento atual, intacto) ─────────
     // v4.3: limite parcial em 100. Cobre o arquivo atual e dá ao roteador
@@ -885,6 +1084,11 @@ export async function POST(req: NextRequest) {
   // janela do plano (so Essential). Dinamico por turno, fora do cache.
   if (outOfWindowHit && windowMonths !== null) {
     system.push({ type: 'text', text: buildOutOfWindowBlock(outOfWindowItems, windowMonths) })
+  }
+  // v4.6: periodo pedido sem conteudo (dentro da janela do plano). Aviso de
+  // disponibilidade para o Advisor responder com naturalidade. Fora do cache.
+  if (periodEmptyNotice) {
+    system.push({ type: 'text', text: buildPeriodEmptyBlock(periodEmptyNotice.from, periodEmptyNotice.to, periodEmptyNotice.nearest) })
   }
   system.push({ type: 'text', text: languageInstruction(lang) }) // dinâmico, fora do cache
 
@@ -968,6 +1172,9 @@ export async function POST(req: NextRequest) {
     vector_error:         vectorError,
     plan:                 plan ?? 'free',
     period_floor:         periodFloor,
+    requested_period:     reqFrom && reqTo ? { from: reqFrom, to: reqTo } : null,
+    period_ceiling:       effectiveCeiling,
+    period_empty_hit:     periodEmptyNotice !== null,
     out_of_window_hit:    outOfWindowHit,
     memory_summaries_used: memorySummaries.map(s => s.session_id),
     attribution_flag:     attributionFlag,

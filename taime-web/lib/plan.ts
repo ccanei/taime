@@ -55,6 +55,10 @@ export function hasAdvisorAccess(plan: Plan | null): boolean {
 // "sem limite" usado pela busca vetorial do Advisor.
 export const ADVISOR_PERMISSIVE_FLOOR = '2000-01-01'
 
+// Teto permissivo (v4.6): "sem limite superior" para a busca por intervalo de
+// periodo. Casa com o DEFAULT da funcao match_trend_chunks.
+export const ADVISOR_PERMISSIVE_CEILING = '9999-12-01'
+
 /**
  * Janela de contexto do Advisor em MESES, por plano (Opcao C: a janela de
  * contexto do Advisor = a janela de relatorios do plano).

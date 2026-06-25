@@ -2,6 +2,70 @@
 
 ---
 
+## [2026-06-25] - Advisor v4.6: busca por intencao de periodo + correcao da auto-descricao fossil
+
+### Objetivo
+- Dois problemas reais pos-migracao pgvector: (1) a busca vetorial e puramente
+  semantica e ignorava periodo citado ("relatorios de junho de 2026" trazia
+  qualquer periodo); (2) o Advisor descrevia a si mesmo com a arquitetura ANTIGA
+  ("um seletor escolhe ate 3 relatorios", "reformule para forcar o seletor"),
+  factualmente errado e expondo encanamento interno.
+
+### TAREFA 1 - detectar intencao de periodo (route.ts)
+- `detectPeriodIntent(message, now)` por regex PT/EN, sem custo de modelo. Cobre:
+  "este mes"/"this month", "ultimo/mais recente"/"latest", intervalo de anos
+  ("entre 2023 e 2024", "2023-2024"), mes+ano ("junho de 2026", "June 2026"),
+  MM/YYYY, YYYY-MM, ano isolado. Atemporal -> null (busca ampla como antes).
+- "ultimo/mais recente" resolve para max(period) do acervo DENTRO da janela do
+  plano via `maxPeriodInWindow`, nunca uma data fixa.
+
+### TAREFA 2 - aplicar o intervalo na busca (route.ts + SQL)
+- `add-period-ceiling-to-match.sql` (entregue, NAO executado): recria
+  match_trend_chunks com `period_ceiling date DEFAULT '9999-12-01'` alem do
+  period_floor. Assinatura antiga segue funcionando (default permissivo).
+- `ADVISOR_PERMISSIVE_CEILING = '9999-12-01'` em lib/plan.ts (ponto unico).
+- Floor efetivo = MAIS restritivo entre periodo pedido e piso do plano (Passo 4):
+  Essential pedindo fora dos 36 meses NAO fura a janela, cai na recusa construtiva.
+
+### TAREFA 3 - match_count maior em periodo estreito
+- `VECTOR_MATCH_COUNT_NARROW = 24` (vs 16 padrao) quando o range pedido tem <= 3
+  meses, para o periodo entrar mesmo sem ser o semanticamente mais proximo.
+
+### TAREFA 4 - resposta natural quando o periodo pedido nao tem conteudo
+- Novo ramo: periodo explicito + busca vazia + embedding ok -> contexto vazio +
+  PERIOD AVAILABILITY NOTICE. NAO cai no router por titulo (que ignora periodo e
+  janela). `nearestAvailablePeriod` oferece o periodo publicado mais proximo.
+  Quando ha out-of-window hit, a recusa construtiva do Passo 4 ja cobre o caso.
+
+### TAREFA 5 - correcao da auto-descricao fossil (RULES_BLOCK)
+- "HOW YOU RECEIVE REPORTS" (falava em "seletor / ate 3 relatorios") substituido
+  por "HOW YOU ACCESS THE ARCHIVE": descreve a busca por significado sobre o
+  arquivo inteiro, sem numeros de arquitetura, sem expor retrieval, sem mandar
+  reformular para "forcar". Periodo/tema sem conteudo -> diz que nao ha e oferece
+  o mais proximo. Coerente com grounding, fontes por categoria, v4.4 e v4.5.
+
+### Restricoes / fallback
+- Fallback intacto: vetor falha OU atemporal vazio -> router por titulo. Memoria
+  de cliente, grounding-safety, v4.4/v4.5 nao alterados. Sem travessao em texto novo.
+- Metadata novo: requested_period, period_ceiling, period_empty_hit.
+
+### Aplicar antes de testar (Supabase SQL Editor)
+- `add-period-ceiling-to-match.sql` (v4.6) e `match-session-summaries.sql` (memoria
+  Fase 3) precisam ser rodados manualmente. Sem o ceiling, a busca por intervalo
+  nao limita o teto (degrada para floor-only, comportamento pre-v4.6).
+
+### Validacao (reportar)
+- "relatorios de junho de 2026 sobre priorizacao" -> trends de 2026-06.
+- "o que era hype em 2024?" -> chunks de 2024.
+- "ultimo relatorio" -> max(period) da janela.
+- atemporal ("como evoluiu AI coding") -> diversidade temporal ampla (sem regressao).
+- periodo fora da janela Essential -> recusa construtiva do Passo 4 mantida.
+- "como voce busca os relatorios?" -> resposta NAO cita "3 relatorios" nem manda
+  reformular; descreve a busca no arquivo com naturalidade.
+- Build 0 erros.
+
+---
+
 ## [2026-06-25] - Advisor: gate liberado para Essential (sem limite de mensagens ainda)
 
 ### Objetivo
