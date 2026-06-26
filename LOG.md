@@ -2,6 +2,78 @@
 
 ---
 
+## [2026-06-26] - Advisor v5.0: de consultor de projeto a conselheiro estrategico permanente
+
+### Objetivo
+- Mudanca de IDENTIDADE e VOZ, nao de capacidade. Sair do "plano de 90 dias"
+  (relacao de projeto: entra, resolve, sai) para conselheiro estrategico continuo
+  (relacao de anos: acompanha a jornada, da continuidade, antecipa as curvas).
+  Mais voz de autoridade senior, menos andaime de relatorio. Tudo no system prompt
+  (RULES_BLOCK). Nao tocou em busca, memoria-infra nem grounding-safety.
+
+### TAREFA 1 - ADVISORY HORIZON (o coracao da mudanca)
+- Novo bloco: conselheiro continuo, pensa na jornada ao longo de anos.
+- Recomendacao em DUAS camadas combinadas: (a) onde o cliente esta agora + proximo
+  movimento concreto; (b) horizontes curto (agora) / medio (proximo trimestre) /
+  longo (1-2 anos), mostrando como o passo de hoje se conecta ao que vem.
+- Fim do entregavel fechado: framing "onde voce esta / proximo passo / o que isso
+  prepara". Plano de 90 dias vira TATICA dentro da jornada, nunca o todo.
+- Fecha olhando adiante e convida o retorno por valor (recalibrar com o resultado
+  real), nunca por pressao. Framework TAIME (TYPE/ACT/IMPACT/MOVE/EXIT) vira andaime
+  tatico de UMA recomendacao, "EXIT" nao e o fim da relacao.
+
+### TAREFA 2 - continuidade ativa via memoria (HOW YOU USE CLIENT MEMORY)
+- Com bloco de memoria presente: amarra como TRAMPOLIM ("voce estava priorizando X;
+  com isso encaminhado, o proximo movimento e Y"), nao recapitulacao.
+- CRITICO: sem bloco de memoria no turno = primeira conversa / cliente sem historico.
+  Nao inventar continuidade ("como discutimos" sem ter discutido); agir como inicio
+  de relacao e estabelecer a base para a continuidade futura.
+- Continuidade e trampolim, nao retrovisor: usar o passado para avancar.
+
+### TAREFA 3 - ANALYTICAL DNA (atributos de elite destilados, SEM nomear)
+- Novo bloco com a postura das melhores casas de analise/consultoria SEM jamais
+  nomea-las: clareza de veredito + maturidade (cruzou o limiar de producao vs
+  promessa); rigor quantitativo + leitura de trajetoria; estrutura de raciocinio +
+  foco em decisao executiva; disciplina de governanca e risco; pragmatismo de
+  implementacao.
+- Regra ABSOLUTA reforcada (precede a personalidade): NUNCA citar, nomear ou se
+  comparar a firma de analise/consultoria/big tech. Autoridade vem da analise do
+  arquivo TAIME, nunca de prestigio emprestado. E a regra 3 aplicada a identidade.
+
+### TAREFA 4 - voz de autoridade assumida (resolve o "seco/artificial")
+- VOICE AND FORMAT: prosa de conselheiro, menos titulos/tabelas/listas; estrutura
+  serve a clareza, nao vira template. Tabela so para comparar 3+ itens.
+- YOUR ROLE AND VOICE: opiniao assumida em 1a pessoa quando os sinais sustentam
+  ("na minha leitura, sua prioridade e X"); veredito claro em vez de "de um lado /
+  do outro" permanente; menos hedge defensivo. Opiniao sobre prioridade e livre;
+  FATO continua precisando de lastro (regras 1-4 sem excecao).
+
+### Guarda-corpo etico (novo bloco, inviolavel)
+- Fidelizacao por VALOR genuino, nunca por manipulacao, ansiedade fabricada,
+  urgencia falsa ou se fazer indispensavel. Empodera o cliente a decidir, nao cria
+  dependencia. Convite ao retorno e genuino, nao chantagem. Conselheiro profissional,
+  nao substituto de relacao humana (alinhado as diretrizes de bem-estar).
+
+### Preservado (v4.x)
+- Grounding (1-4), fontes por categoria, busca vetorial + periodo (v4.6), raciocinio
+  analitico (v4.4: tensoes, nao-perguntado, desafiar premissa, trajetoria),
+  re-elaboracao (v4.5), links, filtro de plano (Passo 4), rede de seguranca e
+  memoria-infra: intactos. Brevidade 200-400 palavras mantida (horizonte nao e
+  desculpa para resposta gigante).
+
+### Restricoes / build
+- Apenas system prompt. Sem travessao em texto novo (verificado: 0 ocorrencias).
+  npm run build: Compiled successfully, 0 erros.
+
+### Validacao (reportar)
+- "qual minha prioridade?" -> jornada + horizontes curto/medio/longo em prosa, nao
+  "plano de 90 dias" fechado nem relatorio de tabelas.
+- Com memoria: amarra ao historico como trampolim. Sem memoria: nao inventa continuidade.
+- Nenhuma resposta nomeia firma de analise/consultoria. Grounding intacto
+  (attribution_flag false; fatos datados com periodo de origem).
+
+---
+
 ## [2026-06-25] - Advisor v4.6: busca por intencao de periodo + correcao da auto-descricao fossil
 
 ### Objetivo
