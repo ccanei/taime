@@ -49,7 +49,6 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
   const [companyName, setCompanyName] = useState('')
   const [sector, setSector]           = useState('')
   const [companySize, setCompanySize] = useState('')
-  const [revenue, setRevenue]         = useState('')
 
   // Step 2
   const [infraText, setInfraText]         = useState('')
@@ -86,7 +85,6 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
       company_name:           companyName.trim(),
       sector,
       company_size:           companySize,
-      annual_revenue:         revenue.trim() || null,
       current_infrastructure: infraFull || null,
       strategic_objective:    objective.trim() || null,
       maturity_level:         maturity,
@@ -163,14 +161,6 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
                       </button>
                     ))}
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1.5">
-                    Receita anual aproximada <span className="text-zinc-400 text-xs">(opcional)</span>
-                  </label>
-                  <input type="text" value={revenue} onChange={e => setRevenue(e.target.value)}
-                    placeholder="Ex: R$ 10M-50M" className={inputCls} />
                 </div>
               </div>
 

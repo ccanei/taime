@@ -2,6 +2,70 @@
 
 ---
 
+## [2026-06-26] - Advisor: remover onboarding de entrada, captar contexto na conversa
+
+### Objetivo
+- Reduzir friccao de entrada. Antes, a primeira abertura do Advisor exigia um
+  onboarding obrigatorio com campos da empresa, inibindo o usuario leve (MEI, PF,
+  consultor solo). Agora o usuario entra DIRETO no chat: o perfil deixa de ser
+  pre-requisito e o contexto e captado organicamente na conversa, perguntando so
+  quando a resposta depende. Personalidade v5.1, busca, memoria e grounding intactos.
+
+### TAREFA 1 - remover onboarding obrigatorio de entrada
+- AdvisorView nao gateia mais no perfil: renderiza sempre o AdvisorChat. O perfil
+  vazio e estado normal. Mantido acesso OPCIONAL ao perfil: link discreto
+  "Completar meu perfil" no header do chat abre o formulario para quem QUISER
+  preencher de uma vez, com "Voltar ao chat". Nunca obrigatorio, nunca na frente.
+- AdvisorChat.profile virou nullable; header tolera perfil ausente. WELCOME
+  suavizado: nao afirma mais "tenho acesso ao seu perfil"; convida a contar o
+  contexto conversando.
+
+### TAREFA 2 - enxugar campos (remover faturamento)
+- annual_revenue removido do formulario (campo "Receita anual" do Step 1) e do
+  upsert. Removido tambem do route.ts: interface AdvisorProfile, do SELECT do
+  perfil e do buildProfileBlock (nao vai mais ao prompt). Coluna no banco mantida.
+- Nucleo preservado: setor, tamanho, objetivo estrategico, maturidade.
+  company_name e current_infrastructure seguem captaveis na conversa.
+
+### TAREFA 3 - bloco CONTEXT GATHERING no RULES_BLOCK
+- Novo bloco (apos HOW YOU USE CLIENT MEMORY): opera sem perfil, nunca gateia,
+  nunca manda preencher formulario. Extracao passiva primeiro (usa o que o cliente
+  revela e nunca re-pergunta). Pergunta sob demanda UMA coisa por vez, leve,
+  tecida na resposta, so quando a qualidade da resposta depende. Sem contexto
+  critico -> responde no geral e sinaliza que afina com 1 detalhe. PROIBIDO pedir
+  faturamento/orcamento proativamente. Integra com PARTNER MODE: a pergunta de
+  contexto e uma das perguntas provocativas, no mesmo ritmo de 1 por vez.
+
+### TAREFA 4 - persistir o contexto captado (mecanismo escolhido)
+- Escolha: extracao leve com Haiku (ROUTER_MODEL) ao fim do turno. Le APENAS a
+  mensagem do cliente e devolve JSON estrito so com campos explicitamente
+  revelados (nunca infere; nunca faturamento). max_tokens 256, fail-silent.
+- Upsert IDEMPOTENTE em advisor_profiles: so preenche campo vazio, nunca
+  sobrescreve campo ja preenchido com o que veio da conversa. Roda apos persistir
+  as mensagens, antes do return; falha silenciosa nao quebra a resposta.
+- Por que Haiku ao fim do turno e nao chamada estruturada (tool use) na principal:
+  isola a extracao do prompt do Advisor (nao polui o RULES_BLOCK nem o cache),
+  e barato, e falha de extracao nunca afeta a resposta ao cliente.
+
+### Preservado
+- Busca vetorial + intencao de periodo (v4.6), memoria de cliente, grounding e
+  rede de seguranca, gate de plano, e toda a personalidade v5.1 (partner mode,
+  DNA sem nomear firmas, strategic lane, voz em prosa). Usuarios com perfil ja
+  preenchido continuam normalmente: a captacao nunca sobrescreve o que existe.
+
+### Restricoes / build
+- Sem travessao em texto novo (verificado: 0 nos arquivos editados; os 4 em
+  AdvisorOnboarding sao separadores decorativos de comentario pre-existentes).
+  npm run build: Compiled successfully, 0 erros.
+
+### Validacao (reportar)
+- Usuario novo (perfil vazio) abre direto no chat, sem formulario.
+- Quando a resposta depende de contexto, pergunta UMA coisa leve no fluxo.
+- Contexto revelado persiste (2a conversa ja sabe), sem re-perguntar.
+- Faturamento nunca pedido proativamente.
+
+---
+
 ## [2026-06-26] - Advisor v5.1: de conselheiro que entrega para executive partner que faz pensar
 
 ### Objetivo

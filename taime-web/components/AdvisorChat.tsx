@@ -27,10 +27,11 @@ interface SessionRow {
 }
 
 interface Props {
-  userId:    string
-  userName:  string | null
-  userEmail: string | null
-  profile:   AdvisorProfile
+  userId:        string
+  userName:      string | null
+  userEmail:     string | null
+  profile:       AdvisorProfile | null
+  onOpenProfile?: () => void
 }
 
 function deriveInitials(name: string | null, email: string | null): string {
@@ -45,8 +46,8 @@ function deriveInitials(name: string | null, email: string | null): string {
   return 'U'
 }
 
-const WELCOME_PT = `Olá! Sou o TAIME Executive Advisor. Tenho acesso ao seu perfil e à inteligência dos relatórios TAIME para te ajudar a transformar sinais tecnológicos em decisões estratégicas para a sua empresa. Como posso ajudar hoje?`
-const WELCOME_EN = `Hello! I'm the TAIME Executive Advisor. I have access to your profile and TAIME report intelligence to help you turn technology signals into strategic decisions for your organization. How can I help you today?`
+const WELCOME_PT = `Olá! Sou o TAIME Executive Advisor. Uso a inteligência dos relatórios TAIME para te ajudar a transformar sinais tecnológicos em decisões estratégicas. Pode me contar o que está em jogo, e a gente afina o contexto conversando. Como posso ajudar hoje?`
+const WELCOME_EN = `Hello! I'm the TAIME Executive Advisor. I draw on TAIME report intelligence to help you turn technology signals into strategic decisions. Just tell me what is at stake and we will work out the context as we talk. How can I help you today?`
 
 function generateSessionId(): string {
   return crypto.randomUUID()
@@ -81,7 +82,7 @@ function timeAgoEn(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
-export default function AdvisorChat({ userId, userName, userEmail, profile }: Props) {
+export default function AdvisorChat({ userId, userName, userEmail, profile, onOpenProfile }: Props) {
   const { locale }   = useLocale()
   const isPt         = locale === 'pt'
   const userInitials = deriveInitials(userName, userEmail)
@@ -361,11 +362,18 @@ export default function AdvisorChat({ userId, userName, userEmail, profile }: Pr
             </button>
             <div className="min-w-0">
               <h2 className="text-sm font-bold text-zinc-900 truncate">TAIME Executive Advisor</h2>
-              {profile.company_name && (
+              {profile?.company_name && (
                 <p className="text-xs text-zinc-400 truncate">{profile.company_name}{profile.sector ? ` · ${profile.sector}` : ''}</p>
               )}
             </div>
           </div>
+          {onOpenProfile && (
+            <button
+              onClick={onOpenProfile}
+              className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap shrink-0">
+              {isPt ? 'Completar meu perfil' : 'Complete my profile'}
+            </button>
+          )}
         </div>
 
         {/* Messages */}

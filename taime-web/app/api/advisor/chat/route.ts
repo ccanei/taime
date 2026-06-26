@@ -15,7 +15,6 @@ interface AdvisorProfile {
   company_name:           string | null
   sector:                 string | null
   company_size:           string | null
-  annual_revenue:         string | null
   current_infrastructure: string | null
   strategic_objective:    string | null
   maturity_level:         string | null
@@ -243,6 +242,15 @@ Some turns include a MEMORY block: structured summaries of your earlier sessions
 - Use memory to avoid re-asking what you already know, but do not create dependence on it. The client's latest message and the loaded TAIME intelligence remain the focus, and your job is to move the client forward, not to keep them talking.
 - Memory changes nothing about the rules above. Grounding, sources by category, no invented prices or timelines, brevity, reasoning posture and re-elaboration of repeated questions all still apply without exception.
 
+CONTEXT GATHERING (how you learn the client's context without a form):
+
+The client may arrive with little or no profile on file. The CLIENT PROFILE block may read "Not configured yet" or carry fields marked "Not specified" or "Not described". This is normal and expected. You operate fully without a complete profile: you never gate the conversation on it, you never tell the client to fill anything out, and you never apologize for not having it.
+- PASSIVE EXTRACTION FIRST. Read the context the client reveals naturally in their messages (their sector, their size, what they run, their objective, their company) and put it to work immediately in your answer. Once something is revealed, treat it as known from then on: never re-ask what the client has already told you, in this turn or in any later one.
+- ASK ON DEMAND, ONE THING AT A TIME. Ask for context only when the quality of YOUR answer genuinely depends on it. When you do, ask for ONE thing, lightly and conversationally, woven into the reply ("to size this right, roughly how big is the engineering org?"). Never stack a second question on it, never present a list of fields, never anything that reads like a questionnaire or an intake form.
+- WHEN CONTEXT IS MISSING, STILL DELIVER. If a piece is missing and it is not worth interrupting the flow for, answer at the general level with the value you can give, then signal briefly that one detail would sharpen it ("this holds in general; tell me your current stack and I make it specific"). Never refuse, never stall, never park the conversation waiting for context.
+- NEVER solicit revenue, budget or financials. Do not ask for them proactively, ever. If the client volunteers a figure you may use it, but you never go looking for it.
+- This lives INSIDE partner mode, it is not an extra layer on top. A context question counts as one of your provoking questions and obeys the same one-at-a-time rhythm. Gathering context never turns the conversation into a form and never costs the client more than a single light question at a time.
+
 ADVISORY HORIZON:
 
 You are a continuous strategic advisor, not a one-off project consultant. You think across the client's journey over years, not in closed deliverables. You entered to accompany the journey, give it continuity and anticipate the turns ahead, not to drop a packaged plan and leave.
@@ -301,10 +309,92 @@ function buildProfileBlock(profile: AdvisorProfile | null): string {
 Company: ${profile.company_name ?? 'Not specified'}
 Sector: ${profile.sector ?? 'Not specified'}
 Size: ${profile.company_size ?? 'Not specified'}
-Annual revenue: ${profile.annual_revenue ?? 'Not specified'}
 Infrastructure: ${profile.current_infrastructure ?? 'Not described'}
 Strategic objective: ${profile.strategic_objective ?? 'Not specified'}
 Technology maturity: ${profile.maturity_level ?? 'Not specified'}`
+}
+
+// ── Captacao passiva de contexto (substitui o onboarding obrigatorio) ────────
+// Mecanismo escolhido: extracao leve com Haiku ao fim do turno. Le APENAS o que
+// o cliente revelou na propria mensagem e devolve JSON com os campos do nucleo
+// do perfil. Idempotente no upsert: so preenche campo vazio, nunca sobrescreve
+// o que ja existe, e nunca toca em faturamento. Falha silenciosa: se a extracao
+// ou o upsert quebrarem, o chat ja respondeu e nada e perdido.
+const EXTRACTABLE_FIELDS = [
+  'company_name', 'sector', 'company_size',
+  'current_infrastructure', 'strategic_objective', 'maturity_level',
+] as const
+type ExtractableField = typeof EXTRACTABLE_FIELDS[number]
+type ExtractedContext = Partial<Record<ExtractableField, string>>
+
+const EXTRACT_INSTRUCTIONS = `You extract organizational context that a user explicitly revealed in a single message to a strategic advisor. Return STRICT JSON with ONLY the fields the user clearly stated in THIS message. Omit any field not explicitly stated. Never infer, never guess, never fill from assumptions.
+Fields (all optional, all strings):
+- company_name: the user's company name, only if they name it.
+- sector: their industry or sector, only if stated.
+- company_size: headcount or size band, only if stated.
+- current_infrastructure: their tech stack or infrastructure, only if described.
+- strategic_objective: their stated strategic goal or priority, only if expressed.
+- maturity_level: ONLY one of exactly "inicial", "intermediário" or "avançado", and ONLY if the user explicitly describes their AI/technology maturity; otherwise omit.
+Never extract revenue, budget or financial figures. Return only a JSON object with no prose, no code fences. If nothing was revealed, return {}.`
+
+async function extractContext(message: string): Promise<ExtractedContext> {
+  try {
+    const res = await fetch(ANTHROPIC_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta':    'prompt-caching-2024-07-31',
+      },
+      body: JSON.stringify({
+        model:      ROUTER_MODEL,
+        max_tokens: 256,
+        system:     [{ type: 'text', text: EXTRACT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
+        messages:   [{ role: 'user', content: `USER MESSAGE:\n${message}` }],
+      }),
+    })
+    if (!res.ok) return {}
+
+    const data = await res.json() as { content?: Array<{ type: string; text: string }> }
+    const raw  = data.content?.find(b => b.type === 'text')?.text?.trim() ?? ''
+    const json = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
+    const parsed = JSON.parse(json) as Record<string, unknown>
+
+    const out: ExtractedContext = {}
+    for (const k of EXTRACTABLE_FIELDS) {
+      const v = parsed[k]
+      if (typeof v === 'string' && v.trim()) out[k] = v.trim()
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+// Persiste o contexto captado sem sobrescrever campos ja preenchidos. So escreve
+// quando ha de fato algo novo a gravar (campo vazio no perfil atual).
+async function persistExtractedContext(
+  service: ReturnType<typeof createSupabaseService>,
+  userId: string,
+  existing: AdvisorProfile | null,
+  extracted: ExtractedContext,
+): Promise<void> {
+  const updates: Record<string, string> = {}
+  for (const k of EXTRACTABLE_FIELDS) {
+    const val = extracted[k]
+    const cur = existing?.[k]
+    if (val && !(typeof cur === 'string' && cur.trim())) updates[k] = val
+  }
+  if (Object.keys(updates).length === 0) return
+  try {
+    await service.from('advisor_profiles').upsert(
+      { user_id: userId, ...updates },
+      { onConflict: 'user_id' },
+    )
+  } catch (e) {
+    console.warn('[advisor-context] persist failed:', e)
+  }
 }
 
 // ── Memoria de cliente (Fase 2) ─────────────────────────────────────────────
@@ -933,7 +1023,7 @@ export async function POST(req: NextRequest) {
   // ── Load advisor profile ──────────────────────────────────────────────────
   const { data: profileData } = await service
     .from('advisor_profiles')
-    .select('company_name,sector,company_size,annual_revenue,current_infrastructure,strategic_objective,maturity_level')
+    .select('company_name,sector,company_size,current_infrastructure,strategic_objective,maturity_level')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -1272,6 +1362,12 @@ export async function POST(req: NextRequest) {
       created_at:       assistantTs.toISOString(),
     },
   ])
+
+  // Captacao passiva de contexto: extrai o que o cliente revelou nesta mensagem
+  // e persiste em advisor_profiles (idempotente). Substitui o onboarding
+  // obrigatorio de entrada. Best-effort e sem bloquear a UX em caso de falha.
+  const extracted = await extractContext(userMessage)
+  await persistExtractedContext(service, user.id, profile, extracted)
 
   // Sincroniza metadados em advisor_sessions: cria na primeira mensagem com
   // título derivado da pergunta, atualiza last_activity_at e message_count nas
