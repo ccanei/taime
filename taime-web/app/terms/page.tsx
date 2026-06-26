@@ -43,7 +43,7 @@ export default function TermsPage() {
             <p>
               TAIME is a strategic technology intelligence platform that transforms global market
               signals into structured analysis with scoring, a decision framework and temporal
-              intelligence. The service includes periodic reports, access to the archive since 2000,
+              intelligence. The service includes periodic reports, access to the complete archive,
               and the Executive Advisor, an AI-based strategic assistant with context from the
               user's company profile.
             </p>

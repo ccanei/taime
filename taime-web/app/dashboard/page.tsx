@@ -224,8 +224,8 @@ export default async function DashboardPage() {
                 ) : (
                   <p className="text-xs text-zinc-400 max-w-sm leading-relaxed">
                     {isEn
-                      ? 'Strategic advisor with 25 years of historical memory and personalized context for your company.'
-                      : 'Consultor estratégico com memória histórica de 25 anos e contexto personalizado para a sua empresa.'}
+                      ? 'Strategic advisor with strategic memory across the TAIME archive and personalized context for your company.'
+                      : 'Consultor estratégico com memória estratégica do arquivo TAIME e contexto personalizado para a sua empresa.'}
                   </p>
                 )}
               </div>

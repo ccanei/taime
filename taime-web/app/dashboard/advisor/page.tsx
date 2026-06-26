@@ -47,7 +47,7 @@ export default async function AdvisorPage() {
             </span>
             <h1 className="text-2xl font-bold text-zinc-900 mb-2">Executive Advisor</h1>
             <p className="text-sm text-zinc-500 max-w-md mx-auto leading-relaxed">
-              Consultor estratégico com memória histórica de 25 anos e contexto
+              Consultor estratégico com memória estratégica do arquivo TAIME e contexto
               personalizado para a sua empresa. Disponível nos planos Essential e Strategic.
             </p>
             <div className="mt-6 flex items-center justify-center gap-3">

@@ -11,7 +11,7 @@ export const pt = {
   },
 
   home: {
-    badge:      'Sinais globais · Inteligência executiva · Desde 2000',
+    badge:      'Sinais globais · Inteligência executiva · Memória estratégica',
     hero:       ['Ninguém consegue acompanhar tudo', 'o que acontece em tecnologia.', 'O TAIME consegue.'],
     heroBody:   'Analisamos milhares de sinais e entregamos o que importa: o contexto, o score e o movimento recomendado. Você decide com o quadro completo.',
     heroSub:    'Grátis: 2 relatórios completos por mês.',
@@ -46,18 +46,18 @@ export const pt = {
     ],
 
     memBadge:  'Diferencial único',
-    memTitle:  '25 anos de memória estratégica.',
-    memBody:   'O TAIME cobre 25 anos de evolução tecnológica com granularidade crescente. Nenhuma plataforma oferece esse histórico com interpretação estratégica.',
+    memTitle:  'Memória estratégica do arquivo TAIME.',
+    memBody:   'O TAIME cobre a evolução tecnológica com granularidade crescente. Nenhuma plataforma oferece esse histórico com interpretação estratégica.',
     memCards: [
       {
         badge:    'Relatórios mensais',
-        title:    '2000 a 2014',
+        title:    'As décadas de base',
         subtitle: 'A era da fundação digital',
         desc:     'Internet corporativa, ERP global, virtualização, outsourcing de TI, nascimento do cloud computing e mobilidade. Cada relatório documenta os sinais, as decisões e os padrões de adoção que definiram como organizações navegaram as maiores transformações tecnológicas do início do século. Com TAIME Score, framework decisório e análise temporal THEN/NOW/NEXT para cada tendência identificada.',
       },
       {
         badge:    'Relatórios quinzenais',
-        title:    '2015 a hoje',
+        title:    'A era atual',
         subtitle: 'A era da aceleração',
         desc:     'SaaS, plataformas, dados como ativo estratégico, automação, pandemia digital, IA generativa e agêntica. A cada quinzena, o TAIME documenta o estado real do mercado tecnológico com scoring em 5 dimensões, orientação de movimento e o contexto histórico que transforma informação em decisão. O arquivo mais granular de inteligência estratégica em tecnologia disponível.',
       },
@@ -100,7 +100,7 @@ export const pt = {
     trendsEmpty: 'Relatórios em breve.',
 
     tlLabel: 'Memória histórica',
-    tlTitle: '25 anos de memória estratégica.',
+    tlTitle: 'Memória estratégica do arquivo TAIME.',
     milestones: [
       { year: '2000', label: 'Internet corporativa e ERP global' },
       { year: '2005', label: 'Virtualização e outsourcing' },
@@ -158,13 +158,13 @@ export const pt = {
   faq: {
     items: [
       { q: 'O TAIME é apenas gerado por IA?', a: 'O TAIME combina coleta automatizada de sinais de fontes globais validadas com análise estruturada por IA e revisão editorial humana. O resultado não é geração automática de conteúdo. É inteligência curada com metodologia própria.' },
-      { q: 'Com que frequência os relatórios são publicados?', a: 'A frequência acompanha a velocidade histórica do mercado: relatórios mensais para 2000–2014 e quinzenais de 2015 até hoje. O histórico completo está disponível para assinantes do plano Estratégico.' },
+      { q: 'Com que frequência os relatórios são publicados?', a: 'A frequência acompanha a velocidade histórica do mercado: relatórios mensais para a era de fundação digital e quinzenais para a era atual. O histórico completo está disponível para assinantes do plano Estratégico.' },
       { q: 'Quais fontes o TAIME monitora?', a: 'O TAIME monitora continuamente mais de 45 fontes globais validadas, incluindo firmas de pesquisa, consultorias estratégicas, big techs, publicações financeiras, centros acadêmicos e organismos regulatórios. A lista completa de fontes não é divulgada para preservar a independência editorial.' },
       { q: 'Para quem o TAIME é indicado?', a: 'Para qualquer pessoa que toma decisões baseadas em tecnologia: executivos e C-level, gestores de área, consultores, advisors, empreendedores e profissionais que precisam entender o mercado tecnológico com profundidade e contexto histórico.' },
       { q: 'O que é o TAIME Score?', a: 'O TAIME Score (0–100) mede a convergência estratégica de uma tendência em 5 dimensões: maturidade de mercado, pressão competitiva, impacto estratégico, complexidade de execução e risco de defasagem. Scores acima de 80 indicam prioridade executiva imediata.' },
       { q: 'O que significa TYPE → ACT → IMPACT → MOVE → EXIT?', a: 'É o framework decisório proprietário do TAIME. Para cada tendência, ele estrutura: o tipo de cenário (ruptura, risco, oportunidade), o nível de urgência de ação, as dimensões de impacto organizacional, o movimento racional recomendado e os critérios de saída ou escala.' },
       { q: 'O que é o THEN / NOW / NEXT?', a: 'É a camada de inteligência temporal do TAIME. THEN mostra como o mercado interpretava o sinal no passado. NOW revela o que realmente importa hoje com perspectiva acumulada. NEXT antecipa para onde o padrão aponta: o próximo ponto de inflexão estratégica.' },
-      { q: 'O histórico desde 2000 já está disponível?', a: 'O histórico está sendo construído progressivamente. Os relatórios mais recentes (2022–hoje) já estão disponíveis. O arquivo histórico completo será liberado para assinantes do plano Estratégico ao longo de 2026.' },
+      { q: 'O histórico completo já está disponível?', a: 'O histórico está sendo construído progressivamente. Os relatórios mais recentes já estão disponíveis e o arquivo se expande continuamente. O arquivo histórico completo será liberado para assinantes do plano Estratégico ao longo de 2026.' },
       { q: 'Existe versão gratuita?', a: 'Sim. Qualquer visitante pode acessar o preview dos relatórios, ver o TAIME Score geral e as dimensões estratégicas sem cadastro. O acesso completo, com análise detalhada, framework decisório e histórico, é exclusivo para assinantes.' },
       { q: 'Como funciona o acesso antecipado?', a: 'O TAIME está em fase de acesso antecipado para um grupo limitado de líderes e profissionais. Cadastre seu email para entrar na lista de espera. Os primeiros acessos serão liberados manualmente com condições especiais de lançamento.' },
     ],
@@ -218,7 +218,7 @@ export const pt = {
     originLabel:  'A origem',
     origin: [
       'Em 2024, analisando o movimento do mercado de inteligência estratégica, ficou evidente uma contradição: as plataformas que deveriam ajudar organizações a navegar a aceleração tecnológica estavam elas próprias ficando para trás. Relatórios estáticos, ciclos longos de produção, ausência de contexto histórico e análises desconectadas da velocidade real do mercado.',
-      'A pergunta que originou o TAIME foi simples: e se fosse possível pegar o histórico tecnológico dos últimos 25 anos, entender os padrões que se repetem, conectar com o que está acontecendo hoje e estruturar isso como orientação de movimento, não apenas como informação?',
+      'A pergunta que originou o TAIME foi simples: e se fosse possível pegar toda a história da tecnologia, entender os padrões que se repetem, conectar com o que está acontecendo hoje e estruturar isso como orientação de movimento, não apenas como informação?',
       'O TAIME nasceu dessa pergunta.',
     ],
     missionLabel: 'Missão',

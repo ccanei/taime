@@ -2,6 +2,47 @@
 
 ---
 
+## [2026-06-26] - Remover claim "25 anos" / "desde 2000" da comunicacao (Advisor + arquivo)
+
+### Objetivo
+- Parar de prometer profundidade historica inexistente. O arquivo comeca em ~2023,
+  mas a comunicacao cravava "memoria historica de 25 anos" e "desde 2000" em varios
+  lugares (card do Advisor, landing, termos, FAQ, ReportClient, system prompt).
+  Trocar por descricao QUALITATIVA, sem numero: o arquivo cresce e qualquer numero
+  fica desatualizado. Mantido o apelo (profundidade/continuidade) sem mentir o numero.
+
+### Alcance (A + B + C, confirmado)
+- A (Advisor): app/dashboard/page.tsx (card PT+EN), app/dashboard/advisor/page.tsx
+  (card EM BREVE), app/api/advisor/chat/route.ts (system prompt "archive spans 25 years"
+  -> "spans the history of technology"; so o texto da regra, sem tocar na logica).
+- B (arquivo/landing): lib/i18n/pt.ts e en.ts -> memTitle, memBody, tlTitle ("25 anos
+  de memoria estrategica" -> "Memoria estrategica do arquivo TAIME" / "Strategic memory
+  across the TAIME archive"); origin story ("ultimos 25 anos" -> "toda a historia da
+  tecnologia"); memCards titles ("2000 a 2014"/"2015 a hoje" -> "As decadas de base"/
+  "A era atual"; EN "The foundational decades"/"The current era").
+- C ("desde 2000"): badge home (PT+EN), termos PT + terms EN, ReportClient (PT+EN),
+  FAQ de frequencia ("mensais para 2000-2014" -> "para a era de fundacao digital") e
+  FAQ "historico desde 2000 disponivel?" -> "historico completo disponivel?".
+
+### Criterio
+- Sem numero novo no lugar (nada de "3 anos" ou "desde 2023"): descricao qualitativa.
+- Mantido o roadmap de liberacao do arquivo completo "ao longo de 2026" no FAQ (e plano
+  de produto, nao claim de profundidade ja existente).
+
+### Nao tocado (proposital)
+- "Historico de 1 ano" / "1-year history" (janela real do plano Essential, preciso).
+- lib/plan.ts ADVISOR_PERMISSIVE_FLOOR = '2000-01-01' (logica de piso, nao copy).
+- milestones (timeline 2000/2005/2010...): ilustracao da historia da tecnologia sob
+  secao relabelada, nao um claim de cobertura do arquivo. Mantida.
+- xmlns="http://www.w3.org/2000/svg" (namespace SVG, nao e claim).
+
+### Restricoes / build
+- So texto/copy; logica do Advisor intacta. Sem travessao em texto novo (0 nos textos
+  editados; os em ReportClient/dashboard sao comentarios/regex pre-existentes).
+  npm run build: Compiled successfully, 0 erros. PT e EN adaptados coerentemente.
+
+---
+
 ## [2026-06-26] - Advisor: remover onboarding de entrada, captar contexto na conversa
 
 ### Objetivo

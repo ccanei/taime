@@ -417,7 +417,7 @@ export default function ReportClient({
       strategic_only: {
         label: 'EXCLUSIVO ESTRATÉGICO',
         title: 'Este relatório está disponível apenas no plano Estratégico.',
-        sub:   'O histórico completo desde 2000 é exclusivo dos assinantes Estratégicos.',
+        sub:   'O histórico completo é exclusivo dos assinantes Estratégicos.',
         btn:   'Ver planos →',
         href:  '/planos',
       },
@@ -463,7 +463,7 @@ export default function ReportClient({
       strategic_only: {
         label: 'STRATEGIC ONLY',
         title: 'This report is available only on the Strategic plan.',
-        sub:   'The full archive since 2000 is exclusive to Strategic subscribers.',
+        sub:   'The full archive is exclusive to Strategic subscribers.',
         btn:   'View plans →',
         href:  '/planos',
       },

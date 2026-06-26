@@ -13,7 +13,7 @@ export const en: Translations = {
   },
 
   home: {
-    badge:      'Global signals · Executive intelligence · Since 2000',
+    badge:      'Global signals · Executive intelligence · Strategic memory',
     hero:       ['No one can keep up with everything', 'happening in technology.', 'TAIME can.'],
     heroBody:   'We analyze thousands of signals and deliver what matters: the context, the score and the recommended move. You decide with the full picture.',
     heroSub:    'Free: 2 full reports per month.',
@@ -48,18 +48,18 @@ export const en: Translations = {
     ],
 
     memBadge:  'Unique differentiator',
-    memTitle:  '25 years of strategic memory.',
-    memBody:   'TAIME covers 25 years of technology evolution with increasing granularity. No platform offers this history with strategic interpretation.',
+    memTitle:  'Strategic memory across the TAIME archive.',
+    memBody:   'TAIME covers technology evolution with increasing granularity. No platform offers this history with strategic interpretation.',
     memCards: [
       {
         badge:    'Monthly reports',
-        title:    '2000 to 2014',
+        title:    'The foundational decades',
         subtitle: 'The digital foundation era',
         desc:     'Corporate internet, global ERP, virtualization, IT outsourcing, the birth of cloud computing and mobility. Each report documents the signals, decisions and adoption patterns that defined how organizations navigated the largest technology transformations of the early century. With TAIME Score, decision framework and THEN/NOW/NEXT temporal analysis for each identified trend.',
       },
       {
         badge:    'Biweekly reports',
-        title:    '2015 to present',
+        title:    'The current era',
         subtitle: 'The acceleration era',
         desc:     'SaaS, platforms, data as a strategic asset, automation, digital pandemic, generative and agentic AI. Every two weeks, TAIME documents the real state of the technology market with 5-dimension scoring, movement guidance and the historical context that transforms information into decision. The most granular strategic technology intelligence archive available.',
       },
@@ -102,7 +102,7 @@ export const en: Translations = {
     trendsEmpty: 'Reports coming soon.',
 
     tlLabel: 'Historical memory',
-    tlTitle: '25 years of strategic memory.',
+    tlTitle: 'Strategic memory across the TAIME archive.',
     milestones: [
       { year: '2000', label: 'Corporate internet and global ERP' },
       { year: '2005', label: 'Virtualization and outsourcing' },
@@ -160,13 +160,13 @@ export const en: Translations = {
   faq: {
     items: [
       { q: 'Is TAIME just AI-generated content?', a: 'TAIME combines automated signal collection from validated global sources with AI-powered structured analysis and human editorial review. The output is not automatic content generation. It is curated intelligence with a proprietary methodology.' },
-      { q: 'How often are reports published?', a: 'The frequency follows the historical pace of the market: monthly reports for 2000–2014 and biweekly from 2015 to present. The complete archive is available for Strategic plan subscribers.' },
+      { q: 'How often are reports published?', a: 'The frequency follows the historical pace of the market: monthly reports for the digital foundation era and biweekly for the current era. The complete archive is available for Strategic plan subscribers.' },
       { q: 'Which sources does TAIME monitor?', a: 'TAIME continuously monitors more than 45 validated global sources, including research firms, strategic consultancies, big tech companies, financial publications, academic centers, and regulatory bodies. The full source list is not disclosed to preserve editorial independence.' },
       { q: 'Who is TAIME for?', a: 'For anyone who makes technology-based decisions: executives and C-suite, department managers, consultants, advisors, entrepreneurs, and professionals who need to understand the technology market with depth and historical context.' },
       { q: 'What is the TAIME Score?', a: 'The TAIME Score (0–100) measures the strategic convergence of a trend across 5 dimensions: market maturity, competitive pressure, strategic impact, execution complexity, and competitive lag risk. Scores above 80 indicate immediate executive priority.' },
       { q: 'What does TYPE → ACT → IMPACT → MOVE → EXIT mean?', a: "It is TAIME's proprietary decision framework. For each trend, it structures: the type of scenario (disruption, risk, opportunity), the urgency level for action, the dimensions of organizational impact, the rational recommended move, and the exit or scaling criteria." },
       { q: 'What is THEN / NOW / NEXT?', a: "It is TAIME's temporal intelligence layer. THEN shows how the market interpreted the signal in the past. NOW reveals what really matters today with accumulated perspective. NEXT anticipates where the pattern points: the next strategic inflection point." },
-      { q: 'Is the archive since 2000 already available?', a: 'The archive is being built progressively. The most recent reports (2022–present) are already available. The full historical archive will be released to Strategic plan subscribers throughout 2026.' },
+      { q: 'Is the complete archive already available?', a: 'The archive is being built progressively. The most recent reports are already available and the archive keeps expanding. The full historical archive will be released to Strategic plan subscribers throughout 2026.' },
       { q: 'Is there a free version?', a: 'Yes. Any visitor can access report previews, view the overall TAIME Score, and see strategic dimensions without signing up. Full access, with detailed analysis, decision framework, and historical archive, is exclusive to subscribers.' },
       { q: 'How does early access work?', a: 'TAIME is in early access for a limited group of leaders and professionals. Register your email to join the waitlist. The first access grants will be released manually with special launch conditions.' },
     ],
@@ -220,7 +220,7 @@ export const en: Translations = {
     originLabel:  'The origin',
     origin: [
       'In 2024, while analyzing the strategic intelligence market, a contradiction became clear: the platforms that should help organizations navigate the pace of technological acceleration were themselves falling behind. Static reports, long production cycles, no historical context, and analyses disconnected from actual market velocity.',
-      'The question that originated TAIME was simple: what if it were possible to take the last 25 years of technology history, identify the repeating patterns, connect them to what is happening today, and structure that as movement guidance, not just information?',
+      'The question that originated TAIME was simple: what if it were possible to take the entire history of technology, identify the repeating patterns, connect them to what is happening today, and structure that as movement guidance, not just information?',
       'TAIME was born from that question.',
     ],
     missionLabel: 'Mission',
