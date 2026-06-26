@@ -2,6 +2,72 @@
 
 ---
 
+## [2026-06-26] - Advisor v5.1: de conselheiro que entrega para executive partner que faz pensar
+
+### Objetivo
+- Refinamento de INTERACAO sobre o v5.0. O Advisor ja tem horizonte de relacao e
+  opiniao assumida; faltava o modo de um executive partner de elite: nao so entregar
+  conclusao pronta, mas conduzir o cliente a entende-la e testa-la, para que ele veja
+  o valor e decida com conviccao. Tudo no system prompt (RULES_BLOCK). Nao tocou em
+  busca, memoria-infra nem grounding-safety.
+
+### TAREFA 1 - PARTNER MODE: tese + escrutinio (o coracao do v5.1)
+- Entrega a tese com conviccao (nao esconde a resposta atras de perguntas infinitas)
+  e logo a submete ao escrutinio: 1-2 perguntas que fazem o cliente testar a propria
+  premissa ou a do Advisor ("minha leitura e X; mas antes de comprar isso, me diz: ...").
+- Objetivo duplo explicito: entregar o resultado E fazer o cliente ENTENDER o porque,
+  ver o valor e decidir com conviccao. Sai tendo PENSADO, nao so recebido.
+
+### TAREFA 2 - calibrar provocar vs entregar direto (sem socratico irritante)
+- Provoca no ESTRATEGICO (prioridade, trade-off, sequencia, alocacao): devolve
+  pergunta, pressiona premissa.
+- Entrega DIRETO no FATUAL/OPERACIONAL (o que o relatorio documenta, um dado, uma
+  definicao, pedido explicito de "me da a resposta"). Nunca responde fato com pergunta.
+  Provocar e ferramenta para forjar decisao, nao para evitar responder.
+
+### TAREFA 3 - mix de afirmacao e pergunta
+- Alterna afirmacao que provoca reflexao ("repara que seus dois objetivos se
+  contradizem aqui") com pergunta direta ("dos seus agentes, quais rodam sem revisao?").
+  Nem so pergunta (interrogatorio), nem so afirmacao (monologo).
+
+### TAREFA 4 - tom: pares que pensam juntos + desafio que forja decisao
+- Trata o cliente como PAR capaz ("voce ja tem os elementos para ver isso"), sem
+  condescendencia nem tom professoral. Ao mesmo tempo desafia: pressiona premissa
+  fraca, aponta o nao considerado, discorda com respeito quando os sinais contrariam.
+- A linha: desafio vem de respeito pela inteligencia do cliente (elevar), nunca de
+  superioridade (diminuir). Parceiro senior que puxa para cima, nao examinador.
+
+### TAREFA 5 - voz em prosa, menos andaime (continua o que o v5.0 deixou pela metade)
+- VOICE AND FORMAT reforcado: reduz drasticamente titulos em negrito e secoes; prosa
+  fluida e conectada. Estrutura (lista/tabela) so quando a info E genuinamente lista
+  (template, campos, comparacao de itens). Densidade 200-400 palavras mantida.
+
+### TAREFA 6 - raia estrategica (corrige a deriva do v5.0)
+- Novo bloco STRATEGIC LANE: inteligencia estrategica, nao assistente operacional.
+  Nao desce a formula de Excel, sintaxe, passo-a-passo de ferramenta, troubleshooting.
+  Pedido operacional -> reconduz ao nivel estrategico sem fazer o trabalho operacional.
+- Artefato (planilha/documento): por ora da a ESTRUTURA conceitual (quais campos, por
+  que), nao o arquivo nem formulas. Geracao de artefatos = roadmap futuro, fora de escopo.
+
+### Preservado
+- DNA de elite SEM nomear firmas (regra absoluta, precede a personalidade). Grounding
+  (fato com lastro; tese/opiniao livre), fontes por categoria, vetorial+periodo (v4.6),
+  raciocinio (v4.4), re-elaboracao (v4.5), memoria como trampolim (v5.0), horizonte de
+  relacao (v5.0), links, filtro de plano, guarda-corpo etico. O modo "fazer pensar"
+  nunca e desculpa para condescender, manipular ou criar dependencia.
+
+### Restricoes / build
+- Apenas system prompt. Sem travessao em texto novo (verificado: 0 ocorrencias).
+  npm run build: Compiled successfully, 0 erros.
+
+### Validacao (reportar)
+- Decisao estrategica -> tese com conviccao + 1-2 perguntas que fazem pensar; tom de par.
+- Fato ("o que o relatorio de junho diz?") -> resposta direta, sem enrolacao socratica.
+- Operacional ("monta a formula de Excel") -> reconduz ao estrategico, nao da sintaxe.
+- Voz em prosa, nao relatorio de tabelas. Grounding, nao-nomeacao e guarda-corpos intactos.
+
+---
+
 ## [2026-06-26] - Advisor v5.0: de consultor de projeto a conselheiro estrategico permanente
 
 ### Objetivo
