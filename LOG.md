@@ -2,44 +2,57 @@
 
 ---
 
-## [2026-06-26] - Remover claim "25 anos" / "desde 2000" da comunicacao (Advisor + arquivo)
+## [2026-06-26] - Expansao de termos de coleta + categorias de trend + limpeza A/B (sem commit)
 
 ### Objetivo
-- Parar de prometer profundidade historica inexistente. O arquivo comeca em ~2023,
-  mas a comunicacao cravava "memoria historica de 25 anos" e "desde 2000" em varios
-  lugares (card do Advisor, landing, termos, FAQ, ReportClient, system prompt).
-  Trocar por descricao QUALITATIVA, sem numero: o arquivo cresce e qualquer numero
-  fica desatualizado. Mantido o apelo (profundidade/continuidade) sem mentir o numero.
+- (1) Expandir os termos de coleta no collect-signals.ts; (2) expandir as
+  categorias de trend de 14 para 19; (3) deletar os dados do experimento A/B.
+  Diff deixado para revisao, sem commit.
 
-### Alcance (A + B + C, confirmado)
-- A (Advisor): app/dashboard/page.tsx (card PT+EN), app/dashboard/advisor/page.tsx
-  (card EM BREVE), app/api/advisor/chat/route.ts (system prompt "archive spans 25 years"
-  -> "spans the history of technology"; so o texto da regra, sem tocar na logica).
-- B (arquivo/landing): lib/i18n/pt.ts e en.ts -> memTitle, memBody, tlTitle ("25 anos
-  de memoria estrategica" -> "Memoria estrategica do arquivo TAIME" / "Strategic memory
-  across the TAIME archive"); origin story ("ultimos 25 anos" -> "toda a historia da
-  tecnologia"); memCards titles ("2000 a 2014"/"2015 a hoje" -> "As decadas de base"/
-  "A era atual"; EN "The foundational decades"/"The current era").
-- C ("desde 2000"): badge home (PT+EN), termos PT + terms EN, ReportClient (PT+EN),
-  FAQ de frequencia ("mensais para 2000-2014" -> "para a era de fundacao digital") e
-  FAQ "historico desde 2000 disponivel?" -> "historico completo disponivel?".
+### PART 1 - termos de coleta (collect-signals.ts)
+- TOPIC_BY_CATEGORY: as 9 categorias AMPLAS (research, consulting, vc, media,
+  academic, think_tank, vendor, security, financial) agora compartilham UMA query
+  identica. DISCREPANCIA encontrada vs. a premissa: as 9 NAO estavam identicas
+  antes. research e consulting tinham 4 termos a mais ("business model",
+  "operating model", "platform business", "business transformation"); as outras 7
+  nao tinham. Normalizei todas para o superset (research/consulting) para nao
+  perder termos e entao adicionei o bloco novo. Resultado: as 9 ficam identicas.
+- Bloco novo adicionado (append OR): "agentic AI", "AI agents", "multiagent
+  systems", "AI governance", "AI TRiSM", "responsible AI", "data sovereignty",
+  "sovereign cloud", geopatriation, "confidential computing", "hybrid computing",
+  "physical AI", robotics, humanoid, "AI infrastructure cost", "compute capacity",
+  "domain-specific models", "small language models", "post-quantum", "quantum
+  security", "preemptive security", "AI security", "spatial computing", "mixed
+  reality", "network infrastructure", 5G, "private networks", connectivity,
+  "data center".
+- As 7 categorias nichadas (data, automation, observability, engineering, edge,
+  healthtech, sustainability) ficaram INTACTAS.
 
-### Criterio
-- Sem numero novo no lugar (nada de "3 anos" ou "desde 2023"): descricao qualitativa.
-- Mantido o roadmap de liberacao do arquivo completo "ao longo de 2026" no FAQ (e plano
-  de produto, nao claim de profundidade ja existente).
+### PART 2 - categorias de trend (14 -> 19)
+- A lista vive em generate-report.ts: const VALID_CATEGORIES (usado por
+  normalizeCategory) e a string do prompt TREND_SCHEMA (campo "category").
+- Checagem de constraint: report_trends.category e "category text" SEM CHECK
+  (texto livre) no schema (TAIME SQL UPDATED.md e schema.sql). Logo, nenhuma
+  migracao de banco necessaria; alterei so o codigo.
+- Adicionadas 5 novas, mantendo as 14: Quantum, Robotics, AI Governance,
+  Spatial Computing, Networks.
 
-### Nao tocado (proposital)
-- "Historico de 1 ano" / "1-year history" (janela real do plano Essential, preciso).
-- lib/plan.ts ADVISOR_PERMISSIVE_FLOOR = '2000-01-01' (logica de piso, nao copy).
-- milestones (timeline 2000/2005/2010...): ilustracao da historia da tecnologia sob
-  secao relabelada, nao um claim de cobertura do arquivo. Mantida.
-- xmlns="http://www.w3.org/2000/svg" (namespace SVG, nao e claim).
+### PART 3 - limpeza do experimento A/B
+- Contagem ANTES: signals 2023-06-08 = 0 e 2023-06-23 = 0 (NAO ~1153/~1136 como
+  esperado; os signals ja haviam sido removidos em limpeza anterior). Restavam
+  orfaos: 18+18 signal_clusters e 3+3 reports (archived), com 36 report_trends.
+- Deletado na ordem FK-safe: 36 report_trends -> 6 reports -> 36 signal_clusters
+  (cadeia auto-contida, 0 referencias externas). signals delete rodou idempotente.
+- Contagem DEPOIS: 2023-06-08 e 2023-06-23 = 0 em signals/clusters/reports.
+  Producao intacta: 2023-06-01 = 582, 2023-06-16 = 615.
 
-### Restricoes / build
-- So texto/copy; logica do Advisor intacta. Sem travessao em texto novo (0 nos textos
-  editados; os em ReportClient/dashboard sao comentarios/regex pre-existentes).
-  npm run build: Compiled successfully, 0 erros. PT e EN adaptados coerentemente.
+### Validacao
+- npx tsc --noEmit: 0 erros. Sem commit (diff para revisao).
+
+### LEMBRETE POS-EXECUCAO (acao futura, nao feita agora)
+- O proximo periodo gerado com a query expandida DEVE ter a taxa de is_noise
+  medida e comparada com a baseline (~17%). Se o ruido subir muito acima disso,
+  a causa e o volume de termos novos e o caminho e podar.
 
 ---
 
@@ -242,6 +255,66 @@
 - Com memoria: amarra ao historico como trampolim. Sem memoria: nao inventa continuidade.
 - Nenhuma resposta nomeia firma de analise/consultoria. Grounding intacto
   (attribution_flag false; fatos datados com periodo de origem).
+
+---
+
+## [2026-06-26] - Experimento A/B de coleta (junho/2023) - PERIODOS-EXPERIMENTO (a limpar)
+
+### Objetivo
+- Comparar o metodo de coleta atual (A = "full": `site:dominio` + TOPIC_BY_CATEGORY)
+  contra uma coleta "query minima" (B = so `site:dominio` + filtro de data),
+  medindo se o topico por categoria ajuda ou atrapalha o recall/qualidade.
+
+### Desenho (periodos-sombra para nao tocar no A ja gerado)
+- A ja existia: 2023-06-01 (janela 1-15) e 2023-06-16 (janela 16-30). NAO tocado.
+- B rodou em periodos-sombra: 2023-06-08 (pareia 06-01) e 2023-06-23 (pareia 06-16).
+- Pipeline B: collect(minimal) -> filter -> analyze -> generate -> validate, com
+  NO_AUTO_PUBLISH=1. Tudo em pending_review, published_at=null. Nada publicado.
+
+### Implementacao
+- `collect-signals.ts`: novo env COLLECT_MODE (default 'full'). Em 'minimal',
+  buildQuery devolve so `site:${dominio}` (mantem filtro de data e janela). Default
+  inalterado (full = metodo A). Diff NAO commitado.
+- Correcao de raiz (contaminacao): collect passou a gravar STORE_KEY = PERIOD cru
+  (antes usava periodInfo.key normalizado, que jogava 06-08 dentro de 06-01). Sem
+  isso o experimento contaminava o A. Comportamento identico para periodos-fronteira.
+- Scripts auxiliares (raiz, descartaveis): run-shadow-pipeline.sh,
+  cleanup-period-reports.ts (recusa A e published), cleanup-shadow-contamination.ts,
+  count-periods.ts, experiment-report-2023-06.ts.
+
+### Resultado (lado a lado)
+- PAR 1 (1-15):  A 06-01 = 582 sinais / 19.2% ruido / 15 trends / verdict stale.
+                 B 06-08 = 1000* sinais / 32.7% ruido / 18 trends / verdict FAIL.
+- PAR 2 (16-30): A 06-16 = 615 sinais / 14.8% ruido / 18 trends / verdict stale.
+                 B 06-23 = 1000* sinais / 31.8% ruido / 18 trends / verdict PASS.
+- (*) cap de 1000 linhas do PostgREST: B coletou 1153/1136 sinais brutos mas
+  filter/analyze processam so os 1000 primeiros. A nunca bateu o cap. Caveat
+  documentado, NAO corrigido (quebraria a comparabilidade + escopo).
+- temporal_breach = 0 em A e B (os quatro periodos).
+- Categorias: B ganhou Fintech no PAR 1; perdeu Healthtech no PAR 2. No AGREGADO
+  A e B cobrem exatamente o mesmo conjunto de categorias (empate macro).
+- theme_slug (granularidade fina): B trouxe temas que A nao tinha (ex.: computacao
+  espacial/realidade mista, ia-edge, pagamentos/open-banking, capital-risco
+  industrias fisicas, fragmentacao geopolitica) e perdeu outros que A tinha (ex.:
+  erp-nuvem-ia, ia-generativa-consumo, requalificacao-humana-ia, computacao
+  quantica, ia-descoberta-medicamentos, transformacao-modelo-operacional-ia).
+- Ruido: B quase dobra a taxa de ruido (~32% vs ~17%) - query minima puxa mais
+  paginas-lixo (perfis, vagas, stubs de diretorio), filtradas pelo Haiku.
+- Custo Opus de B (generate dos 2 periodos): ~$39.90 (input 592k, output 198k,
+  cache_write 226k, cache_read 7.97M).
+
+### Leitura
+- B (minimal) traz mais volume bruto e mais ruido, com cobertura macro equivalente
+  e alguns temas diferentes na borda. O topico por categoria (A) reduz ruido e
+  ancora temas de negocio (ERP, requalificacao, quantica), mas pode estreitar a
+  borda. Verdicts divergentes (B 06-08 fail, B 06-23 pass) sugerem que o ganho
+  nao e estavel periodo a periodo.
+
+### A LIMPAR
+- 2023-06-08 e 2023-06-23 sao PERIODOS-EXPERIMENTO (sombra). Remover signals,
+  clusters e reports desses dois periodos quando o experimento for encerrado.
+  A (06-01 / 06-16) deve permanecer intacto.
+- Diff de collect-signals.ts + scripts auxiliares NAO commitados (em revisao).
 
 ---
 
