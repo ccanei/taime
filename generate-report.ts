@@ -155,12 +155,49 @@ function repairJson(raw: string): string {
   return repaired;
 }
 
+/**
+ * Escapa caracteres de controle crus (newline, tab, CR) que aparecem DENTRO de
+ * strings JSON — o Opus às vezes injeta uma quebra de linha literal no meio de
+ * um texto longo, o que torna o JSON inválido ("Bad control character"). Esta
+ * função preserva o texto, apenas escapando o caractere (\\n em vez do \n cru).
+ * Percorre o texto rastreando se está dentro de uma string.
+ */
+function escapeControlCharsInStrings(text: string): string {
+  let out = '';
+  let inString = false;
+  let escaped  = false;
+  for (const ch of text) {
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (inString) {
+      if (ch === '\\') { out += ch; escaped = true; continue; }
+      if (ch === '"')  { out += ch; inString = false; continue; }
+      // Caractere de controle cru dentro de string → escapa.
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { out += '\\r'; continue; }
+      if (ch === '\t') { out += '\\t'; continue; }
+      const code = ch.charCodeAt(0);
+      if (code < 0x20) { out += '\\u' + code.toString(16).padStart(4, '0'); continue; }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') { inString = true; out += ch; continue; }
+    out += ch;
+  }
+  return out;
+}
+
 function parseJsonSafe<T>(raw: string, label: string): T {
   const repaired = repairJson(raw);
   try {
     return JSON.parse(repaired) as T;
-  } catch (e) {
-    throw new Error(`JSON inválido mesmo após repair [${label}]: ${e}\n${repaired.slice(0, 400)}`);
+  } catch {
+    // Segunda tentativa: escapa caracteres de controle crus dentro de strings
+    // (causa comum: newline literal no meio de um texto gerado pelo modelo).
+    try {
+      return JSON.parse(escapeControlCharsInStrings(repaired)) as T;
+    } catch (e) {
+      throw new Error(`JSON inválido mesmo após repair [${label}]: ${e}\n${repaired.slice(0, 400)}`);
+    }
   }
 }
 
@@ -179,6 +216,7 @@ const VALID_CATEGORIES = [
   'IA', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Data',
   'Market', 'Fintech', 'Automation', 'Observability', 'Engineering',
   'Edge', 'Healthtech', 'Sustainability',
+  'Quantum', 'Robotics', 'AI Governance', 'Spatial Computing', 'Networks',
 ] as const;
 
 /** Normaliza um slug para kebab-case ASCII estável. Retorna null se vazio. */
@@ -541,32 +579,158 @@ function logUsage(label: string, u: AnthropicUsage): void {
   );
 }
 
-async function anthropicPost(body: unknown): Promise<{ text: string; usage: AnthropicUsage }> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta':    'prompt-caching-2024-07-31',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
+// HTTP status que vale re-tentar (transitórios). 4xx de cliente (400/401/403) não.
+const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504, 529]);
 
-  const data = await res.json() as {
-    content: Array<{ type: string; text: string }>;
-    usage: AnthropicUsage;
-  };
-  const text = data.content.find(b => b.type === 'text')?.text ?? '';
-  return { text, usage: data.usage };
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+async function anthropicPost(
+  body: unknown,
+  opts: { maxAttempts?: number; baseDelayMs?: number } = {},
+): Promise<{ text: string; usage: AnthropicUsage }> {
+  const maxAttempts = opts.maxAttempts ?? 4;
+  const baseDelay   = opts.baseDelayMs ?? 2000;
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type':      'application/json',
+          'x-api-key':         cfg.anthropicKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta':    'prompt-caching-2024-07-31',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        // Erro de cliente (não 429): re-tentar não resolve. Falha imediata.
+        if (!RETRYABLE_STATUS.has(res.status)) {
+          throw new Error(`Anthropic API (${res.status}): ${errText}`);
+        }
+        // Status transitório: trata como erro re-tentável.
+        throw Object.assign(new Error(`Anthropic API (${res.status}): ${errText}`), { _retryable: true });
+      }
+
+      const data = await res.json() as {
+        content: Array<{ type: string; text: string }>;
+        usage: AnthropicUsage;
+      };
+      const text = data.content.find(b => b.type === 'text')?.text ?? '';
+      return { text, usage: data.usage };
+    } catch (err) {
+      lastErr = err;
+
+      // Erro de cliente não-re-tentável (lançado acima sem _retryable): propaga já.
+      const msg = err instanceof Error ? err.message : String(err);
+      const isHttpClientError = msg.startsWith('Anthropic API (') && !(err as { _retryable?: boolean })._retryable;
+      if (isHttpClientError) throw err;
+
+      // Erros de rede (ECONNRESET, fetch failed, timeout) e status transitórios: re-tenta.
+      if (attempt < maxAttempts) {
+        const delay = baseDelay * Math.pow(2, attempt - 1); // 2s, 4s, 8s...
+        console.warn(`  ⚠ Falha de rede/API (tentativa ${attempt}/${maxAttempts}): ${msg.slice(0, 120)}`);
+        console.warn(`    aguardando ${delay / 1000}s antes de re-tentar...`);
+        await sleep(delay);
+        continue;
+      }
+    }
+  }
+  throw new Error(`anthropicPost falhou após ${maxAttempts} tentativas: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
+}
+
+// ─── Synergy ordering + report splitting ──────────────────────────────────────
+
+/**
+ * Pede ao modelo para REORDENAR os clusters por afinidade temática — clusters
+ * que conversam ficam adjacentes (IA-research perto de IA-commercial, devops
+ * perto de tooling, cloud perto de infra). NÃO agrupa nem corta; só ordena.
+ * O corte em relatórios é feito por código (splitIntoReports), garantindo os
+ * limites de tamanho. Separação julgamento (LLM) × aritmética (código).
+ *
+ * Retorna uma permutação de índices [0..n-1]. Em qualquer falha, retorna a
+ * ordem identidade (fallback): o pipeline nunca trava por causa disto.
+ */
+async function orderClustersBySynergy(clusters: Cluster[]): Promise<number[]> {
+  const identity = clusters.map((_, i) => i);
+  if (clusters.length <= 2) return identity; // nada a ordenar
+
+  const list = clusters
+    .map((c, i) => `[${i}] ${c.name} — ${c.description}`)
+    .join('\n');
+
+  const sys = `You order a list of technology trend clusters so that thematically related ones \
+are adjacent. You do NOT group, cut, merge, rename, or judge importance. You only return a \
+reordering of the given indices so that clusters that share a theme (e.g. AI research and AI \
+applications; devops and developer tooling; cloud and infrastructure; privacy and security) sit \
+next to each other, producing a coherent reading sequence.
+
+Return VALID JSON ONLY: {"order": [<all indices, each exactly once>]}
+The "order" array MUST be a permutation of 0..${clusters.length - 1} — every index exactly once, \
+none added, none missing.`;
+
+  try {
+    const { text } = await anthropicPost({
+      model:      cfg.model,
+      max_tokens: 1024,
+      system:     [{ type: 'text', text: sys }],
+      messages:   [{ role: 'user', content: `Clusters:\n${list}\n\nReturn valid JSON only.` }],
+    });
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return identity;
+    const parsed = parseJsonSafe<{ order: number[] }>(match[0], 'synergy-order');
+    const order  = parsed.order ?? [];
+
+    // Valida que é uma permutação exata de 0..n-1. Se não for, fallback.
+    if (order.length !== clusters.length) return identity;
+    const seen = new Set<number>();
+    for (const idx of order) {
+      if (!Number.isInteger(idx) || idx < 0 || idx >= clusters.length || seen.has(idx)) {
+        return identity;
+      }
+      seen.add(idx);
+    }
+    return order;
+  } catch {
+    return identity; // qualquer erro → ordem original
+  }
+}
+
+/**
+ * Dado o total de trends, devolve os TAMANHOS dos relatórios, cada um entre
+ * `min` e `max` trends, o mais balanceado possível. Determinístico.
+ *   ≤ max          → [total]                  (1 relatório)
+ *   > max          → ceil(total/max) grupos, tamanhos equilibrados
+ * Ex.: 16,(3,7) → [6,5,5] · 11 → [6,5] · 8 → [4,4] · 7 → [7] · 4 → [4] · 3 → [3]
+ *
+ * Caso de borda: total < min (ex. 2 clusters) → [total]. Não inventamos trends;
+ * um período só com 2 temas vira 1 relatório de 2, abaixo do alvo mas honesto.
+ */
+function splitIntoReports(total: number, min = 3, max = 7): number[] {
+  if (total <= max) return [total];
+
+  const groups = Math.ceil(total / max);          // nº mínimo de relatórios p/ respeitar o teto
+  const base   = Math.floor(total / groups);
+  let   extra  = total % groups;                  // distribui o resto +1 nos primeiros grupos
+
+  const sizes: number[] = [];
+  for (let g = 0; g < groups; g++) {
+    sizes.push(base + (extra > 0 ? 1 : 0));
+    if (extra > 0) extra--;
+  }
+  // base >= min é garantido aqui: groups = ceil(total/max) implica base = floor(total/groups) >= min
+  // para min<=max e total>max (ex.: total=8,max=7 → groups=2,base=4). Mantemos a verificação defensiva.
+  return sizes;
 }
 
 // ─── Per-trend LLM call ───────────────────────────────────────────────────────
 
 const TREND_SCHEMA = `{
   "title": "executive-grade trend title (10–15 words)",
-  "category": "ONE broad label, EXACTLY one of: IA, Cloud, Cybersecurity, Regulation, Infrastructure, Data, Market, Fintech, Automation, Observability, Engineering, Edge, Healthtech, Sustainability",
+  "category": "ONE broad label, EXACTLY one of: IA, Cloud, Cybersecurity, Regulation, Infrastructure, Data, Market, Fintech, Automation, Observability, Engineering, Edge, Healthtech, Sustainability, Quantum, Robotics, AI Governance, Spatial Computing, Networks",
   "theme_slug": "stable kebab-case ASCII key for this theme ACROSS cycles (e.g. ia-agentes-autonomos, governanca-ia, repatriacao-cloud). REUSE an existing slug from the list if this trend continues that theme; only create a new slug for a genuinely new theme. Language-neutral: identical in PT and EN.",
   "executive_snapshot": "2–3 sentences — the non-obvious insight that defines this trend's significance",
   "taime_score": 88,
@@ -712,16 +876,29 @@ async function callClaudeMetadata(
   language: 'pt-BR' | 'en',
 ): Promise<ReportMetadata> {
   const lang       = language === 'pt-BR' ? 'Brazilian Portuguese' : 'English';
+  const periodLabel = language === 'pt-BR' ? PERIOD_LABEL_PT : PERIOD_LABEL_EN;
   const trendsList = trends.map((t, i) =>
     `${i + 1}. "${t.title}" (TAIME Score: ${t.taime_score})\n   ${t.executive_snapshot}`,
   ).join('\n\n');
 
   const prompt =
-    `Generate report metadata for the TAIME ${PERIOD} strategic intelligence report in ${lang}.\n\n` +
+    `Generate report metadata for a TAIME strategic intelligence report in ${lang}.\n\n` +
+    `PERIOD: this report covers "${periodLabel}" (period type: ${_pi.type}). This is a SINGLE ` +
+    `${_pi.type === 'monthly' ? 'month' : 'two-week window'}, not a quarter, semester, or year. ` +
+    `NEVER describe the timeframe as a "semester", "semestre", "quarter", "trimestre", "year", ` +
+    `or "ano" — refer to it as this period / this fortnight / "${periodLabel}" if a timeframe is named.\n\n` +
+    `TEMPORAL DISCIPLINE — the title and summary must read as written DURING ${periodLabel}, by an ` +
+    `analyst who does NOT know how the story ends. Describe the STAGE these trends were actually at ` +
+    `in this period (emerging, early, gaining traction), not a finished outcome. Avoid categorical ` +
+    `"crossed the line / has arrived / is now standard" framing for trends that were only beginning. ` +
+    `Prefer "is beginning to", "is moving toward", "signals an early shift" over "has crossed", "now defines".\n\n` +
     `The report contains ${trends.length} strategic trends:\n\n${trendsList}\n\n` +
-    `Return VALID JSON ONLY:\n` +
+    `The title must reflect the SHARED thread across ALL ${trends.length} trends above, not only a few of them.\n\n` +
+    `EDITORIAL: no monetary values (no "$26.2B", "US$ X bilhões") in the title or summary — TAIME gives ` +
+    `direction, not financial sizing. No source attribution by name. No em dash.\n\n` +
+    `Return VALID JSON ONLY (escape every newline inside strings as \\n; no literal line breaks inside string values):\n` +
     `{\n` +
-    `  "report_title": "impactful, specific report title for ${PERIOD}",\n` +
+    `  "report_title": "impactful, specific title true to ${periodLabel}",\n` +
     `  "executive_summary": "3–4 paragraphs synthesizing the dominant narrative across all trends — the meta-story"\n` +
     `}`;
 
@@ -985,64 +1162,49 @@ async function main(): Promise<void> {
   }
   if (allMatch) console.log('  ✓ Todos os scores idênticos PT = EN');
 
-  // ── Divisão automática de relatórios ─────────────────────────
-  const SPLIT_THRESHOLD = 7
-  const totalClusters = clusters.length
+  // ── Divisão por sinergia + tamanho (julgamento LLM × aritmética código) ──────
+  // 1) Sonnet ORDENA os clusters por afinidade temática (vizinhos conversam).
+  // 2) Aplicamos a MESMA permutação aos três arrays alinhados (clusters,
+  //    ptBrTrends, enTrends) — preserva o casamento índice a índice.
+  // 3) Código fatia a sequência ordenada em grupos de 3..7 trends.
+  // 4) Cada grupo vira 1 relatório (Parte N), com metadados próprios.
+  console.log('\nOrdenando clusters por sinergia temática...');
+  const order = await orderClustersBySynergy(clusters);
+  const usedSynergy = order.some((idx, i) => idx !== i);
+  console.log(usedSynergy
+    ? '  ✓ Ordem por sinergia aplicada.'
+    : '  ~ Ordem original mantida (fallback ou ≤2 clusters).');
 
-  if (totalClusters <= SPLIT_THRESHOLD) {
-    // Relatório único — metadados gerados com todas as trends
-    console.log('\nGerando metadados do relatório...')
+  const oClusters   = order.map(i => clusters[i]);
+  const oPtBrTrends = order.map(i => ptBrTrends[i]);
+  const oEnTrends   = order.map(i => enTrends[i]);
+
+  const sizes = splitIntoReports(oClusters.length, 3, 7);
+  const reportCount = sizes.length;
+  console.log(`\n${oClusters.length} trends → ${reportCount} relatório(s): grupos de [${sizes.join(', ')}].`);
+
+  let cursor = 0;
+  for (let n = 0; n < sizes.length; n++) {
+    const size = sizes[n];
+    const gClusters   = oClusters.slice(cursor, cursor + size);
+    const gPtBrTrends = oPtBrTrends.slice(cursor, cursor + size);
+    const gEnTrends   = oEnTrends.slice(cursor, cursor + size);
+    cursor += size;
+
+    const partLabel = reportCount > 1 ? ` (Parte ${n + 1}/${reportCount})` : '';
+    console.log(`\nGerando metadados do Relatório ${n + 1}${partLabel} — ${size} trends...`);
     const [ptBrMeta, enMeta] = await Promise.all([
-      callClaudeMetadata(ptBrTrends, 'pt-BR'),
-      callClaudeMetadata(enTrends, 'en'),
-    ])
-    console.log(`\nGerando 1 relatório com ${totalClusters} trends...`)
+      callClaudeMetadata(gPtBrTrends, 'pt-BR'),
+      callClaudeMetadata(gEnTrends, 'en'),
+    ]);
+
+    console.log(`Gerando Relatório ${n + 1}/${reportCount}${partLabel}...`);
     const reportId = await persistReport(
-      clusters, ptBrMeta, enMeta, ptBrTrends, enTrends, 1
-    )
-    console.log(`✓ Relatório gerado: ${reportId}`)
-    const v = await validatePersistedReport(reportId)
-    console.log(`  Validação: ${v.verdict} · ${v.flags.length} flag(s) · ${v.signalCount} sinais`)
-  } else {
-    // Divide em 2 relatórios — metadados gerados separadamente para cada grupo
-    const split = Math.ceil(totalClusters / 2)
-    console.log(`\n${totalClusters} clusters → dividindo em 2 relatórios (${split} + ${totalClusters - split} trends)...`)
-
-    // Relatório 1 — metadados baseados apenas nas trends 1..split
-    console.log(`\nGerando metadados do Relatório 1 (${split} trends)...`)
-    const [ptBrMeta1, enMeta1] = await Promise.all([
-      callClaudeMetadata(ptBrTrends.slice(0, split), 'pt-BR'),
-      callClaudeMetadata(enTrends.slice(0, split), 'en'),
-    ])
-    console.log(`\nGerando Relatório 1/${2} (${split} trends)...`)
-    const reportId1 = await persistReport(
-      clusters.slice(0, split),
-      ptBrMeta1, enMeta1,
-      ptBrTrends.slice(0, split),
-      enTrends.slice(0, split),
-      1
-    )
-    console.log(`✓ Relatório 1 gerado: ${reportId1}`)
-    const v1 = await validatePersistedReport(reportId1)
-    console.log(`  Validação R1: ${v1.verdict} · ${v1.flags.length} flag(s) · ${v1.signalCount} sinais`)
-
-    // Relatório 2 — metadados baseados apenas nas trends split+1..end
-    console.log(`\nGerando metadados do Relatório 2 (${totalClusters - split} trends)...`)
-    const [ptBrMeta2, enMeta2] = await Promise.all([
-      callClaudeMetadata(ptBrTrends.slice(split), 'pt-BR'),
-      callClaudeMetadata(enTrends.slice(split), 'en'),
-    ])
-    console.log(`\nGerando Relatório 2/${2} (${totalClusters - split} trends)...`)
-    const reportId2 = await persistReport(
-      clusters.slice(split),
-      ptBrMeta2, enMeta2,
-      ptBrTrends.slice(split),
-      enTrends.slice(split),
-      2
-    )
-    console.log(`✓ Relatório 2 gerado: ${reportId2}`)
-    const v2 = await validatePersistedReport(reportId2)
-    console.log(`  Validação R2: ${v2.verdict} · ${v2.flags.length} flag(s) · ${v2.signalCount} sinais`)
+      gClusters, ptBrMeta, enMeta, gPtBrTrends, gEnTrends, n + 1,
+    );
+    console.log(`✓ Relatório ${n + 1} gerado: ${reportId}`);
+    const v = await validatePersistedReport(reportId);
+    console.log(`  Validação R${n + 1}: ${v.verdict} · ${v.flags.length} flag(s) · ${v.signalCount} sinais`);
   }
 
   // ── Resumo ────────────────────────────────────────────────────────────────
@@ -1052,7 +1214,7 @@ async function main(): Promise<void> {
   console.log('\n' + '═'.repeat(52));
   console.log(`✓ Período publicado`);
   console.log(`  Período:      ${PERIOD}`);
-  console.log(`  Relatórios:   ${totalClusters <= SPLIT_THRESHOLD ? 1 : 2}`);
+  console.log(`  Relatórios:   ${reportCount}`);
   console.log(`  Trends:       ${ptBrTrends.length}`);
   console.log(`  TAIME Scores: ${scores.join(', ')} (média: ${avgScore})`);
   console.log('═'.repeat(52) + '\n');
