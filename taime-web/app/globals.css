@@ -21,6 +21,26 @@
   .score-bar {
     transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  /* AdvisorDemo: entrada das bolhas + indicador de digitando */
+  @keyframes taimeBubbleIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes taimeTypingDot {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30%           { opacity: 1;    transform: translateY(-3px); }
+  }
+  .advisor-bubble-in {
+    animation: taimeBubbleIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .advisor-dot {
+    animation: taimeTypingDot 1.2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .advisor-bubble-in { animation: none; }
+    .advisor-dot       { animation: none; opacity: 0.5; }
+  }
 }
 
 @layer components {

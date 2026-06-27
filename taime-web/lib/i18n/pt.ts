@@ -139,6 +139,21 @@ export const pt = {
     ],
     advisorExplain: 'Executive Advisor: assistente estratégico que responde suas perguntas com base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos recomendados de cada período. Em breve.',
 
+    advisor: {
+      label:    'Executive Advisor',
+      title:    'Um parceiro estratégico, não um chatbot.',
+      subtitle: 'Ele conhece seu contexto, pressiona suas premissas e te ajuda a decidir. Veja como pensa.',
+      messages: [
+        { role: 'user',    text: 'Todo mundo está falando de agentic AI. Preciso colocar agentes em produção esse ano. Por onde começo?' },
+        { role: 'advisor', text: 'Começo pela parte desconfortável: a maioria dos projetos de agentes que falham não falha por causa do agente. Falha porque a base de dados e a camada de integração não estavam prontas, e isso só aparece depois do lançamento. O hype está no auge, mas o que separa quem entrega de quem cancela não é a escolha do fornecedor, é a ordem das decisões. Antes de te indicar um caminho, preciso entender uma coisa: você já mapeou onde os seus sistemas atuais quebram quando um agente tenta agir sobre eles, ou a pressão é para deployar primeiro e descobrir depois?' },
+        { role: 'user',    text: 'Honestamente, a pressão é para mostrar resultado rápido. Ainda não mapeamos.' },
+        { role: 'advisor', text: 'Então esse é o risco real, e não é técnico, é de sequência. Quem colocou agentes em produção com sucesso seguiu o mesmo padrão: um problema bem delimitado, levado até produção, observado onde quebra, e só então expandido. Sequência venceu velocidade, de forma consistente. A camada que concentra valor agora não é o agente em si, é a orquestração que decide qual tarefa vai para qual modelo, a que custo e com qual supervisão humana.' },
+        { role: 'advisor', text: 'Minha recomendação: escolha um único fluxo de baixo risco e alta repetição, construa a base de dados e a supervisão antes de ligar o agente, e trate o vale da desilusão como restrição de projeto, não como contratempo. Quer que eu te ajude a identificar qual fluxo da sua operação tem o melhor equilíbrio entre baixo risco e aprendizado rápido?' },
+      ],
+      soonNote: 'O Executive Advisor chega em breve para assinantes Essential.',
+      cta:      'Solicitar acesso antecipado',
+    },
+
     footerDesc: 'TAIME é uma plataforma de inteligência estratégica em tecnologia. Construída para quem decide com base em evidências.',
     footerLinks: [
       { label: 'Home',         href: '/' },

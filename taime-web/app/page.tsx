@@ -13,6 +13,7 @@ import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import HomeSearch from '@/components/HomeSearch'
+import AdvisorDemo from '@/components/AdvisorDemo'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -824,6 +825,17 @@ export default async function LandingPage() {
           </Link>
         </div>
       </section>
+
+      {/* ── SEÇÃO 6b: EXECUTIVE ADVISOR (conversa animada) ─────────────── */}
+      <AdvisorDemo
+        label={h.advisor.label}
+        title={h.advisor.title}
+        subtitle={h.advisor.subtitle}
+        messages={h.advisor.messages}
+        soonNote={h.advisor.soonNote}
+        cta={h.advisor.cta}
+        ctaHref="/login?plan=essential"
+      />
 
       {/* ── SEÇÃO 7: PLANOS ──────────────────────────────────────────── */}
       <section id="planos" className="py-24">

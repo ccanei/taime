@@ -141,6 +141,21 @@ export const en: Translations = {
     ],
     advisorExplain: 'Executive Advisor: a strategic assistant that answers your questions using TAIME\'s report archive, bringing context, scores and recommended moves from every period. Coming soon.',
 
+    advisor: {
+      label:    'Executive Advisor',
+      title:    'A strategic partner, not a chatbot.',
+      subtitle: 'It knows your context, challenges your assumptions and helps you decide. See how it thinks.',
+      messages: [
+        { role: 'user',    text: 'Everyone is talking about agentic AI. I need to get agents into production this year. Where do I start?' },
+        { role: 'advisor', text: 'Let me start with the uncomfortable part: most agent projects that fail do not fail because of the agent. They fail because the data foundation and the integration layer were not ready, and that only shows up after launch. The hype is at its peak, but what separates those who ship from those who cancel is not the vendor choice, it is the order of the decisions. Before I point you to a path, I need to understand one thing: have you already mapped where your current systems break when an agent tries to act on them, or is the pressure to deploy first and find out later?' },
+        { role: 'user',    text: 'Honestly, the pressure is to show fast results. We have not mapped it yet.' },
+        { role: 'advisor', text: 'Then that is the real risk, and it is not technical, it is sequencing. The organizations that put agents into production successfully followed the same pattern: one well scoped problem, taken to production, observed where it breaks, and only then expanded. Sequencing beat speed, consistently. The layer that concentrates value now is not the agent itself, it is the orchestration that decides which task goes to which model, at what cost and with what human oversight.' },
+        { role: 'advisor', text: 'My recommendation: pick a single low risk, high repetition workflow, build the data foundation and the oversight before turning the agent on, and treat the trough of disillusionment as a design constraint, not a setback. Want me to help you identify which workflow in your operation has the best balance of low risk and fast learning?' },
+      ],
+      soonNote: 'The Executive Advisor arrives soon for Essential subscribers.',
+      cta:      'Request early access',
+    },
+
     footerDesc: 'TAIME is a strategic technology intelligence platform. Built for those who decide based on evidence.',
     footerLinks: [
       { label: 'Home',         href: '/' },
