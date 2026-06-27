@@ -81,6 +81,17 @@ function defaultPeriodKey(): string {
 const PERIOD_KEY = process.env.PERIOD ?? defaultPeriodKey();
 const periodInfo = parsePeriod(PERIOD_KEY);
 
+// Chave de armazenamento do periodo. Os demais passos do pipeline (filter,
+// analyze, generate, validate) consultam/gravam por process.env.PERIOD CRU,
+// nunca pela chave normalizada de parsePeriod. So o collect usava periodInfo.key
+// (que parsePeriod normaliza para o limite quinzenal 01/16). Para periodos
+// padrao (01/16, os unicos usados em producao) PERIOD_KEY === periodInfo.key,
+// entao isto e identico ao comportamento de hoje. Para periodos-sombra
+// (ex.: 2023-06-08), preserva a chave crua, mantendo a coleta isolada e
+// coerente com o resto do pipeline. A JANELA de data (start/end, cd_min/cd_max)
+// e o label continuam vindo de periodInfo (a quinzena correspondente).
+const STORE_KEY = PERIOD_KEY;
+
 // ─── Supabase REST ────────────────────────────────────────────────────────────
 
 function dbHeaders(returnRepresentation = false) {
@@ -112,15 +123,15 @@ async function dbPost(table: string, row: unknown): Promise<void> {
 // ─── Serper ───────────────────────────────────────────────────────────────────
 
 const TOPIC_BY_CATEGORY: Record<string, string> = {
-  research:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor',
-  consulting: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor',
-  vc:         'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  media:      'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  academic:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  think_tank: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  vendor:     'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  security:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
-  financial:  'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR blockchain OR quantum OR semiconductor',
+  research:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  consulting: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  vc:         'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  media:      'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  academic:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  think_tank: 'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  vendor:     'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  security:   'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
+  financial:  'AI OR cloud OR cybersecurity OR enterprise OR data OR regulation OR fintech OR infrastructure OR automation OR "machine learning" OR "digital transformation" OR "business model" OR "operating model" OR "platform business" OR "business transformation" OR blockchain OR quantum OR semiconductor OR "agentic AI" OR "AI agents" OR "multiagent systems" OR "AI governance" OR "AI TRiSM" OR "responsible AI" OR "data sovereignty" OR "sovereign cloud" OR geopatriation OR "confidential computing" OR "hybrid computing" OR "physical AI" OR robotics OR humanoid OR "AI infrastructure cost" OR "compute capacity" OR "domain-specific models" OR "small language models" OR "post-quantum" OR "quantum security" OR "preemptive security" OR "AI security" OR "spatial computing" OR "mixed reality" OR "network infrastructure" OR 5G OR "private networks" OR connectivity OR "data center"',
   data:       'data platform OR data governance OR data sovereignty OR "data mesh" OR "data lakehouse" OR privacy OR "data protection" OR GDPR OR LGPD OR "data management" OR analytics OR "data strategy" OR "master data" OR "data quality"',
   automation: '"business process" OR "process automation" OR RPA OR "robotic process automation" OR "intelligent automation" OR "process mining" OR "workflow automation" OR "hyperautomation" OR "low-code" OR "no-code" OR "process optimization"',
   observability: '"LLM observability" OR "AI monitoring" OR "model drift" OR "LLMOps" OR "ML monitoring" OR "AI explainability" OR "model audit" OR "AI accountability" OR "production AI" OR "AI reliability" OR OpenTelemetry OR tracing OR "distributed tracing" OR "AI governance" OR "model performance"',
@@ -130,8 +141,18 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
   sustainability: '"green tech" OR "sustainable technology" OR "carbon footprint" OR "energy efficiency" OR "data center energy" OR "AI energy consumption" OR "green cloud" OR ESG OR "climate tech" OR "renewable energy" OR "sustainable AI" OR "carbon neutral"',
 };
 
+// COLLECT_MODE controla a montagem da query da coleta.
+//   'full'    (default): site:dominio + termos do TOPIC_BY_CATEGORY (metodo A atual).
+//   'minimal' (experimento B): apenas site:dominio, sem os termos de topico. O
+//             filtro de data (cd_min/cd_max em searchSerper) e o isSignalWithinPeriod
+//             continuam intactos; muda SO a query textual.
+// Sem a env (ou com qualquer valor != 'minimal') o comportamento e identico ao de hoje.
+const COLLECT_MODE = (process.env.COLLECT_MODE ?? 'full').toLowerCase();
+const COLLECT_MINIMAL = COLLECT_MODE === 'minimal';
+
 function buildQuery(source: Source): string {
   const domain = new URL(source.url).hostname.replace(/^www\./, '');
+  if (COLLECT_MINIMAL) return `site:${domain}`;
   const topic  = TOPIC_BY_CATEGORY[source.category] ?? 'technology AI trends innovation';
   return `site:${domain} ${topic}`;
 }
@@ -200,7 +221,7 @@ async function fetchContent(url: string): Promise<string> {
 
 async function urlExists(url: string): Promise<boolean> {
   const rows = await dbGet<{ id: string }>(
-    `signals?url=eq.${encodeURIComponent(url)}&period=eq.${periodInfo.key}&select=id&limit=1`,
+    `signals?url=eq.${encodeURIComponent(url)}&period=eq.${STORE_KEY}&select=id&limit=1`,
   );
   return rows.length > 0;
 }
@@ -240,7 +261,7 @@ async function collectSource(source: Source): Promise<SourceResult> {
 
       const row: SignalRow = {
         source_id: source.id,
-        period:    periodInfo.key,
+        period:    STORE_KEY,
         title:     item.title,
         url:       item.link,
         content,
@@ -282,11 +303,12 @@ async function main(): Promise<void> {
   console.log('\n╔══════════════════════════════════╗');
   console.log('║   TAIME — Signal Collector       ║');
   console.log('╚══════════════════════════════════╝');
-  console.log(`Período:    ${periodInfo.key}`);
+  console.log(`Período:    ${STORE_KEY}${STORE_KEY !== periodInfo.key ? ` (sombra; janela ${periodInfo.key})` : ''}`);
   console.log(`Tipo:       ${periodInfo.type}`);
   console.log(`Label:      ${periodInfo.labelPt}`);
   console.log(`Intervalo:  ${periodInfo.start.toISOString().slice(0, 10)} → ${periodInfo.end.toISOString().slice(0, 10)}`);
-  console.log(`Histórico:  ${isHistorical(periodInfo) ? 'sim (filtro de data Serper)' : 'não (último mês)'}\n`);
+  console.log(`Histórico:  ${isHistorical(periodInfo) ? 'sim (filtro de data Serper)' : 'não (último mês)'}`);
+  console.log(`Modo query: ${COLLECT_MINIMAL ? 'minimal (site:dominio, sem TOPIC_BY_CATEGORY)' : 'full (site:dominio + topicos)'}\n`);
 
   let sources: Source[];
   try {
@@ -334,7 +356,7 @@ async function main(): Promise<void> {
   console.log(`~ Duplicatas:        ${totalDuplicates}`);
   console.log(`⏭ Fora do período:   ${totalOutOfPeriod}`);
   if (totalErrors > 0) console.log(`✗ Erros:             ${totalErrors}`);
-  console.log(`\nPeríodo: ${periodInfo.key} (${periodInfo.labelPt})`);
+  console.log(`\nPeríodo: ${STORE_KEY} (${periodInfo.labelPt})`);
   console.log('Próximo passo: npx ts-node analyze-signals.ts\n');
 }
 
