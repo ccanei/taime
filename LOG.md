@@ -2,6 +2,76 @@
 
 ---
 
+## [2026-06-30] - Advisor: abertura proativa ancorada no arquivo (sugestao de partida + chips)
+
+### Objetivo
+- Ao abrir o Advisor, a tela em branco paralisa e desperdica as primeiras
+  mensagens (criticas no trial de 10). O Advisor passa a abrir com uma SUGESTAO
+  DE PARTIDA personalizada pelo interesse (sempre presente no cadastro) e cargo
+  (opcional), ancorada em trends REAIS e recentes do arquivo, mais 3-4 chips de
+  topicos clicaveis.
+
+### Fonte dos dados (confirmada no schema real)
+- interest (obrigatorio no cadastro) vive em waitlist.interest (strings PT ou EN,
+  ex. "Cibersegurança"/"Cybersecurity"). NAO existe em users. Buscado pelo email
+  autenticado, registro mais recente.
+- job_title e company vivem em users (job_title, company). Fallback de company:
+  users.company -> advisor_profiles.company_name -> waitlist.company.
+- setor: advisor_profiles.sector (opcional, so enriquece).
+
+### Mapeamento interesse -> categoria de trend
+- Casam com categoria real do arquivo (filtram a busca):
+  - "IA & Agentes"/"AI & Agents" -> ['IA','Automation','AI Governance','Robotics']
+  - "Cloud & Infraestrutura"/"Cloud & Infrastructure" -> ['Cloud','Infrastructure','Edge','Networks']
+  - "Cibersegurança"/"Cybersecurity" -> ['Cybersecurity']
+- Transversais (Estrategia de Tecnologia, Inteligencia de Mercado, Planejamento/
+  Roadmap) -> SEM filtro de categoria; usam os trends recentes de maior TAIME
+  Score em geral.
+- As categorias novas (AI Governance, Robotics, Networks) ja entram nas listas;
+  includes() so as usa quando de fato existirem em relatorios; fallback
+  transversal cobre filtro vazio na janela.
+
+### Implementacao
+- NOVO: app/api/advisor/opening/route.ts (POST). Auth + mesmo gate de plano do
+  chat (hasAdvisorAccess). Le perfil/cadastro, mapeia interesse, busca reports
+  publicados dentro da janela do plano (getAdvisorPeriodFloor) ordenados por
+  periodo desc, achata trends, filtra por categoria (ou nao, transversal),
+  dedupe por titulo, ordena por taime_score desc, top 6. Gera opening + chips
+  com Sonnet (claude-sonnet-4-6), JSON estrito, so a partir dos trends reais
+  fornecidos. Sem trends -> abertura NEUTRA (sem inventar tema, grounded=false).
+  Sem travessao (stripEmDash na saida). NAO persiste nada.
+- components/AdvisorChat.tsx: busca a abertura e renderiza como bolha do assistant
+  + chips clicaveis (clique envia aquela pergunta pelo /chat normal). Fallback
+  para o WELCOME estatico enquanto carrega/se falhar.
+
+### Quando mostrar (Tarefa 4)
+- SEMPRE na primeira conversa do usuario (sem nenhuma mensagem no historico):
+  dispara imediatamente no mount.
+- Conversa nova subsequente ("Novo contexto"): so aparece se o usuario ficar
+  ~9s parado na tela vazia (idle timer). Se comeca a digitar antes, nao aparece;
+  se ja apareceu e comeca a digitar, some.
+- NUNCA no meio de uma conversa em andamento nem ao reabrir uma sessao existente.
+
+### Cota (Tarefa 5) - abertura NAO consome mensagem
+- A abertura e os chips sao INICIATIVA do Advisor: o endpoint /opening nao grava
+  em advisory_memory e nao passa por /chat. Por construcao, o futuro contador
+  (frente do Stripe) so ve os turnos que o usuario de fato envia. So conta quando
+  o usuario clica num chip ou digita uma pergunta de verdade (ai sim vai ao /chat).
+
+### Nao quebra
+- Captacao progressiva, personalidade v5.1, busca vetorial, memoria, grounding e
+  filtro de plano do /chat ficam intactos (endpoint novo e isolado). O primeiro
+  turno real do usuario segue o fluxo existente; chips sao perguntas
+  auto-contidas. npm run build: 0 erros.
+
+### Validacao
+- Retrieval validado contra o banco real: interesse "Cibersegurança" traz so
+  trends de Cybersecurity recentes de maior score; "Inteligência de Mercado"
+  (transversal) traz os de maior score em geral; "IA & Agentes" traz IA/Automation.
+  Grounding confirmado (temas reais, nao inventados) e janela do plano respeitada.
+
+---
+
 ## [2026-06-26] - Expansao de termos de coleta + categorias de trend + limpeza A/B (sem commit)
 
 ### Objetivo
