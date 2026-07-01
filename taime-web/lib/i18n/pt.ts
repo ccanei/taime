@@ -199,6 +199,7 @@ export const pt = {
     interestLabel: 'Principal interesse',
     interestPlaceholder: 'Selecione seu interesse',
     interests:     ['Estratégia de Tecnologia', 'IA & Agentes', 'Cloud & Infraestrutura', 'Cibersegurança', 'Inteligência de Mercado', 'Planejamento / Roadmap'],
+    interestNote:  'Estratégia de Tecnologia e Planejamento / Roadmap trazem uma visão geral dos trends de maior relevância. Os demais filtram por tema.',
     submitWaitlist:  'Solicitar acesso',
     submittingWaitlist: 'Registrando...',
     successTitle:  (name: string) => `Olá ${name}, seu acesso foi solicitado!`,

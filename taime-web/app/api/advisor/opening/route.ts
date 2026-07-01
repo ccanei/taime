@@ -69,19 +69,23 @@ interface FlatTrend {
 
 // ── Mapeamento interesse → categoria de trend ───────────────────────────────
 // Os interesses que casam com uma categoria real do arquivo filtram a busca.
-// Os transversais (Estratégia, Inteligência de Mercado, Planejamento/Roadmap)
-// não filtram: usam os trends recentes de maior TAIME Score em geral.
-// Categorias reais no arquivo hoje: IA, Cloud, Cybersecurity, Infrastructure,
-// Automation, Edge, Data, Engineering, Observability, Market, Regulation,
-// Healthtech, Fintech, Sustainability.
+// Os transversais (Estratégia de Tecnologia, Planejamento / Roadmap) não
+// filtram: usam os trends recentes de maior TAIME Score em geral.
+// As 19 categorias reais do arquivo hoje: IA, Cloud, Cybersecurity,
+// Infrastructure, Automation, Edge, Data, Engineering, Observability, Market,
+// Regulation, Healthtech, Fintech, Sustainability, Quantum, Robotics,
+// AI Governance, Spatial Computing, Networks. includes() só usa cada categoria
+// quando ela de fato existir em relatórios; o fallback transversal cobre filtro
+// vazio na janela.
 function mapInterestToCategories(interest: string | null): string[] | null {
   const norm = (interest ?? '')
     .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
   if (!norm) return null
   if (/cyber|ciberseg|seguranca|security/.test(norm)) return ['Cybersecurity']
-  if (/cloud|infra/.test(norm))                       return ['Cloud', 'Infrastructure', 'Edge', 'Networks']
-  if (/\b(ia|ai)\b|agent/.test(norm))                 return ['IA', 'Automation', 'AI Governance', 'Robotics']
-  // transversais → sem filtro de categoria
+  if (/cloud|infra/.test(norm))                       return ['Cloud', 'Infrastructure', 'Edge', 'Networks', 'Quantum']
+  if (/\b(ia|ai)\b|agent/.test(norm))                 return ['IA', 'Automation', 'AI Governance', 'Robotics', 'Spatial Computing']
+  if (/mercado|market/.test(norm))                    return ['Market', 'Fintech']
+  // transversais restantes (estratégia, planejamento, roadmap) → sem filtro
   return null
 }
 

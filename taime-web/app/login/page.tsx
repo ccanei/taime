@@ -394,6 +394,9 @@ function LoginPageInner() {
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
+                    <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">
+                      {t.login.interestNote}
+                    </p>
                   </div>
 
                   {status === 'error' && (
@@ -533,6 +536,9 @@ function LoginPageInner() {
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
+                    <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">
+                      {t.login.interestNote}
+                    </p>
                   </div>
 
                   <div>

@@ -201,6 +201,7 @@ export const en: Translations = {
     interestLabel: 'Main area of interest',
     interestPlaceholder: 'Select your interest',
     interests:     ['Technology Strategy', 'AI & Agents', 'Cloud & Infrastructure', 'Cybersecurity', 'Market Intelligence', 'Planning / Roadmap'],
+    interestNote:  'Technology Strategy and Planning / Roadmap give a general view of the most relevant trends. The others filter by theme.',
     submitWaitlist:  'Request access',
     submittingWaitlist: 'Submitting...',
     successTitle:  (name: string) => `Hi ${name}, your access has been requested!`,
