@@ -323,7 +323,7 @@ export default function ReportClient({
   const isPt = lang === 'pt-BR'
 
   // Preview = não pode ver o relatório completo (visitante, free, ou essential
-  // fora da janela de 1 ano). Quando undefined (callers antigos), libera tudo.
+  // fora da janela de 3 anos). Quando undefined (callers antigos), libera tudo.
   // No modo publicUnlock (rota /r), ignoramos isPreview — esse modo tem sua
   // própria UX (resumo completo + 1 trend + demais borradas com CTA).
   const isPreview = !publicUnlock && (accessLevel ? !accessLevel.canSeeFullReport : false)
@@ -410,14 +410,14 @@ export default function ReportClient({
       too_old_for_plan: {
         label: 'PREVIEW',
         title: 'Este relatório está fora do período do seu plano.',
-        sub:   'Essencial cobre relatórios de até 1 ano. Faça upgrade para Estratégico para o histórico completo.',
+        sub:   'O plano Essencial cobre relatórios dos últimos 3 anos. Para o arquivo completo, faça upgrade para o Estratégico.',
         btn:   'Ver planos →',
         href:  '/planos',
       },
       strategic_only: {
         label: 'EXCLUSIVO ESTRATÉGICO',
         title: 'Este relatório está disponível apenas no plano Estratégico.',
-        sub:   'O histórico completo é exclusivo dos assinantes Estratégicos.',
+        sub:   'O plano Essencial cobre relatórios dos últimos 3 anos. Para o arquivo completo, faça upgrade para o Estratégico.',
         btn:   'Ver planos →',
         href:  '/planos',
       },
@@ -456,14 +456,14 @@ export default function ReportClient({
       too_old_for_plan: {
         label: 'PREVIEW',
         title: 'This report is outside your plan window.',
-        sub:   'Essential covers reports up to 1 year old. Upgrade to Strategic for the full archive.',
+        sub:   'The Essential plan covers reports from the last 3 years. For full archive access, upgrade to Strategic.',
         btn:   'View plans →',
         href:  '/planos',
       },
       strategic_only: {
         label: 'STRATEGIC ONLY',
         title: 'This report is available only on the Strategic plan.',
-        sub:   'The full archive is exclusive to Strategic subscribers.',
+        sub:   'The Essential plan covers reports from the last 3 years. For full archive access, upgrade to Strategic.',
         btn:   'View plans →',
         href:  '/planos',
       },

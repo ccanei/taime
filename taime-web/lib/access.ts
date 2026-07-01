@@ -5,8 +5,8 @@ export type AccessReason =
   | 'full'                 // pode ver o relatório inteiro
   | 'preview_only'         // somente preview (sem motivo específico)
   | 'free_limit_reached'   // free: já desbloqueou 2 nos últimos 30 dias
-  | 'too_old_for_plan'     // essential: relatório entre 1 e 5 anos
-  | 'strategic_only'       // essential: relatório com mais de 5 anos
+  | 'too_old_for_plan'     // (desativado) faixa de preview do Essential, até o arquivo histórico ser populado
+  | 'strategic_only'       // essential: relatório com mais de 3 anos (36 meses)
   | 'out_of_range'         // free: relatório com mais de 1 ano
 
 export interface AccessLevel {
@@ -24,8 +24,10 @@ export interface AccessLevel {
  *                           Cada relatório desbloqueado fica acessível por 30 dias
  *                           a partir do unlock. Previews disponíveis até 1 ano.
  *                           Relatórios > 1 ano: out_of_range (nem preview).
- *   - Essential           → completo até 1 ano; preview entre 1-5 anos;
- *                           > 5 anos = strategic_only (nem preview).
+ *   - Essential           → completo até 3 anos (36 meses); acima de 3 anos →
+ *                           bloqueado, upgrade para Strategic. Faixa de preview
+ *                           desativada temporariamente até o arquivo histórico
+ *                           ser populado.
  *   - Strategic           → tudo, sem limite de data.
  */
 export function getAccessLevel(params: {
@@ -57,13 +59,12 @@ export function getAccessLevel(params: {
     return { canSeePreview: true, canSeeFullReport: true, reason: 'full' }
   }
 
-  // ── ESSENTIAL: 1 ano completo, 1-5 anos só preview, > 5 anos sem preview
+  // ── ESSENTIAL: completo até 3 anos (36 meses); acima disso, bloqueado com
+  // upgrade para Strategic. A faixa intermediária de preview (too_old_for_plan)
+  // está desativada por enquanto, até o arquivo histórico ser populado.
   if (plan === 'essential') {
-    if (yearsDiff <= 1) {
+    if (yearsDiff <= 3) {
       return { canSeePreview: true, canSeeFullReport: true, reason: 'full' }
-    }
-    if (yearsDiff <= 5) {
-      return { canSeePreview: true, canSeeFullReport: false, reason: 'too_old_for_plan' }
     }
     return { canSeePreview: false, canSeeFullReport: false, reason: 'strategic_only' }
   }
