@@ -125,11 +125,16 @@ async function dbPatch(table: string, id: string, data: unknown): Promise<void> 
 
 // ─── JSON repair ─────────────────────────────────────────────────────────────
 
-function repairJson(raw: string): string {
-  let text = raw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+// Remove cercas de código e posiciona no primeiro objeto JSON da resposta.
+function stripToObject(raw: string): string {
+  const text = raw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
   const start = text.indexOf('{');
   if (start === -1) throw new Error('Nenhum objeto JSON encontrado na resposta');
-  text = text.slice(start);
+  return text.slice(start);
+}
+
+function repairJson(raw: string): string {
+  let text = stripToObject(raw);
   try { JSON.parse(text); return text; } catch { /* precisa de repair */ }
 
   let inString = false;
@@ -156,48 +161,92 @@ function repairJson(raw: string): string {
 }
 
 /**
- * Escapa caracteres de controle crus (newline, tab, CR) que aparecem DENTRO de
- * strings JSON — o Opus às vezes injeta uma quebra de linha literal no meio de
- * um texto longo, o que torna o JSON inválido ("Bad control character"). Esta
- * função preserva o texto, apenas escapando o caractere (\\n em vez do \n cru).
- * Percorre o texto rastreando se está dentro de uma string.
+ * Sanitização determinística de strings JSON geradas pelo modelo. Percorre o
+ * texto rastreando o estado de string e corrige, DENTRO das strings, as duas
+ * classes de defeito que o Opus produz e que quebram o parse (forçando --resume):
+ *
+ *  1) Caracteres de controle crus (U+0000-U+001F): newline, tab e CR literais no
+ *     meio de um texto longo → viram \\n, \\t, \\r ou \\uXXXX. ("Bad control
+ *     character in string literal".)
+ *  2) Aspas duplas de CONTEÚDO não escapadas dentro de um valor (ex.: o resumo
+ *     executivo cita o "meta-enredo" do período). Uma aspa interna crua
+ *     dessincroniza o rastreio de string e produz "Expected ',' or '}'..." ou
+ *     "Expected double-quoted property name". Distinguimos aspa ESTRUTURAL (que
+ *     de fato fecha a string) de aspa de conteúdo por lookahead: é fechamento sse,
+ *     ignorando espaços, o próximo caractere for ':' (fim de chave), '}' ou ']'
+ *     (fim de valor/container), fim do texto, ou ',' imediatamente seguido de '"'
+ *     (fim de valor antes da próxima chave/elemento). Caso contrário é aspa de
+ *     conteúdo e é escapada para \\". Assim, JSON já válido passa intacto e o
+ *     defeito some sem retry.
  */
-function escapeControlCharsInStrings(text: string): string {
+export function sanitizeJsonStrings(text: string): string {
+  const n = text.length;
   let out = '';
   let inString = false;
   let escaped  = false;
-  for (const ch of text) {
-    if (escaped) { out += ch; escaped = false; continue; }
-    if (inString) {
-      if (ch === '\\') { out += ch; escaped = true; continue; }
-      if (ch === '"')  { out += ch; inString = false; continue; }
-      // Caractere de controle cru dentro de string → escapa.
-      if (ch === '\n') { out += '\\n'; continue; }
-      if (ch === '\r') { out += '\\r'; continue; }
-      if (ch === '\t') { out += '\\t'; continue; }
-      const code = ch.charCodeAt(0);
-      if (code < 0x20) { out += '\\u' + code.toString(16).padStart(4, '0'); continue; }
+
+  const isWs = (c: string): boolean => c === ' ' || c === '\t' || c === '\n' || c === '\r';
+  const skipWs = (from: number): number => {
+    let k = from;
+    while (k < n && isWs(text[k])) k++;
+    return k;
+  };
+  const charAt = (k: number): string | undefined => (k < n ? text[k] : undefined);
+
+  for (let i = 0; i < n; i++) {
+    const ch = text[i];
+    if (!inString) {
       out += ch;
+      if (ch === '"') inString = true;
       continue;
     }
-    if (ch === '"') { inString = true; out += ch; continue; }
+    // Dentro de string
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === '\\') { out += ch; escaped = true; continue; }
+    if (ch === '\n') { out += '\\n'; continue; }
+    if (ch === '\r') { out += '\\r'; continue; }
+    if (ch === '\t') { out += '\\t'; continue; }
+    const code = ch.charCodeAt(0);
+    if (code < 0x20) { out += '\\u' + code.toString(16).padStart(4, '0'); continue; }
+    if (ch === '"') {
+      const idx1 = skipWs(i + 1);
+      const c1   = charAt(idx1);
+      let closing = false;
+      if (c1 === undefined || c1 === ':' || c1 === '}' || c1 === ']') {
+        closing = true;
+      } else if (c1 === ',') {
+        const c2 = charAt(skipWs(idx1 + 1));
+        if (c2 === '"' || c2 === undefined) closing = true;
+      }
+      if (closing) { out += '"'; inString = false; }
+      else out += '\\"';
+      continue;
+    }
     out += ch;
   }
   return out;
 }
 
-function parseJsonSafe<T>(raw: string, label: string): T {
-  const repaired = repairJson(raw);
+export function parseJsonSafe<T>(raw: string, label: string): T {
+  const cleaned = stripToObject(raw);
+
+  // 1) Caminho feliz: já é válido.
+  try { return JSON.parse(cleaned) as T; } catch { /* segue p/ sanitização */ }
+
+  // 2) Sanitização determinística de strings (control chars + aspas internas).
+  //    Cobre o defeito recorrente do metadata SEM retry.
+  const sanitized = sanitizeJsonStrings(cleaned);
+  try { return JSON.parse(sanitized) as T; } catch { /* pode estar truncado */ }
+
+  // 3) Reparo estrutural (fecha objetos/arrays/strings truncados) sobre o texto
+  //    já sanitizado — assim o rastreio de strings do repair não dessincroniza.
+  try { return JSON.parse(repairJson(sanitized)) as T; } catch { /* última tentativa */ }
+
+  // 4) Ordem inversa como rede final: repara primeiro, depois sanitiza.
   try {
-    return JSON.parse(repaired) as T;
-  } catch {
-    // Segunda tentativa: escapa caracteres de controle crus dentro de strings
-    // (causa comum: newline literal no meio de um texto gerado pelo modelo).
-    try {
-      return JSON.parse(escapeControlCharsInStrings(repaired)) as T;
-    } catch (e) {
-      throw new Error(`JSON inválido mesmo após repair [${label}]: ${e}\n${repaired.slice(0, 400)}`);
-    }
+    return JSON.parse(sanitizeJsonStrings(repairJson(cleaned))) as T;
+  } catch (e) {
+    throw new Error(`JSON inválido mesmo após repair [${label}]: ${e}\n${sanitized.slice(0, 400)}`);
   }
 }
 
@@ -1220,4 +1269,8 @@ async function main(): Promise<void> {
   console.log('═'.repeat(52) + '\n');
 }
 
-main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });
+// Só executa o pipeline quando rodado diretamente (npx ts-node generate-report.ts).
+// Quando importado (ex.: pelos testes de parse), não dispara a geração.
+if (require.main === module) {
+  main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });
+}
