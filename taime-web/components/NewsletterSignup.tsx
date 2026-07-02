@@ -16,22 +16,22 @@ export default function NewsletterSignup({ variant = 'dark' }: { variant?: 'dark
 
   const labels = isPt
     ? {
-        title:       'Receba o briefing diário do TAIME',
-        sub:         'Sinais de tecnologia interpretados, direto no seu email. Sem ruído.',
+        title:       'Receba o resumo semanal do TAIME',
+        sub:         'Um resumo semanal dos sinais de tecnologia, sintetizado por tema. Toda segunda de manhã, sem ruído.',
         placeholder: 'seu@email.com',
         cta:         'Inscrever',
         loading:     'Enviando...',
-        ok:          'Inscrição confirmada. Você receberá o próximo briefing.',
+        ok:          'Inscrição confirmada. Você receberá o próximo resumo semanal.',
         err:         'Não conseguimos te inscrever. Tente novamente.',
         emailErr:    'Informe um email válido.',
       }
     : {
-        title:       'Get the daily TAIME briefing',
-        sub:         'Technology signals interpreted, straight to your inbox. No noise.',
+        title:       'Get the weekly TAIME digest',
+        sub:         'A weekly digest of technology signals, synthesized by theme. Every Monday morning, no noise.',
         placeholder: 'you@email.com',
         cta:         'Subscribe',
         loading:     'Sending...',
-        ok:          "You're subscribed. The next briefing is on its way.",
+        ok:          "You're subscribed. The next weekly digest is on its way.",
         err:         "We couldn't sign you up. Try again.",
         emailErr:    'Enter a valid email.',
       }
@@ -83,7 +83,7 @@ export default function NewsletterSignup({ variant = 'dark' }: { variant?: 'dark
         </p>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
-          {/* Honeypot anti-bot — escondido para humanos */}
+          {/* Honeypot anti-bot, escondido para humanos */}
           <div
             aria-hidden="true"
             style={{ position: 'absolute', left: '-9999px', top: 'auto', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}

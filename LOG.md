@@ -2,6 +2,87 @@
 
 ---
 
+## [2026-07-02] - Newsletter do Radar vira resumo SEMANAL sintetizado por tema (segunda 09h BRT)
+
+### Objetivo
+- Trocar a cadencia do e-mail da newsletter do Radar de DIARIA para SEMANAL
+  (segunda 09h BRT = 12h UTC), com uma sintese que agrupa os briefings da semana
+  por tema, em vez de repetir o conteudo diario. Razao: o conteudo diario ficava
+  repetitivo no inbox; a sintese semanal por tema entrega mais sinal.
+
+### O que mudou
+- **Desacoplado o envio do briefing diario**: `app/api/cron/radar-briefing/route.ts`
+  nao chama mais `sendDailyNewsletter()` (removidos import, o bloco encadeado e o
+  campo `newsletter` do retorno). O briefing diario CONTINUA rodando todo dia,
+  coletando sinais das ultimas 24h e gravando `radar_briefings` (dashboard `/radar`
+  e acervo intactos); so parou de disparar e-mail.
+- **Nucleo compartilhado** `lib/newsletter/shared.ts` (`deliverNewsletter()` +
+  template + Resend batch + gravacao de `newsletter_sends`/`newsletter_send_recipients`),
+  extraido do daily sem quebra-lo. `send-daily.ts` virou fino sobre ele (reenvio
+  manual pontual continua funcionando).
+- **Sintese semanal** `lib/newsletter/send-weekly.ts` (`sendWeeklyNewsletter()`):
+  le briefings dos ultimos 7 dias; se 0, skip `no_briefings_this_week`. Sintetiza
+  por tema com Sonnet 4.6 (3 a 5 temas, paragrafo executivo por tema, "a semana em
+  uma frase"; base estrita, fontes por categoria, sem travessao, sem valores
+  monetarios, PT e EN nativos). Idempotencia POR SEMANA: `briefing_date` = a
+  segunda-feira do envio.
+- **Novo cron** `app/api/cron/newsletter-weekly` (auth Bearer `CRON_SECRET`).
+  `vercel.json`: adicionado `0 12 * * 1` (segunda 12h UTC). `radar` (`0 10 * * *`)
+  e `radar-briefing` (`0 11 * * *`) intactos. Total: 3 crons. O semanal le briefings
+  ja gravados dos 7 dias anteriores, sem corrida de horario.
+- **Copy de inscricao** (`NewsletterSignup.tsx`) atualizada para cadencia semanal
+  ("resumo semanal, toda segunda de manha" / "weekly digest, every Monday morning"),
+  PT e EN, sem travessao.
+- Build: 0 erros TypeScript. Rota `/api/cron/newsletter-weekly` no output.
+
+---
+
+## [2026-07-01] - Geracao do periodo PRESENTE 2026-06-16 (Sonnet 4.6, sem publicar)
+
+### Objetivo
+- Gerar 2026-06-16 (2a quinzena de junho/2026, cobre 16-30 junho) com Sonnet 4.6,
+  validar SEM publicar. Periodo presente (fechou 30/jun; hoje 01/jul), sem risco
+  de hindsight, entao Sonnet e o correto (nao Opus, que e para o historico).
+
+### Pre-voo
+- MODELO: generate-report.ts trocado de Opus (claude-opus-4-8) para Sonnet
+  (claude-sonnet-4-6). Comentario TEMPORARIO deixado no arquivo lembrando de
+  REVERTER para Opus antes do proximo batch historico. VALOR ANTERIOR: claude-opus-4-8.
+- NO_AUTO_PUBLISH=1 em geracao e validacao.
+- 2026-06-16: biweekly, isHistorical=FALSE (end 2026-06-30, filtro Serper "ultimo
+  mes", nao date-range). 0 relatorios/0 sinais no inicio.
+- Uma tentativa anterior falhou no filter por rede (ETIMEDOUT) deixando 717 sinais
+  parciais + 120 classificados; LIMPO (delete dos 717 sinais) antes de rodar limpo.
+- Rodado DIRETO (nao via batch-pipeline) para preservar batch-progress.json com o
+  2023-01-01 pendente. Runner com retry (3x) so em collect/filter (idempotentes).
+
+### Resultado (pipeline completo, sem retry: rede aguentou)
+- Sinais coletados: 741 (112 duplicatas, 7 erros de fonte por rede).
+- is_noise: 201 de 741 = 27% (Mantidos 540 / 73%).
+- Clusters: 18. Trends: 18. Relatorios: 3 (split 6/6/6). Scores 58-87 (media 79).
+- Validacao: os 3 relatorios em pending_review, published_at=null (verdicts fail;
+  1 deles marcado 'stale' por edicao manual no admin, ainda NAO publicado). NADA
+  publicado pelo pipeline.
+- Flags por categoria (soma dos 3): grounding 62, source 20, deterministic 6
+  (majoritariamente 'monetary', regra editorial), temporal 1.
+- temporal_breach: 1 (R1) - uma afirmacao prospectiva ("confirmado ate 2027",
+  alem do fim do periodo). Para periodo presente e essencialmente irrelevante
+  (1 flag de 89); nao ha passado-futuro a vazar. Como esperado ~0.
+- Modelo confirmado: claude-sonnet-4-6. Retries: 0. Sem erro de parse de metadata
+  nem de trend (o sanitizador 10ce28a segurou nesta geracao).
+
+### RUIDO (medicao Leva 1)
+- 27% is_noise em 2026-06-16 esta ACIMA do baseline ~17% (junho/2023 metodo A) e da
+  faixa ~18-19% do batch historico de 2023. Coincide com 2023-01-01 (25%). SINAL:
+  a coleta de periodos recentes (filtro "ultimo mes" + query full Leva 1) parece
+  trazer mais ruido; a query merece poda antes de escalar mais o historico.
+
+### Pendente
+- generate-report.ts esta em Sonnet. REVERTER para claude-opus-4-8 antes de retomar
+  o batch historico (2023-01-01 pendente precisa de Opus, senao temporal_breach alto).
+
+---
+
 ## [2026-06-30] - Advisor: abertura proativa ancorada no arquivo (sugestao de partida + chips)
 
 ### Objetivo
