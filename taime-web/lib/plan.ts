@@ -39,16 +39,39 @@ export async function getUserPlan(userId: string): Promise<Plan | null> {
 /**
  * Decide se o plano tem acesso ao Executive Advisor.
  *
- * HOJE: 'essential' e 'strategic' tem acesso. Free/null fica bloqueado.
- *
- * QUOTA (futuro, frente do Stripe): o Essential tera limite de 60 mensagens/mes.
- * Esse teto NAO e verificado aqui (isto e so o gate de acesso binario). Quando o
- * Stripe trouxer o ciclo de cobranca, a contagem de mensagens do mes corrente
- * entra em uma checagem propria (ex.: hasAdvisorQuota(plan, usedThisCycle)) no
- * route.ts, ANTES de chamar o modelo. Strategic permanece ilimitado.
+ * Free, Essential e Strategic TEM acesso. O que muda entre eles e o LIMITE de
+ * mensagens (ver getMessageLimit / getWindowType), aplicado no route.ts via
+ * checkAndConsumeMessage. Null e tratado como free.
  */
 export function hasAdvisorAccess(plan: Plan | null): boolean {
-  return plan === 'essential' || plan === 'strategic'
+  return plan === 'free' || plan === 'essential' || plan === 'strategic' || plan === null
+}
+
+export type AdvisorWindowType = 'lifetime' | 'rolling_30d' | null
+
+/**
+ * Limite de mensagens do Advisor por plano.
+ *   free      -> 10   (vitalicio, nunca reseta)
+ *   essential -> 100  (por janela de 30 dias)
+ *   strategic -> null (ilimitado)
+ * Null (sem subscription) e tratado como free.
+ */
+export function getMessageLimit(plan: Plan | null): number | null {
+  if (plan === 'strategic') return null
+  if (plan === 'essential') return 100
+  return 10
+}
+
+/**
+ * Tipo de janela do limite por plano.
+ *   free      -> 'lifetime'    (contagem vitalicia)
+ *   essential -> 'rolling_30d' (reseta 30 dias apos a 1a mensagem da janela)
+ *   strategic -> null          (sem limite)
+ */
+export function getWindowType(plan: Plan | null): AdvisorWindowType {
+  if (plan === 'strategic') return null
+  if (plan === 'essential') return 'rolling_30d'
+  return 'lifetime'
 }
 
 // Piso permissivo: libera todo o arquivo. Ponto unico de verdade para o floor
