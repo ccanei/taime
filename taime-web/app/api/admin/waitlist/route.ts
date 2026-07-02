@@ -169,15 +169,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
   }
 
-  // Free = self-signup automático (a conta é criada via magic link no /login);
-  // o lead entra na waitlist já aprovado e marcado como contatado, para não
-  // poluir a fila de pendentes (consistente com o que o /api/admin/approve
-  // faz ao aprovar manualmente: status=approved + contacted=true).
-  // Essential/Strategic seguem o fluxo manual: nascem em 'pending' e
-  // contacted=false. O admin aprova em /admin/waitlist.
-  const isFree   = requested_plan === 'free'
-  const status   = isFree ? 'approved' : 'pending'
-  const contacted = isFree
+  // Free e Essential = self-signup automático (a conta é criada via magic link no
+  // /login e a subscription é ativada na hora no callback). O lead entra na
+  // waitlist já aprovado e contatado, para não poluir a fila de pendentes
+  // (consistente com o /api/admin/approve). Só o Strategic segue o fluxo manual:
+  // nasce em 'pending' e contacted=false, e o admin aprova em /admin/waitlist.
+  const isInstant = requested_plan === 'free' || requested_plan === 'essential'
+  const status    = isInstant ? 'approved' : 'pending'
+  const contacted = isInstant
 
   try {
     const res = await fetch(
@@ -215,7 +214,7 @@ export async function POST(req: Request) {
     const sends = [
       sendEmail(ADMIN_EMAIL, 'New TAIME waitlist signup', adminEmailHtml({ name, email, company, role, interest, requested_plan })),
     ]
-    if (!isFree) {
+    if (!isInstant) {
       sends.unshift(sendEmail(email, 'You are on the TAIME waitlist', userEmailHtml(name)))
     }
     await Promise.all(sends)

@@ -257,6 +257,37 @@ export async function GET(request: NextRequest) {
               }
             }
 
+            // ── Ativacao imediata do plano escolhido no cadastro ────────────
+            //    signup_plan vem do metadata do OTP (free-signup no /login). Cria
+            //    a subscription active na hora, sem waitlist nem aprovacao manual.
+            //    Nunca cria strategic por aqui. So cria se o usuario ainda NAO tem
+            //    subscription, para nunca rebaixar uma strategic manual nem o plano
+            //    de quem ja tem conta (a mudanca vale so para cadastros novos).
+            //    Server-side com service key: o cliente nunca escolhe o proprio plano.
+            const rawSignupPlan = typeof meta.signup_plan === 'string' ? meta.signup_plan.trim() : ''
+            const signupPlan: 'free' | 'essential' | null =
+              rawSignupPlan === 'essential' ? 'essential'
+              : rawSignupPlan === 'free'    ? 'free'
+              : null
+            if (signupPlan) {
+              try {
+                const subCheck = await fetch(
+                  `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${user.id}&select=id&limit=1`,
+                  { headers },
+                )
+                const hasSub = subCheck.ok && ((await subCheck.json()) as unknown[]).length > 0
+                if (!hasSub) {
+                  await fetch(`${supabaseUrl}/rest/v1/subscriptions`, {
+                    method: 'POST',
+                    headers: { ...headers, Prefer: 'return=minimal' },
+                    body: JSON.stringify({ user_id: user.id, plan: signupPlan, status: 'active' }),
+                  })
+                }
+              } catch (e) {
+                console.error('Auth callback: subscription activation failed (non-blocking):', e)
+              }
+            }
+
             // ── Boas-vindas do free, apenas na primeira sessão ──────────────
             //    Controle de reenvio SEM coluna nova no banco: usamos a flag
             //    welcome_email_sent dentro do user_metadata (auth.users). Como

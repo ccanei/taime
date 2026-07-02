@@ -35,9 +35,11 @@ function LoginPageInner() {
   const planParam = searchParams.get('plan') as Plan | null
   const initialPlan: Plan = planParam && ALLOWED_PLANS.includes(planParam) ? planParam : 'free'
 
-  // Plan free: self-signup direto (magic link com shouldCreateUser=true) + lead aprovado na waitlist.
-  // Plan essential/strategic: continua waitlist manual com status pending (comportamento histórico).
-  const [mode, setMode]     = useState<Mode>(initialPlan === 'free' ? 'free-signup' : 'waitlist')
+  // Free e Essential: self-signup direto (magic link com shouldCreateUser=true) e
+  // ativacao imediata da subscription no /auth/callback. Strategic: continua
+  // waitlist manual (nao esta a venda agora). O cadastro nunca ativa strategic.
+  const signupPlan: 'free' | 'essential' = initialPlan === 'essential' ? 'essential' : 'free'
+  const [mode, setMode]     = useState<Mode>(initialPlan === 'strategic' ? 'waitlist' : 'free-signup')
   const [status, setStatus] = useState<Status>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -165,7 +167,7 @@ function LoginPageInner() {
           company:        normalizedCompany,
           role:           normalizedRole,
           interest,
-          requested_plan: 'free',
+          requested_plan: signupPlan,
           website,
         }),
       })
@@ -196,6 +198,7 @@ function LoginPageInner() {
           company:            normalizedCompany, // consumidos pelo callback
           job_title:          normalizedRole,
           preferred_language: dbLocale,
+          signup_plan:        signupPlan,         // callback ativa a subscription na hora
         },
       },
     })
@@ -290,10 +293,10 @@ function LoginPageInner() {
             ) : isFreeSignup ? (
               <>
                 <h1 className="text-2xl font-bold text-zinc-900 mb-1">
-                  {t.login.freeTitle}
+                  {signupPlan === 'essential' ? t.login.essentialTitle : t.login.freeTitle}
                 </h1>
                 <p className="text-sm text-zinc-500 mb-7 leading-relaxed">
-                  {t.login.freeBody}
+                  {signupPlan === 'essential' ? t.login.essentialBody : t.login.freeBody}
                 </p>
 
                 <form onSubmit={handleFreeSignup} className="space-y-4">
@@ -408,16 +411,18 @@ function LoginPageInner() {
                     disabled={status === 'loading' || !name || !email || !interest}
                     className="w-full btn-primary justify-center py-3 disabled:opacity-60 mt-2"
                   >
-                    {status === 'loading' ? t.login.freeSubmitting : t.login.freeSubmit}
+                    {status === 'loading'
+                      ? t.login.freeSubmitting
+                      : (signupPlan === 'essential' ? t.login.essentialSubmit : t.login.freeSubmit)}
                   </button>
                 </form>
 
                 <div className="mt-6 flex items-center justify-between text-sm">
                   <button
-                    onClick={() => { setRequestedPlan('essential'); switchMode('waitlist') }}
+                    onClick={() => { setRequestedPlan('strategic'); switchMode('waitlist') }}
                     className="text-taime-600 hover:underline"
                   >
-                    {t.nav.howItWorks === 'Como funciona' ? 'Solicitar plano pago →' : 'Request a paid plan →'}
+                    {t.nav.howItWorks === 'Como funciona' ? 'Solicitar o Strategic →' : 'Request Strategic →'}
                   </button>
                   <button
                     onClick={() => switchMode('magic-link')}
