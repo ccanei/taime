@@ -15,9 +15,41 @@ export const en: Translations = {
   home: {
     badge:      'Global signals · Executive intelligence · Strategic memory',
     hero:       ['No one can keep up with everything', 'happening in technology.', 'TAIME can.'],
-    heroBody:   'We analyze thousands of signals and deliver what matters: the context, the score and the recommended move. You decide with the full picture.',
-    heroSub:    'Free: 2 full reports per month.',
+    heroTitle:  'Wrong technology decisions are expensive.',
+    heroBody:   'Biweekly strategic intelligence that turns what changes in technology into a decision, with score and horizon. For those who decide before investing.',
+    heroSub:    'Start with free access.',
     ctaPrimary: 'Create free account →',
+
+    // ── Reformulated home: dynamic blocks fed by real data ──
+    proof: {
+      signalsLabel: 'signals analyzed',
+      trendsLabel:  'trends mapped',
+      window:       '3 years of intelligence (last 36 months)',
+    },
+    reportCard: {
+      label:         'Latest report',
+      topTrendLabel: 'Highest score trend',
+      cta:           'Read the full report →',
+      then: 'THEN', now: 'NOW', next: 'NEXT',
+    },
+    trendCards: {
+      label: 'Recent trends',
+      title: 'What TAIME analyzed in recent weeks.',
+      cta:   'See analysis →',
+    },
+    topics: {
+      label: 'Topics in focus',
+      lead3: (a: string, b: string, c: string) =>
+        `In recent weeks, TAIME analyzed ${a}, ${b} and ${c}. See what it changes for your strategy.`,
+      lead2: (a: string, b: string) =>
+        `In recent weeks, TAIME analyzed ${a} and ${b}. See what it changes for your strategy.`,
+      cta:   'Start now',
+    },
+    finalCta: {
+      title: 'Try the Executive Advisor.',
+      body:  'A strategic partner that knows the TAIME archive, challenges your assumptions and helps you decide with the full picture.',
+      cta:   'Try the Executive Advisor',
+    },
     ctaSecondary: 'Request access →',
 
     painsLabel: 'The problem TAIME solves',

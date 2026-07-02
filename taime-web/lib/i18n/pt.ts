@@ -13,10 +13,42 @@ export const pt = {
   home: {
     badge:      'Sinais globais · Inteligência executiva · Memória estratégica',
     hero:       ['Ninguém consegue acompanhar tudo', 'o que acontece em tecnologia.', 'O TAIME consegue.'],
-    heroBody:   'Analisamos milhares de sinais e entregamos o que importa: o contexto, o score e o movimento recomendado. Você decide com o quadro completo.',
-    heroSub:    'Grátis: 2 relatórios completos por mês.',
+    heroTitle:  'Decisões de tecnologia erradas custam caro.',
+    heroBody:   'Inteligência estratégica quinzenal que traduz o que muda na tecnologia em decisão, com score e horizonte. Para quem decide antes de investir.',
+    heroSub:    'Comece com acesso gratuito.',
     ctaPrimary: 'Criar conta gratuita →',
     ctaSecondary: 'Solicitar acesso →',
+
+    // ── Home reformulada: blocos dinâmicos alimentados por dados reais ──
+    proof: {
+      signalsLabel: 'sinais analisados',
+      trendsLabel:  'tendências mapeadas',
+      window:       '3 anos de inteligência (últimos 36 meses)',
+    },
+    reportCard: {
+      label:         'Relatório mais recente',
+      topTrendLabel: 'Trend de maior score',
+      cta:           'Leia o relatório completo →',
+      then: 'ENTÃO', now: 'AGORA', next: 'DEPOIS',
+    },
+    trendCards: {
+      label: 'Tendências recentes',
+      title: 'O que o TAIME analisou nas últimas semanas.',
+      cta:   'Ver análise →',
+    },
+    topics: {
+      label: 'Tópicos em pauta',
+      lead3: (a: string, b: string, c: string) =>
+        `Nas últimas semanas, o TAIME analisou ${a}, ${b} e ${c}. Veja o que isso muda para a sua estratégia.`,
+      lead2: (a: string, b: string) =>
+        `Nas últimas semanas, o TAIME analisou ${a} e ${b}. Veja o que isso muda para a sua estratégia.`,
+      cta:   'Comece agora',
+    },
+    finalCta: {
+      title: 'Teste o Executive Advisor.',
+      body:  'Um parceiro estratégico que conhece o arquivo TAIME, pressiona suas premissas e ajuda você a decidir com o quadro completo.',
+      cta:   'Teste o Executive Advisor',
+    },
 
     painsLabel: 'O problema que o TAIME resolve',
     pains: [
