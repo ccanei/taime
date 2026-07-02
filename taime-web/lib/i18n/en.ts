@@ -26,14 +26,6 @@ export const en: Translations = {
       trendsLabel:  'trends mapped',
       window:       '3 years of intelligence (last 36 months)',
     },
-    reportCard: {
-      label:          'Latest report',
-      summaryLabel:   'Executive summary',
-      topTrendLabel:  'Highest score trend',
-      frameworkLabel: 'Decision framework',
-      cta:            'See the full analysis →',
-      then: 'THEN', now: 'NOW', next: 'NEXT',
-    },
     trendCards: {
       label: 'Recent trends',
       title: 'What TAIME analyzed in recent weeks.',

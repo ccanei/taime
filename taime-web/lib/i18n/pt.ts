@@ -25,14 +25,6 @@ export const pt = {
       trendsLabel:  'tendências mapeadas',
       window:       '3 anos de inteligência (últimos 36 meses)',
     },
-    reportCard: {
-      label:          'Relatório mais recente',
-      summaryLabel:   'Resumo executivo',
-      topTrendLabel:  'Trend de maior score',
-      frameworkLabel: 'Framework de decisão',
-      cta:            'Veja a análise completa →',
-      then: 'ENTÃO', now: 'AGORA', next: 'DEPOIS',
-    },
     trendCards: {
       label: 'Tendências recentes',
       title: 'O que o TAIME analisou nas últimas semanas.',

@@ -153,86 +153,6 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
   } catch { return [] }
 }
 
-interface ReportCardTrend {
-  report_id:             string
-  title_pt_br:           string
-  title_en:              string
-  taime_score:           number
-  then_now_next_pt_br:   ThenNowNext | null
-  then_now_next_en:      ThenNowNext | null
-  taime_framework_pt_br: TaimeFramework | null
-  taime_framework_en:    TaimeFramework | null
-}
-interface ReportCardData {
-  period:                  string
-  periodLabel:             string | null
-  reportId:                string
-  title_pt_br:             string
-  title_en:                string
-  executive_summary_pt_br: string
-  executive_summary_en:    string
-  trend:                   ReportCardTrend | null
-}
-
-// Card de relatório real. Critério ROBUSTO: o PERÍODO publicado mais recente
-// (period desc), nunca published_at. Assim, editar um report antigo (que atualiza
-// published_at) nao o faz "pular" para a frente do card; o card sempre mostra o
-// periodo cronologicamente mais novo que esteja published. Dentro do periodo,
-// pega a trend de MAIOR taime_score (dinamico) e o report que a contem, com o
-// resumo executivo. Esconde sem quebrar se nao houver publicado.
-async function getLatestReportCard(): Promise<ReportCardData | null> {
-  const c = supaCreds()
-  if (!c) return null
-  const h = { apikey: c.key, Authorization: `Bearer ${c.key}` }
-  try {
-    const perRes = await fetch(
-      `${c.url}/rest/v1/reports?status=eq.published&order=period.desc&limit=1&select=period`,
-      { headers: h, cache: 'no-store' },
-    )
-    if (!perRes.ok) return null
-    const period = (await perRes.json() as Array<{ period: string }>)[0]?.period
-    if (!period) return null
-
-    const trRes = await fetch(
-      `${c.url}/rest/v1/report_trends?reports.status=eq.published&reports.period=eq.${encodeURIComponent(period)}` +
-        `&order=taime_score.desc&limit=1` +
-        `&select=report_id,title_pt_br,title_en,taime_score,then_now_next_pt_br,then_now_next_en,` +
-        `taime_framework_pt_br,taime_framework_en,` +
-        `reports!inner(id,period,period_label,title_pt_br,title_en,executive_summary_pt_br,executive_summary_en)`,
-      { headers: h, cache: 'no-store' },
-    )
-    if (!trRes.ok) return null
-    type Rep = {
-      id: string; period: string; period_label: string | null
-      title_pt_br: string; title_en: string
-      executive_summary_pt_br: string; executive_summary_en: string
-    }
-    const row = (await trRes.json() as Array<ReportCardTrend & { reports: Rep | Rep[] }>)[0]
-    if (!row) return null
-    const rep = Array.isArray(row.reports) ? row.reports[0] : row.reports
-    if (!rep) return null
-    return {
-      period:                  rep.period,
-      periodLabel:             rep.period_label,
-      reportId:                rep.id,
-      title_pt_br:             rep.title_pt_br,
-      title_en:                rep.title_en,
-      executive_summary_pt_br: rep.executive_summary_pt_br,
-      executive_summary_en:    rep.executive_summary_en,
-      trend: {
-        report_id:             row.report_id,
-        title_pt_br:           row.title_pt_br,
-        title_en:              row.title_en,
-        taime_score:           row.taime_score,
-        then_now_next_pt_br:   row.then_now_next_pt_br,
-        then_now_next_en:      row.then_now_next_en,
-        taime_framework_pt_br: row.taime_framework_pt_br,
-        taime_framework_en:    row.taime_framework_en,
-      },
-    }
-  } catch { return null }
-}
-
 // Deriva um rótulo curto de tópico a partir do título da trend (parte antes do
 // dois-pontos quando faz sentido, senão as primeiras palavras). Fica no idioma
 // do título recebido.
@@ -277,8 +197,8 @@ export default async function LandingPage() {
     isLoggedIn = false
   }
 
-  const [topTrends, latestBriefing, proof, recentRows, reportCard] = await Promise.all([
-    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(), getLatestReportCard(),
+  const [topTrends, latestBriefing, proof, recentRows] = await Promise.all([
+    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(),
   ])
   const isEn = locale === 'en'
 
@@ -584,112 +504,6 @@ export default async function LandingPage() {
           <span className="text-sm text-zinc-500">{h.proof.window}</span>
         </div>
       </section>
-
-      {/* ── SEÇÃO 1d: CARD DE RELATÓRIO REAL (resumo + trend de maior score liberada) ── */}
-      {reportCard && (
-        <section className="border-t border-zinc-100 bg-zinc-50 py-16">
-          <div className="max-w-4xl mx-auto px-6">
-            <p className="section-label mb-4">{h.reportCard.label}</p>
-            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              {/* Cabeçalho: período + título do relatório */}
-              <div className="px-6 py-5 border-b border-zinc-100">
-                <p className="text-[11px] font-bold tracking-widest text-taime-600 uppercase mb-1">
-                  {reportCard.periodLabel ?? reportCard.period}
-                </p>
-                <h3 className="text-lg font-bold text-zinc-900 leading-snug">
-                  {isEn ? reportCard.title_en : reportCard.title_pt_br}
-                </h3>
-              </div>
-
-              {/* Resumo executivo completo (liberado) */}
-              <div className="px-6 py-5 border-b border-zinc-100">
-                <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-2">
-                  {h.reportCard.summaryLabel}
-                </p>
-                <div className="space-y-2 text-sm text-zinc-600 leading-relaxed">
-                  {(isEn ? reportCard.executive_summary_en : reportCard.executive_summary_pt_br)
-                    .split('\n').map(p => p.trim()).filter(Boolean).map((p, i) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                </div>
-              </div>
-
-              {/* Trend de MAIOR taime_score, com conteúdo liberado (THEN/NOW/NEXT + framework) */}
-              {reportCard.trend && (() => {
-                const trend = reportCard.trend!
-                const tnn = isEn ? trend.then_now_next_en   : trend.then_now_next_pt_br
-                const fw  = isEn ? trend.taime_framework_en : trend.taime_framework_pt_br
-                const tnnItems = tnn?.then && tnn?.now && tnn?.next
-                  ? [
-                      { k: h.reportCard.then, v: stripPeriodLabel(tnn.then) },
-                      { k: h.reportCard.now,  v: tnn.now },
-                      { k: h.reportCard.next, v: tnn.next },
-                    ]
-                  : []
-                const fwItems: [string, string][] = fw
-                  ? [['TYPE', fw.type], ['ACT', fw.act], ['IMPACT', fw.impact], ['MOVE', fw.move], ['EXIT', fw.exit]]
-                  : []
-                return (
-                  <div className="px-6 py-5">
-                    <div className="flex items-start justify-between gap-4 mb-4">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-1">
-                          {h.reportCard.topTrendLabel}
-                        </p>
-                        <p className="text-base font-semibold text-zinc-900 leading-snug">
-                          {isEn ? trend.title_en : trend.title_pt_br}
-                        </p>
-                      </div>
-                      <div className="shrink-0 w-14 h-14 rounded-xl bg-taime-600 text-white
-                                      flex flex-col items-center justify-center">
-                        <span className="text-xl font-bold leading-none">{trend.taime_score}</span>
-                        <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
-                      </div>
-                    </div>
-
-                    {tnnItems.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-                        {tnnItems.map(it => (
-                          <div key={it.k} className="rounded-lg bg-zinc-50 border border-zinc-100 p-3">
-                            <p className="text-[9px] font-bold tracking-widest text-taime-600 mb-1">{it.k}</p>
-                            <p className="text-xs text-zinc-600 leading-snug">{it.v}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {fwItems.length > 0 && (
-                      <div className="mb-5">
-                        <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-2">
-                          {h.reportCard.frameworkLabel}
-                        </p>
-                        <div className="space-y-1.5">
-                          {fwItems.map(([k, v]) => (
-                            <div key={k} className="flex gap-3 text-xs leading-snug">
-                              <span className="shrink-0 w-16 font-bold tracking-widest text-taime-600">{k}</span>
-                              <span className="text-zinc-600">{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Leva à página do report: assinante vê tudo, não assinante vê a
-                        amostra e o resto bloqueado. Nunca promete "completo" de forma enganosa. */}
-                    <Link
-                      href={`/reports/${reportCard.reportId}`}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg
-                                 bg-taime-600 text-white text-sm font-semibold hover:bg-taime-700 transition-colors"
-                    >
-                      {h.reportCard.cta}
-                    </Link>
-                  </div>
-                )
-              })()}
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* ── SEÇÃO 1b: VEJA O QUE VOCÊ RECEBE ──────────────────────────── */}
       <section className="border-t border-zinc-100 py-20">
