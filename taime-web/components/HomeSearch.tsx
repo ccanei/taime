@@ -46,7 +46,7 @@ export default function HomeSearch({
         smartHint:   'Ranked by semantic relevance.',
         smartClear:  'Back to normal search',
         smartLoading: 'Searching...',
-        smartFailed: 'Smart search unavailable — using normal filter.',
+        smartFailed: 'Smart search unavailable, using normal filter.',
       }
     : {
         placeholder: 'Buscar tendências... (Enter para busca inteligente)',
@@ -55,7 +55,7 @@ export default function HomeSearch({
         smartHint:   'Resultados ordenados por relevância semântica.',
         smartClear:  'Voltar à busca normal',
         smartLoading: 'Buscando...',
-        smartFailed: 'Busca inteligente indisponível — usando filtro normal.',
+        smartFailed: 'Busca inteligente indisponível, usando filtro normal.',
       }
 
   async function runSmartSearch() {
@@ -85,7 +85,7 @@ export default function HomeSearch({
   }
 
   // Modo SEMÂNTICO: reordena pelas report_ids da API; cada report pode ter
-  // múltiplas trends — todas mantêm a posição do report.
+  // múltiplas trends, todas mantêm a posição do report.
   // Modo NORMAL: filtro instantâneo por includes() no título e snapshot.
   const visible = useMemo(() => {
     if (semanticMatches) {
@@ -94,7 +94,9 @@ export default function HomeSearch({
         .filter(t => order.has(t.report_id))
         .sort((a, b) => (order.get(a.report_id) ?? 0) - (order.get(b.report_id) ?? 0))
     }
-    if (!query.trim()) return trends
+    // Busca começa VAZIA: nada é renderizado até o usuário digitar. Evita a
+    // parede de cards pré-carregados apontando para /login.
+    if (!query.trim()) return []
     // Mesmo motor do Dashboard: normalização de acentos, sinônimos
     // (IA → agentic, nuvem → cloud, etc.) e scoring ponderado.
     return trends
@@ -219,11 +221,12 @@ export default function HomeSearch({
             )
           })}
         </div>
-      ) : (
+      ) : (query.trim() || semanticMatches) ? (
+        // Só mostra "nada encontrado" quando o usuário de fato buscou.
         <div className="rounded-xl border border-dashed border-zinc-200 p-10 text-center text-zinc-400 text-sm">
-          {(query.trim() || semanticMatches) ? L.empty : trendsEmpty}
+          {L.empty}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
