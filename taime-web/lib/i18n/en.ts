@@ -16,7 +16,7 @@ export const en: Translations = {
     badge:      'Global signals · Executive intelligence · Strategic memory',
     hero:       ['No one can keep up with everything', 'happening in technology.', 'TAIME can.'],
     heroTitle:  'Wrong technology decisions are expensive.',
-    heroBody:   'Biweekly strategic intelligence that turns what changes in technology into a decision, with score and horizon. For those who decide before investing.',
+    heroBody:   'Strategic intelligence that turns what changes in technology into a decision, with score and horizon. For those who decide before investing.',
     heroSub:    'Start with free access.',
     ctaPrimary: 'Create free account →',
 
@@ -27,9 +27,11 @@ export const en: Translations = {
       window:       '3 years of intelligence (last 36 months)',
     },
     reportCard: {
-      label:         'Latest report',
-      topTrendLabel: 'Highest score trend',
-      cta:           'Read the full report →',
+      label:          'Latest report',
+      summaryLabel:   'Executive summary',
+      topTrendLabel:  'Highest score trend',
+      frameworkLabel: 'Decision framework',
+      cta:            'See the full analysis →',
       then: 'THEN', now: 'NOW', next: 'NEXT',
     },
     trendCards: {

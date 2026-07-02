@@ -14,7 +14,7 @@ export const pt = {
     badge:      'Sinais globais · Inteligência executiva · Memória estratégica',
     hero:       ['Ninguém consegue acompanhar tudo', 'o que acontece em tecnologia.', 'O TAIME consegue.'],
     heroTitle:  'Decisões de tecnologia erradas custam caro.',
-    heroBody:   'Inteligência estratégica quinzenal que traduz o que muda na tecnologia em decisão, com score e horizonte. Para quem decide antes de investir.',
+    heroBody:   'Inteligência estratégica que traduz o que muda na tecnologia em decisão, com score e horizonte. Para quem decide antes de investir.',
     heroSub:    'Comece com acesso gratuito.',
     ctaPrimary: 'Criar conta gratuita →',
     ctaSecondary: 'Solicitar acesso →',
@@ -26,9 +26,11 @@ export const pt = {
       window:       '3 anos de inteligência (últimos 36 meses)',
     },
     reportCard: {
-      label:         'Relatório mais recente',
-      topTrendLabel: 'Trend de maior score',
-      cta:           'Leia o relatório completo →',
+      label:          'Relatório mais recente',
+      summaryLabel:   'Resumo executivo',
+      topTrendLabel:  'Trend de maior score',
+      frameworkLabel: 'Framework de decisão',
+      cta:            'Veja a análise completa →',
       then: 'ENTÃO', now: 'AGORA', next: 'DEPOIS',
     },
     trendCards: {
