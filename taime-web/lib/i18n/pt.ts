@@ -152,7 +152,7 @@ export const pt = {
       },
       {
         name: 'Essencial', price: null, badge: null,
-        desc: 'Inteligência completa quinzenal, gratuito por tempo limitado',
+        desc: 'Inteligência completa, gratuito por tempo limitado',
         features: ['Relatório completo com todas as trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Score dimensions detalhado', 'Histórico completo de 3 anos', 'Preview de todo o histórico anterior', 'Executive Advisor (100 mensagens/mês)'],
         cta: 'Começar com o Essential', href: '/login', highlight: true,
       },
@@ -251,7 +251,7 @@ export const pt = {
     freeSubmit:    'Enviar link de acesso',
     freeSubmitting: 'Enviando...',
     essentialTitle:  'Ativar o Essential',
-    essentialBody:   'Acesso completo à inteligência quinzenal e ao Executive Advisor. Gratuito por tempo limitado. Informe seu email e enviaremos um link de acesso.',
+    essentialBody:   'Acesso completo à inteligência estratégica e ao Executive Advisor. Gratuito por tempo limitado. Informe seu email e enviaremos um link de acesso.',
     essentialSubmit: 'Ativar e receber o link',
     freeSentTitle: 'Link enviado!',
     freeSentBody:  (email: string) => `Enviamos um link de acesso para ${email}. Clique nele para entrar.`,
@@ -287,7 +287,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',   desc: 'Comece a decidir com dados reais',                       badge: null, highlight: false, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Grátis',   desc: 'Inteligência completa quinzenal, gratuito por tempo limitado', badge: null, highlight: true,  cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Grátis',   desc: 'Inteligência completa, gratuito por tempo limitado', badge: null, highlight: true,  cta: 'Começar com o Essential →' },
       { name: 'Estratégico', price: 'Em breve', desc: 'Inteligência contínua e histórica',                     badge: null, highlight: false, cta: 'Entrar na lista →'          },
     ],
     planFeatures: [

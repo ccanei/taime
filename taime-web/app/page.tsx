@@ -45,11 +45,6 @@ interface RadarBriefing {
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
-// Relatório marcado is_public=true no Supabase, exposto pela rota /r/[id].
-// Usado como link do showcase para visitantes anônimos: em vez de mandá-los
-// para /login, abre direto a amostra (resumo completo + 1 trend liberada).
-const PUBLIC_SAMPLE_REPORT_ID = '48c29bb6-6dee-46a1-987b-bb08bd775ab0'
-
 async function getTopTrends(): Promise<TopTrend[]> {
   try {
     const res = await fetch(`${SITE_URL}/api/trends/top`, { cache: 'no-store' })
@@ -153,6 +148,24 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
   } catch { return [] }
 }
 
+// Amostra pública mais recente: report status='published' E is_public=true, do
+// PERÍODO mais novo (period desc). Dinamico e robusto: no dia em que a 2a
+// quinzena de junho/2026 (ou outra mais nova) for marcada como amostra publica
+// no admin, o exemplo passa a ser ela sozinha, sem editar codigo. Retorna null
+// se nao houver nenhuma amostra publica (o CTA de exemplo se esconde, nao quebra).
+async function getPublicSampleId(): Promise<string | null> {
+  const c = supaCreds()
+  if (!c) return null
+  try {
+    const res = await fetch(
+      `${c.url}/rest/v1/reports?status=eq.published&is_public=eq.true&order=period.desc&limit=1&select=id`,
+      { headers: { apikey: c.key, Authorization: `Bearer ${c.key}` }, cache: 'no-store' },
+    )
+    if (!res.ok) return null
+    return (await res.json() as Array<{ id: string }>)[0]?.id ?? null
+  } catch { return null }
+}
+
 // Deriva um rótulo curto de tópico a partir do título da trend (parte antes do
 // dois-pontos quando faz sentido, senão as primeiras palavras). Fica no idioma
 // do título recebido.
@@ -197,8 +210,8 @@ export default async function LandingPage() {
     isLoggedIn = false
   }
 
-  const [topTrends, latestBriefing, proof, recentRows] = await Promise.all([
-    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(),
+  const [topTrends, latestBriefing, proof, recentRows, sampleId] = await Promise.all([
+    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(), getPublicSampleId(),
   ])
   const isEn = locale === 'en'
 
@@ -242,13 +255,12 @@ export default async function LandingPage() {
   const showcaseTnn    = showcase ? (isEn ? showcase.then_now_next_en   : showcase.then_now_next_pt_br)   : null
   const showcaseTitle  = showcase ? (isEn ? showcase.title_en           : showcase.title_pt_br)           : ''
   const showcaseHref   = showcase
-    ? (isLoggedIn ? `/reports/${showcase.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`)
+    ? (isLoggedIn ? `/reports/${showcase.report_id}` : (sampleId ? `/r/${sampleId}` : '/login'))
     : '/login'
 
   // Mockup data: top trend by score (rank 1 da query)
   const firstTrend    = topTrends[0] ?? null
   const fwMockup      = isEn ? firstTrend?.taime_framework_en   : firstTrend?.taime_framework_pt_br
-  const tnnMockup     = isEn ? firstTrend?.then_now_next_en     : firstTrend?.then_now_next_pt_br
   const mockupScore   = firstTrend?.taime_score ?? 87
   const mockupTitle   = firstTrend
     ? (isEn ? firstTrend.title_en : firstTrend.title_pt_br)
@@ -279,18 +291,6 @@ export default async function LandingPage() {
         { step: 'MOVE',   val: isEn ? 'Deploy'     : 'Implantar' },
         { step: 'EXIT',   val: isEn ? 'NPS < 40'   : 'NPS < 40' },
       ]
-  const mockupTnn = tnnMockup
-    ? [
-        { label: 'THEN', val: firstWords(stripPeriodLabel(tnnMockup.then), 6) },
-        { label: 'NOW',  val: firstWords(tnnMockup.now,  6) },
-        { label: 'NEXT', val: firstWords(tnnMockup.next, 6) },
-      ]
-    : [
-        { label: 'THEN', val: isEn ? 'Incumbents dominated'  : 'Incumbentes dominavam' },
-        { label: 'NOW',  val: isEn ? 'Agents in production'  : 'Agentes em produção' },
-        { label: 'NEXT', val: isEn ? 'Market standard'       : 'Padrão de mercado' },
-      ]
-
   // 4 mini-cards de dimensão para o mockup do hero (dados reais quando há)
   const heroDimLabels = isEn
     ? { cp: 'Competitive Pressure', si: 'Strategic Impact', lr: 'Lag Risk',           mm: 'Market Maturity' }
@@ -309,13 +309,6 @@ export default async function LandingPage() {
         [heroDimLabels.lr, 84],
         [heroDimLabels.mm, 79],
       ]
-
-  // Movimento recomendado: 1 frase compacta do framework real
-  const heroMove = fwMockup?.move
-    ? firstWords(fwMockup.move, 14)
-    : (isEn
-        ? 'Appoint a PM with a 90-day mandate to deploy production agents.'
-        : 'Nomeie um PM com mandato de 90 dias para colocar agentes em produção.')
 
   return (
     <div className="min-h-screen bg-white">
@@ -363,17 +356,6 @@ export default async function LandingPage() {
                              hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
                 >
                   {h.ctaPrimary}
-                </Link>
-                <Link
-                  href={`/r/${PUBLIC_SAMPLE_REPORT_ID}`}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg
-                             text-white text-sm font-semibold border border-white/20
-                             hover:bg-white/10 transition-colors"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  {isEn ? 'See a sample report' : 'Ver um relatório exemplo'}
                 </Link>
               </div>
               <p className="text-xs text-white/50 font-medium">{h.heroSub}</p>
@@ -452,26 +434,22 @@ export default async function LandingPage() {
                       ))}
                     </div>
 
-                    {/* Movimento recomendado */}
-                    <div className="rounded-lg bg-taime-500/10 border border-taime-500/30 p-3 mb-4">
-                      <p className="text-[9px] font-bold tracking-widest text-taime-300 mb-1.5">
-                        {isEn ? 'RECOMMENDED MOVE' : 'MOVIMENTO RECOMENDADO'}
-                      </p>
-                      <p className="text-[11px] text-white/90 leading-snug line-clamp-2">{heroMove}</p>
-                    </div>
-
-                    {/* Then · Now · Next */}
-                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
-                      THEN · NOW · NEXT
-                    </p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {mockupTnn.map(({ label, val }) => (
-                        <div key={label} className="rounded-md bg-zinc-800/40 border border-zinc-700/50 p-2">
-                          <p className="text-[8px] font-bold tracking-widest text-zinc-500 mb-1">{label}</p>
-                          <p className="text-[10px] text-white/80 leading-tight line-clamp-3">{val}</p>
-                        </div>
-                      ))}
-                    </div>
+                    {/* CTA unico: leva a amostra limitada (/r/{sample}). Sem despejo de
+                        texto (THEN/NOW/NEXT completo saiu). Peca grafica + um CTA. */}
+                    {sampleId && (
+                      <Link
+                        href={`/r/${sampleId}`}
+                        className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
+                                   rounded-lg bg-taime-500 text-white text-xs font-semibold
+                                   hover:bg-taime-400 transition-colors"
+                      >
+                        {isEn ? 'Read the analysis' : 'Leia a análise'}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
+                        </svg>
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>
@@ -921,7 +899,7 @@ export default async function LandingPage() {
                     <h3 className="text-base font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
                     <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
                     <Link
-                      href={isLoggedIn ? `/reports/${r.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`}
+                      href={isLoggedIn ? `/reports/${r.report_id}` : (sampleId ? `/r/${sampleId}` : '/login')}
                       className="text-xs font-semibold text-taime-700 hover:text-taime-800 transition-colors"
                     >
                       {h.trendCards.cta}

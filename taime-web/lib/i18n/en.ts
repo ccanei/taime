@@ -154,7 +154,7 @@ export const en: Translations = {
       },
       {
         name: 'Essential', price: null, badge: null,
-        desc: 'Complete biweekly intelligence, free for a limited time',
+        desc: 'Complete intelligence, free for a limited time',
         features: ['Full report with all trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Detailed score dimensions', '3 years of full history', 'Preview of the full prior archive', 'Executive Advisor (100 messages/month)'],
         cta: 'Start with Essential', href: '/login', highlight: true,
       },
@@ -253,7 +253,7 @@ export const en: Translations = {
     freeSubmit:    'Send access link',
     freeSubmitting: 'Sending...',
     essentialTitle:  'Activate Essential',
-    essentialBody:   'Full access to the biweekly intelligence and the Executive Advisor. Free for a limited time. Enter your email and we will send you an access link.',
+    essentialBody:   'Full access to the strategic intelligence and the Executive Advisor. Free for a limited time. Enter your email and we will send you an access link.',
     essentialSubmit: 'Activate and get the link',
     freeSentTitle: 'Link sent!',
     freeSentBody:  (email: string) => `We sent an access link to ${email}. Click it to sign in.`,
@@ -289,7 +289,7 @@ export const en: Translations = {
     subtitle: 'Pick a plan and start now. Instant activation, no waiting.',
     planCards: [
       { name: 'Free',       price: 'Free',         desc: 'Start deciding with real data',                          badge: null, highlight: false, cta: 'Create account →'    },
-      { name: 'Essential',  price: 'Free',         desc: 'Complete biweekly intelligence, free for a limited time', badge: null, highlight: true,  cta: 'Start with Essential →' },
+      { name: 'Essential',  price: 'Free',         desc: 'Complete intelligence, free for a limited time', badge: null, highlight: true,  cta: 'Start with Essential →' },
       { name: 'Strategic',  price: 'Coming soon',  desc: 'Continuous and historical intelligence',                 badge: null, highlight: false, cta: 'Join the waitlist →'  },
     ],
     planFeatures: [
