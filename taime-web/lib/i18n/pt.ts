@@ -111,7 +111,7 @@ export const pt = {
       { num: '03', title: 'Entenda a trajetória',   desc: 'THEN / NOW / NEXT: o que a tecnologia era, o que é hoje e para onde os sinais apontam.' },
       { num: '04', title: 'Decida com clareza',     desc: 'O TAIME Score e o movimento recomendado dizem se é hora de agir, esperar ou deixar pra lá.' },
     ],
-    howAdvisorNote: 'Com o Executive Advisor (em breve), você informa suas iniciativas e recebe um plano estratégico de ação: o que priorizar e o que deixar pra lá.',
+    howAdvisorNote: 'Com o Executive Advisor, você informa suas iniciativas e recebe um plano estratégico de ação: o que priorizar e o que deixar pra lá.',
 
     catLabel: 'Cobertura temática',
     catTitle: 'Inteligência em todas as frentes da tecnologia.',
@@ -169,7 +169,7 @@ export const pt = {
         cta: 'Solicitar acesso', href: '/login', highlight: false,
       },
     ],
-    advisorExplain: 'Executive Advisor: assistente estratégico que responde suas perguntas com base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos recomendados de cada período. Em breve.',
+    advisorExplain: 'Executive Advisor: assistente estratégico que responde suas perguntas com base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos recomendados de cada período.',
 
     advisor: {
       label:    'Executive Advisor',
@@ -182,7 +182,7 @@ export const pt = {
         { role: 'advisor', text: 'Então esse é o risco real, e não é técnico, é de sequência. Quem colocou agentes em produção com sucesso seguiu o mesmo padrão: um problema bem delimitado, levado até produção, observado onde quebra, e só então expandido. Sequência venceu velocidade, de forma consistente. A camada que concentra valor agora não é o agente em si, é a orquestração que decide qual tarefa vai para qual modelo, a que custo e com qual supervisão humana.' },
         { role: 'advisor', text: 'Minha recomendação: escolha um único fluxo de baixo risco e alta repetição, construa a base de dados e a supervisão antes de ligar o agente, e trate o vale da desilusão como restrição de projeto, não como contratempo. Quer que eu te ajude a identificar qual fluxo da sua operação tem o melhor equilíbrio entre baixo risco e aprendizado rápido?' },
       ],
-      soonNote: 'O Executive Advisor chega em breve para assinantes Essential.',
+      soonNote: 'Disponível no seu plano.',
       cta:      'Solicitar acesso antecipado',
     },
 
@@ -307,7 +307,7 @@ export const pt = {
       { label: 'Executive Advisor',               free: false,    essential: 'Uso limitado',  strategic: 'Ampliado' },
     ],
     tableHeaders: ['Recurso', 'Gratuito', 'Essencial', 'Estratégico'],
-    advisorExplain: 'Executive Advisor: assistente estratégico que responde suas perguntas com base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos recomendados de cada período. Em breve.',
+    advisorExplain: 'Executive Advisor: assistente estratégico que responde suas perguntas com base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos recomendados de cada período.',
     faqLabel: 'Dúvidas sobre os planos',
     faqTitle: 'Perguntas frequentes',
     planFaq: [

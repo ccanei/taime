@@ -113,7 +113,7 @@ export const en: Translations = {
       { num: '03', title: 'Understand the trajectory', desc: 'THEN / NOW / NEXT: what the technology was, what it is today and where the signals point.' },
       { num: '04', title: 'Decide with clarity',  desc: 'The TAIME Score and the recommended move tell you whether to act, wait or let it go.' },
     ],
-    howAdvisorNote: 'With the Executive Advisor (coming soon), you share your initiatives and get a strategic action plan: what to prioritize and what to let go.',
+    howAdvisorNote: 'With the Executive Advisor, you share your initiatives and get a strategic action plan: what to prioritize and what to let go.',
 
     catLabel: 'Coverage',
     catTitle: 'Intelligence across every technology frontier.',
@@ -171,7 +171,7 @@ export const en: Translations = {
         cta: 'Request access', href: '/login', highlight: false,
       },
     ],
-    advisorExplain: 'Executive Advisor: a strategic assistant that answers your questions using TAIME\'s report archive, bringing context, scores and recommended moves from every period. Coming soon.',
+    advisorExplain: 'Executive Advisor: a strategic assistant that answers your questions using TAIME\'s report archive, bringing context, scores and recommended moves from every period.',
 
     advisor: {
       label:    'Executive Advisor',
@@ -184,7 +184,7 @@ export const en: Translations = {
         { role: 'advisor', text: 'Then that is the real risk, and it is not technical, it is sequencing. The organizations that put agents into production successfully followed the same pattern: one well scoped problem, taken to production, observed where it breaks, and only then expanded. Sequencing beat speed, consistently. The layer that concentrates value now is not the agent itself, it is the orchestration that decides which task goes to which model, at what cost and with what human oversight.' },
         { role: 'advisor', text: 'My recommendation: pick a single low risk, high repetition workflow, build the data foundation and the oversight before turning the agent on, and treat the trough of disillusionment as a design constraint, not a setback. Want me to help you identify which workflow in your operation has the best balance of low risk and fast learning?' },
       ],
-      soonNote: 'The Executive Advisor arrives soon for Essential subscribers.',
+      soonNote: 'Available on your plan.',
       cta:      'Request early access',
     },
 
@@ -309,7 +309,7 @@ export const en: Translations = {
       { label: 'Executive Advisor',               free: false,   essential: 'Limited',       strategic: 'Extended' },
     ],
     tableHeaders: ['Feature', 'Free', 'Essential', 'Strategic'],
-    advisorExplain: 'Executive Advisor: a strategic assistant that answers your questions using TAIME\'s report archive, bringing context, scores and recommended moves from every period. Coming soon.',
+    advisorExplain: 'Executive Advisor: a strategic assistant that answers your questions using TAIME\'s report archive, bringing context, scores and recommended moves from every period.',
     faqLabel: 'Plan questions',
     faqTitle: 'Frequently asked questions',
     planFaq: [

@@ -14,9 +14,11 @@ interface Props {
   userName:  string | null
   userEmail: string | null
   profile:   Profile | null
+  plan?:     string | null
+  usage?:    { used: number; limit: number | null }
 }
 
-export default function AdvisorView({ userId, userName, userEmail, profile }: Props) {
+export default function AdvisorView({ userId, userName, userEmail, profile, plan, usage }: Props) {
   const [showProfileForm, setShowProfileForm] = useState(false)
 
   // Perfil deixou de ser pre-requisito: o usuario entra direto no chat. O
@@ -49,6 +51,8 @@ export default function AdvisorView({ userId, userName, userEmail, profile }: Pr
       userName={userName}
       userEmail={userEmail}
       profile={profile}
+      plan={plan}
+      usage={usage}
       onOpenProfile={() => setShowProfileForm(true)}
     />
   )

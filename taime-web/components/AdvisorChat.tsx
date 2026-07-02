@@ -32,6 +32,8 @@ interface Props {
   userEmail:     string | null
   profile:       AdvisorProfile | null
   onOpenProfile?: () => void
+  plan?:         string | null
+  usage?:        { used: number; limit: number | null }
 }
 
 function deriveInitials(name: string | null, email: string | null): string {
@@ -82,11 +84,29 @@ function timeAgoEn(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
-export default function AdvisorChat({ userId, userName, userEmail, profile, onOpenProfile }: Props) {
+export default function AdvisorChat({ userId, userName, userEmail, profile, onOpenProfile, plan, usage }: Props) {
   const { locale }   = useLocale()
   const isPt         = locale === 'pt'
   const userInitials = deriveInitials(userName, userEmail)
   const timeAgo      = isPt ? timeAgoPt : timeAgoEn
+
+  // ── Cota de mensagens (contador + bloqueio com CTA de upgrade) ──────────────
+  const msgLimit = usage?.limit ?? null
+  const [used, setUsed]       = useState(usage?.used ?? 0)
+  const [blocked, setBlocked] = useState(
+    msgLimit !== null && (usage?.used ?? 0) >= msgLimit,
+  )
+  const counterText = msgLimit === null ? null : (
+    isPt
+      ? `${used} de ${msgLimit} mensagens${plan === 'essential' ? ' neste ciclo' : ''}`
+      : `${used} of ${msgLimit} messages${plan === 'essential' ? ' this cycle' : ''}`
+  )
+  const upgradeText = plan === 'free'
+    ? (isPt ? 'Você usou suas 10 mensagens. Assine o Essential para 100 mensagens por mês.'
+            : 'You have used your 10 messages. Subscribe to Essential for 100 messages per month.')
+    : (isPt ? 'Você atingiu o limite deste ciclo. Assine o Strategic para uso ampliado.'
+            : 'You reached the limit for this cycle. Subscribe to Strategic for expanded use.')
+  const upgradeCta = isPt ? 'Ver planos' : 'View plans'
 
   const [messages,   setMessages]   = useState<Message[]>([])
   const [input,      setInput]      = useState('')
@@ -266,7 +286,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
 
   async function handleSend(textArg?: string) {
     const text = (textArg ?? input).trim()
-    if (!text || loading) return
+    if (!text || loading || blocked) return
 
     // Chip ou envio real: a abertura sai de cena (a conversa começou).
     clearIdle()
@@ -292,7 +312,17 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: text, sessionId: sid }),
       })
-      const json = await res.json() as { reply?: string; error?: string }
+      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null }
+
+      // Cota esgotada: nada foi gerado nem consumido. Remove a mensagem otimista
+      // e mostra o CTA de upgrade no lugar do input.
+      if (res.status === 403 && json.error === 'message_limit_reached') {
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id))
+        if (typeof json.used === 'number') setUsed(json.used)
+        setBlocked(true)
+        return
+      }
+
       if (!res.ok || !json.reply) throw new Error(json.error ?? 'Erro na resposta')
 
       const assistantMsg: Message = {
@@ -302,6 +332,12 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         created_at: new Date().toISOString(),
       }
       setMessages(prev => [...prev, assistantMsg])
+      // Atualiza o contador com o estado real vindo do servidor; se esta foi a
+      // ultima mensagem permitida, bloqueia o proximo envio.
+      if (typeof json.used === 'number') {
+        setUsed(json.used)
+        if (msgLimit !== null && json.used >= msgLimit) setBlocked(true)
+      }
       // Refresh da barra lateral: a sessão atual sobe pro topo da lista de
       // ativas, com title definido (se foi a primeira mensagem) e count atualizado.
       loadSessions(viewArchived)
@@ -444,13 +480,21 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
               )}
             </div>
           </div>
-          {onOpenProfile && (
-            <button
-              onClick={onOpenProfile}
-              className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap shrink-0">
-              {isPt ? 'Completar meu perfil' : 'Complete my profile'}
-            </button>
-          )}
+          <div className="flex items-center gap-3 shrink-0">
+            {counterText && (
+              <span className={`text-xs font-medium whitespace-nowrap tabular-nums
+                ${blocked ? 'text-taime-700' : 'text-zinc-400'}`}>
+                {counterText}
+              </span>
+            )}
+            {onOpenProfile && (
+              <button
+                onClick={onOpenProfile}
+                className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap">
+                {isPt ? 'Completar meu perfil' : 'Complete my profile'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Messages */}
@@ -537,35 +581,49 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
+        {/* Input (ou CTA de upgrade quando a cota esgota) */}
         <div className="border-t border-zinc-100 bg-white px-4 py-3">
-          <div className="flex gap-2 items-end">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                isPt ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas... (Enter para enviar)'
-                     : 'Ask about trends, strategy or technology decisions... (Enter to send)'
-              }
-              rows={2}
-              disabled={loading}
-              className="flex-1 resize-none rounded-xl border border-zinc-200 px-4 py-2.5 text-sm
-                         text-zinc-900 placeholder:text-zinc-400 outline-none
-                         focus:ring-2 focus:ring-taime-600 focus:border-transparent
-                         disabled:opacity-50 disabled:cursor-not-allowed leading-relaxed"
-            />
-            <button
-              onClick={() => handleSend()}
-              disabled={loading || !input.trim()}
-              className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          </div>
-          <p className="text-[10px] text-zinc-300 mt-1.5 text-right">Shift+Enter para nova linha</p>
+          {blocked ? (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between
+                            rounded-xl bg-taime-50 border border-taime-100 px-4 py-3">
+              <p className="text-sm text-zinc-700 leading-snug">{upgradeText}</p>
+              <a
+                href="/planos"
+                className="btn-primary px-4 py-2 text-sm whitespace-nowrap shrink-0 justify-center">
+                {upgradeCta} →
+              </a>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2 items-end">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    isPt ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas... (Enter para enviar)'
+                         : 'Ask about trends, strategy or technology decisions... (Enter to send)'
+                  }
+                  rows={2}
+                  disabled={loading}
+                  className="flex-1 resize-none rounded-xl border border-zinc-200 px-4 py-2.5 text-sm
+                             text-zinc-900 placeholder:text-zinc-400 outline-none
+                             focus:ring-2 focus:ring-taime-600 focus:border-transparent
+                             disabled:opacity-50 disabled:cursor-not-allowed leading-relaxed"
+                />
+                <button
+                  onClick={() => handleSend()}
+                  disabled={loading || !input.trim()}
+                  className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-300 mt-1.5 text-right">Shift+Enter para nova linha</p>
+            </>
+          )}
         </div>
       </div>
     </div>
