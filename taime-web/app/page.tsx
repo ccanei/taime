@@ -80,6 +80,135 @@ async function getLatestBriefing(): Promise<RadarBriefing | null> {
   } catch { return null }
 }
 
+// ─── Dados reais da home reformulada (Server Component, service key) ─────────
+// Todas as queries usam a service key só no server (nunca exposta ao browser) e
+// cache no-store para a home refletir o banco. Falha silenciosa: cada helper
+// devolve vazio/null em erro, e a salvaguarda de deploy valida não-vazio antes
+// do push.
+
+function supaCreds(): { url: string; key: string } | null {
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '')
+    .replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
+  const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+  if (!url || !key) return null
+  return { url, key }
+}
+
+interface ProofCounts { signals: number; trends: number }
+
+async function getProofCounts(): Promise<ProofCounts> {
+  const c = supaCreds()
+  if (!c) return { signals: 0, trends: 0 }
+  const headCount = async (table: string): Promise<number> => {
+    try {
+      const res = await fetch(`${c.url}/rest/v1/${table}?select=id`, {
+        headers: { apikey: c.key, Authorization: `Bearer ${c.key}`, Prefer: 'count=exact', Range: '0-0' },
+        cache: 'no-store',
+      })
+      const total = Number((res.headers.get('content-range') ?? '').split('/')[1])
+      return Number.isFinite(total) ? total : 0
+    } catch { return 0 }
+  }
+  const [signals, trends] = await Promise.all([headCount('signals'), headCount('report_trends')])
+  return { signals, trends }
+}
+
+interface RecentTrendRow {
+  title_pt_br:           string
+  title_en:              string
+  taime_score:           number
+  category:              string | null
+  theme_slug:            string | null
+  report_id:             string
+  then_now_next_pt_br:   ThenNowNext | null
+  then_now_next_en:      ThenNowNext | null
+  taime_framework_pt_br: TaimeFramework | null
+  taime_framework_en:    TaimeFramework | null
+}
+
+// Top trends por taime_score entre os últimos 5 períodos publicados.
+// Usada para os cards de tendências e para extrair os tópicos em pauta.
+async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
+  const c = supaCreds()
+  if (!c) return []
+  const h = { apikey: c.key, Authorization: `Bearer ${c.key}` }
+  try {
+    const perRes = await fetch(
+      `${c.url}/rest/v1/reports?status=eq.published&order=period.desc&limit=20&select=period`,
+      { headers: h, cache: 'no-store' },
+    )
+    if (!perRes.ok) return []
+    const periods = [...new Set((await perRes.json() as Array<{ period: string }>).map(r => r.period))].slice(0, 5)
+    if (periods.length === 0) return []
+    const inList = periods.map(p => `"${p}"`).join(',')
+    const fields = 'title_pt_br,title_en,taime_score,category,theme_slug,report_id,' +
+      'then_now_next_pt_br,then_now_next_en,taime_framework_pt_br,taime_framework_en,reports!inner(period)'
+    const res = await fetch(
+      `${c.url}/rest/v1/report_trends?reports.status=eq.published&reports.period=in.(${inList})` +
+        `&order=taime_score.desc&limit=40&select=${fields}`,
+      { headers: h, cache: 'no-store' },
+    )
+    if (!res.ok) return []
+    return await res.json() as RecentTrendRow[]
+  } catch { return [] }
+}
+
+interface ReportCardTrend {
+  report_id:           string
+  title_pt_br:         string
+  title_en:            string
+  taime_score:         number
+  then_now_next_pt_br: ThenNowNext | null
+  then_now_next_en:    ThenNowNext | null
+}
+interface ReportCardData {
+  period:      string
+  periodLabel: string | null
+  reportId:    string
+  title_pt_br: string
+  title_en:    string
+  trend:       ReportCardTrend | null
+}
+
+// Card de relatório real: o published mais recente (published_at desc) e a trend
+// de maior taime_score do seu período. Esconde sem quebrar se não houver publicado.
+async function getLatestReportCard(): Promise<ReportCardData | null> {
+  const c = supaCreds()
+  if (!c) return null
+  const h = { apikey: c.key, Authorization: `Bearer ${c.key}` }
+  try {
+    const repRes = await fetch(
+      `${c.url}/rest/v1/reports?status=eq.published&order=published_at.desc&limit=1` +
+        `&select=id,period,period_label,title_pt_br,title_en`,
+      { headers: h, cache: 'no-store' },
+    )
+    if (!repRes.ok) return null
+    const rep = (await repRes.json() as Array<{ id: string; period: string; period_label: string | null; title_pt_br: string; title_en: string }>)[0]
+    if (!rep) return null
+    const trRes = await fetch(
+      `${c.url}/rest/v1/report_trends?reports.status=eq.published&reports.period=eq.${encodeURIComponent(rep.period)}` +
+        `&order=taime_score.desc&limit=1` +
+        `&select=report_id,title_pt_br,title_en,taime_score,then_now_next_pt_br,then_now_next_en,reports!inner(period)`,
+      { headers: h, cache: 'no-store' },
+    )
+    const trend = trRes.ok ? ((await trRes.json() as ReportCardTrend[])[0] ?? null) : null
+    return {
+      period: rep.period, periodLabel: rep.period_label, reportId: rep.id,
+      title_pt_br: rep.title_pt_br, title_en: rep.title_en, trend,
+    }
+  } catch { return null }
+}
+
+// Deriva um rótulo curto de tópico a partir do título da trend (parte antes do
+// dois-pontos quando faz sentido, senão as primeiras palavras). Fica no idioma
+// do título recebido.
+function topicLabel(title: string): string {
+  const beforeColon = title.split(':')[0].trim()
+  const base = (beforeColon.length >= 10 && beforeColon.length <= 46) ? beforeColon : title.trim()
+  const words = base.split(/\s+/)
+  return (words.length <= 6 ? words.join(' ') : words.slice(0, 6).join(' ')).replace(/[.,;]+$/, '')
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function firstWords(text: string | null | undefined, n: number): string {
@@ -114,8 +243,34 @@ export default async function LandingPage() {
     isLoggedIn = false
   }
 
-  const [topTrends, latestBriefing] = await Promise.all([getTopTrends(), getLatestBriefing()])
+  const [topTrends, latestBriefing, proof, recentRows, reportCard] = await Promise.all([
+    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(), getLatestReportCard(),
+  ])
   const isEn = locale === 'en'
+
+  // ── Faixa de prova: só sinais > 5000 e trends > 100 entram; janela é fixa. ──
+  const proofItems: { value: string; label: string }[] = []
+  if (proof.signals > 5000) {
+    proofItems.push({
+      value: isEn ? `${Math.floor(proof.signals / 1000)}k+` : `${Math.floor(proof.signals / 1000)} mil+`,
+      label: h.proof.signalsLabel,
+    })
+  }
+  if (proof.trends > 100) {
+    proofItems.push({ value: `${proof.trends}`, label: h.proof.trendsLabel })
+  }
+
+  // ── Cards de tendências: top por score, sem repetir theme_slug, 3 a 4. ──
+  const seenTheme = new Set<string>()
+  const trendCardRows = recentRows.filter(r => {
+    const key = r.theme_slug ?? r.title_en
+    if (seenTheme.has(key)) return false
+    seenTheme.add(key)
+    return true
+  }).slice(0, 4)
+
+  // ── Tópicos em pauta: 3 temas reais dos últimos reports (rótulo do título). ──
+  const topicLabels = trendCardRows.slice(0, 3).map(r => topicLabel(isEn ? r.title_en : r.title_pt_br))
 
   // ── Showcase: trend de maior score com dados completos no idioma ativo. ─
   // Fallback: vai descendo a lista até achar uma com framework.score_dimensions
@@ -240,10 +395,8 @@ export default async function LandingPage() {
                 {h.badge}
               </span>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold tracking-tight text-white leading-[1.08] mb-6">
-                {h.hero[0]}<br />
-                {h.hero[1]}<br />
-                <span className="text-taime-400">{h.hero[2]}</span>
+              <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold tracking-tight text-white leading-[1.1] mb-6">
+                {h.heroTitle}
               </h1>
 
               <p className="text-lg text-white/70 leading-relaxed mb-10 max-w-xl">{h.heroBody}</p>
@@ -380,6 +533,87 @@ export default async function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* ── SEÇÃO 1c: FAIXA DE PROVA (dados reais, enxuta) ─────────────── */}
+      <section className="border-t border-zinc-100 bg-white">
+        <div className="max-w-5xl mx-auto px-6 py-8 flex flex-wrap items-center justify-center
+                        gap-x-10 gap-y-4 text-center">
+          {proofItems.map(it => (
+            <div key={it.label} className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-taime-700 tabular-nums">{it.value}</span>
+              <span className="text-sm text-zinc-500">{it.label}</span>
+            </div>
+          ))}
+          {proofItems.length > 0 && (
+            <span aria-hidden="true" className="hidden sm:block w-px h-6 bg-zinc-200" />
+          )}
+          <span className="text-sm text-zinc-500">{h.proof.window}</span>
+        </div>
+      </section>
+
+      {/* ── SEÇÃO 1d: CARD DE RELATÓRIO REAL (dinâmico) ────────────────── */}
+      {reportCard && (
+        <section className="border-t border-zinc-100 bg-zinc-50 py-16">
+          <div className="max-w-4xl mx-auto px-6">
+            <p className="section-label mb-4">{h.reportCard.label}</p>
+            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-zinc-100">
+                <p className="text-[11px] font-bold tracking-widest text-taime-600 uppercase mb-1">
+                  {reportCard.periodLabel ?? reportCard.period}
+                </p>
+                <h3 className="text-lg font-bold text-zinc-900 leading-snug line-clamp-2">
+                  {isEn ? reportCard.title_en : reportCard.title_pt_br}
+                </h3>
+              </div>
+              {reportCard.trend && (
+                <div className="px-6 py-5">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase mb-1">
+                        {h.reportCard.topTrendLabel}
+                      </p>
+                      <p className="text-base font-semibold text-zinc-900 leading-snug line-clamp-2">
+                        {isEn ? reportCard.trend.title_en : reportCard.trend.title_pt_br}
+                      </p>
+                    </div>
+                    <div className="shrink-0 w-14 h-14 rounded-xl bg-taime-600 text-white
+                                    flex flex-col items-center justify-center">
+                      <span className="text-xl font-bold leading-none">{reportCard.trend.taime_score}</span>
+                      <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
+                    </div>
+                  </div>
+                  {(() => {
+                    const tnn = isEn ? reportCard.trend!.then_now_next_en : reportCard.trend!.then_now_next_pt_br
+                    if (!tnn?.then || !tnn?.now || !tnn?.next) return null
+                    const items = [
+                      { k: h.reportCard.then, v: firstWords(stripPeriodLabel(tnn.then), 10) },
+                      { k: h.reportCard.now,  v: firstWords(tnn.now, 10) },
+                      { k: h.reportCard.next, v: firstWords(tnn.next, 10) },
+                    ]
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+                        {items.map(it => (
+                          <div key={it.k} className="rounded-lg bg-zinc-50 border border-zinc-100 p-3">
+                            <p className="text-[9px] font-bold tracking-widest text-taime-600 mb-1">{it.k}</p>
+                            <p className="text-xs text-zinc-600 leading-snug line-clamp-3">{it.v}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                  <Link
+                    href={isLoggedIn ? `/reports/${reportCard.trend.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg
+                               bg-taime-600 text-white text-sm font-semibold hover:bg-taime-700 transition-colors"
+                  >
+                    {h.reportCard.cta}
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── SEÇÃO 1b: VEJA O QUE VOCÊ RECEBE ──────────────────────────── */}
       <section className="border-t border-zinc-100 py-20">
@@ -771,11 +1005,43 @@ export default async function LandingPage() {
         </section>
       )}
 
-      {/* ── SEÇÃO 5: TENDÊNCIAS EM DESTAQUE + BUSCA ────────────────────── */}
+      {/* ── SEÇÃO 5: TENDÊNCIAS RECENTES (cards dinâmicos) + BUSCA ─────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-24">
         <div className="max-w-5xl mx-auto px-6">
-          <p className="section-label mb-3">{h.trendsLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.trendsTitle}</h2>
+          <p className="section-label mb-3">{h.trendCards.label}</p>
+          <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.trendCards.title}</h2>
+
+          {trendCardRows.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
+              {trendCardRows.map((r, i) => {
+                const score = r.taime_score
+                const fw    = isEn ? r.taime_framework_en : r.taime_framework_pt_br
+                const tnn   = isEn ? r.then_now_next_en   : r.then_now_next_pt_br
+                const line  = firstWords(fw?.executive_snapshot ?? tnn?.now ?? '', 24)
+                const title = isEn ? r.title_en : r.title_pt_br
+                const scoreColor = score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-orange-600'
+                return (
+                  <div key={i} className="rounded-2xl border border-zinc-200 bg-white p-5 flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase">
+                        {r.category ?? ''}
+                      </span>
+                      <span className={`text-sm font-bold tabular-nums ${scoreColor}`}>{score}</span>
+                    </div>
+                    <h3 className="text-base font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
+                    <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
+                    <Link
+                      href={isLoggedIn ? `/reports/${r.report_id}` : `/r/${PUBLIC_SAMPLE_REPORT_ID}`}
+                      className="text-xs font-semibold text-taime-700 hover:text-taime-800 transition-colors"
+                    >
+                      {h.trendCards.cta}
+                    </Link>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           <HomeSearch trends={topTrends} isLoggedIn={isLoggedIn} locale={locale} trendsCta={h.trendsCta} trendsEmpty={h.trendsEmpty} />
         </div>
       </section>
@@ -888,7 +1154,28 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── BANNER FINAL ESCURO (CTA) ────────────────────────────────── */}
+      {/* ── SEÇÃO 8: TÓPICOS QUE CHAMAM À AÇÃO (moldura fixa + temas reais) ── */}
+      {topicLabels.length >= 2 && (
+        <section className="border-t border-zinc-100 bg-white py-16">
+          <div className="max-w-4xl mx-auto px-6 text-center">
+            <p className="section-label mb-4 justify-center">{h.topics.label}</p>
+            <p className="text-xl sm:text-2xl font-semibold text-zinc-900 leading-snug max-w-3xl mx-auto mb-8">
+              {topicLabels.length >= 3
+                ? h.topics.lead3(topicLabels[0], topicLabels[1], topicLabels[2])
+                : h.topics.lead2(topicLabels[0], topicLabels[1])}
+            </p>
+            <Link
+              href={isLoggedIn ? '/dashboard' : '/login'}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg
+                         bg-taime-600 text-white text-sm font-semibold hover:bg-taime-700 transition-colors"
+            >
+              {h.topics.cta}
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* ── BANNER FINAL ESCURO (CTA: Teste o Executive Advisor) ──────── */}
       <section className="relative bg-taime-900 overflow-hidden">
         <div
           aria-hidden="true"
@@ -905,22 +1192,21 @@ export default async function LandingPage() {
         />
         <div className="relative max-w-4xl mx-auto px-6 py-24 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-white leading-snug mb-4">
-            {isEn
-              ? 'Start free and see the value in practice.'
-              : 'Comece gratuitamente e veja o valor na prática.'}
+            {h.finalCta.title}
           </h2>
           <p className="text-lg text-white/70 leading-relaxed max-w-2xl mx-auto mb-10">
-            {isEn
-              ? 'Access full reports and discover how TAIME can transform your strategic decisions.'
-              : 'Acesse relatórios completos e descubra como o TAIME pode transformar suas decisões estratégicas.'}
+            {h.finalCta.body}
           </p>
+          {/* NOTA: o Executive Advisor ainda é gateado (apenas Strategic). O CTA leva
+              ao acesso/login (nunca a checkout). Quando o gate abrir para free/essential,
+              este mesmo fluxo (login → dashboard/advisor) já estará correto sem mudança. */}
           <Link
-            href={isLoggedIn ? '/dashboard' : '/login'}
+            href={isLoggedIn ? '/dashboard/advisor' : '/login'}
             className="inline-flex items-center gap-2 px-7 py-3 rounded-lg
                        bg-taime-500 text-white text-sm font-semibold
                        hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
           >
-            {h.ctaPrimary}
+            {h.finalCta.cta}
           </Link>
         </div>
       </section>
