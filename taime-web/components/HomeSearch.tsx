@@ -1,120 +1,70 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { TaimeFramework } from '@/lib/types'
-import { normalize, scoreText } from '@/lib/searchMatch'
 
 interface HomeTrend {
-  report_id: string
-  title_pt_br: string
-  title_en: string
-  taime_score: number
+  report_id:             string
+  title_pt_br:           string | null
+  title_en:              string | null
+  taime_score:           number
   taime_framework_pt_br: TaimeFramework | null
-  taime_framework_en: TaimeFramework | null
+  taime_framework_en:    TaimeFramework | null
 }
 
-interface SemanticMatch {
-  id:         string
-  similarity: number
-}
-
-export default function HomeSearch({
-  trends,
-  isLoggedIn,
-  locale,
-  trendsCta,
-  trendsEmpty,
-}: {
-  trends: HomeTrend[]
-  isLoggedIn: boolean
-  locale: 'pt' | 'en'
-  trendsCta: string
+// A busca da home chama /api/search/text (text-match ilike no servidor), que
+// cobre TODOS os reports published, independente de embeddings. Campo VAZIO nao
+// renderiza nada (sem parede de cards). Com texto, busca de verdade e mostra os
+// matches; sem matches, mostra "nada encontrado".
+export default function HomeSearch(props: {
+  trends:      HomeTrend[]
+  isLoggedIn:  boolean
+  locale:      'pt' | 'en'
+  trendsCta:   string
   trendsEmpty: string
 }) {
-  const [query,           setQuery]           = useState('')
-  const [semanticMatches, setSemanticMatches] = useState<SemanticMatch[] | null>(null)
-  const [smartLoading,    setSmartLoading]    = useState(false)
-  const [smartError,      setSmartError]      = useState(false)
+  const { isLoggedIn, locale, trendsCta } = props
   const isEn = locale === 'en'
 
+  const [query,   setQuery]   = useState('')
+  const [results, setResults] = useState<HomeTrend[] | null>(null) // null = ainda nao buscou
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState(false)
+
   const L = isEn
-    ? {
-        placeholder: 'Search trends... (Enter for smart search)',
-        empty:       'No trends found.',
-        smart:       'Smart search',
-        smartHint:   'Ranked by semantic relevance.',
-        smartClear:  'Back to normal search',
-        smartLoading: 'Searching...',
-        smartFailed: 'Smart search unavailable, using normal filter.',
-      }
-    : {
-        placeholder: 'Buscar tendências... (Enter para busca inteligente)',
-        empty:       'Nenhuma tendência encontrada.',
-        smart:       'Busca inteligente',
-        smartHint:   'Resultados ordenados por relevância semântica.',
-        smartClear:  'Voltar à busca normal',
-        smartLoading: 'Buscando...',
-        smartFailed: 'Busca inteligente indisponível, usando filtro normal.',
-      }
+    ? { placeholder: 'Search trends...',      empty: 'No trends found.',          loading: 'Searching...', failed: 'Search unavailable, try again.' }
+    : { placeholder: 'Buscar tendências...',  empty: 'Nenhuma tendência encontrada.', loading: 'Buscando...',  failed: 'Busca indisponível, tente de novo.' }
 
-  async function runSmartSearch() {
+  // Debounce da busca. Vazio limpa; com texto consulta o endpoint de text-match.
+  useEffect(() => {
     const q = query.trim()
-    if (!q) { setSemanticMatches(null); setSmartError(false); return }
-    setSmartLoading(true); setSmartError(false)
-    try {
-      const res = await fetch('/api/search', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ query: q, limit: 25 }),
-      })
-      if (!res.ok) throw new Error(`status ${res.status}`)
-      const json = await res.json() as { results?: SemanticMatch[] }
-      setSemanticMatches(json.results ?? [])
-    } catch {
-      setSemanticMatches(null)
-      setSmartError(true)
-    } finally {
-      setSmartLoading(false)
-    }
-  }
+    if (!q) { setResults(null); setLoading(false); setError(false); return }
+    setLoading(true); setError(false)
+    const ctrl = new AbortController()
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/search/text', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ query: q, limit: 24 }),
+          signal:  ctrl.signal,
+        })
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        const json = await res.json() as { results?: HomeTrend[] }
+        setResults(json.results ?? [])
+      } catch (e) {
+        if ((e as { name?: string }).name === 'AbortError') return
+        setResults([])
+        setError(true)
+      } finally {
+        setLoading(false)
+      }
+    }, 250)
+    return () => { ctrl.abort(); clearTimeout(timer) }
+  }, [query])
 
-  function clearSmart() {
-    setSemanticMatches(null)
-    setSmartError(false)
-  }
-
-  // Modo SEMÂNTICO: reordena pelas report_ids da API; cada report pode ter
-  // múltiplas trends, todas mantêm a posição do report.
-  // Modo NORMAL: filtro instantâneo por includes() no título e snapshot.
-  const visible = useMemo(() => {
-    if (semanticMatches) {
-      const order = new Map(semanticMatches.map((m, i) => [m.id, i]))
-      return trends
-        .filter(t => order.has(t.report_id))
-        .sort((a, b) => (order.get(a.report_id) ?? 0) - (order.get(b.report_id) ?? 0))
-    }
-    // Busca começa VAZIA: nada é renderizado até o usuário digitar. Evita a
-    // parede de cards pré-carregados apontando para /login.
-    if (!query.trim()) return []
-    // Mesmo motor do Dashboard: normalização de acentos, sinônimos
-    // (IA → agentic, nuvem → cloud, etc.) e scoring ponderado.
-    return trends
-      .map(t => {
-        const fields = [
-          { text: normalize((t.title_pt_br ?? '') + ' ' + (t.title_en ?? '')), weight: 3 },
-          { text: normalize(
-              (t.taime_framework_pt_br?.executive_snapshot ?? '') + ' ' +
-              (t.taime_framework_en?.executive_snapshot ?? ''),
-            ), weight: 2,
-          },
-        ]
-        return { t, score: scoreText(fields, query) }
-      })
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(({ t }) => t)
-  }, [trends, query, semanticMatches])
+  const visible = results ?? []
 
   return (
     <div>
@@ -122,57 +72,26 @@ export default function HomeSearch({
         <input
           type="text"
           value={query}
-          onChange={e => {
-            setQuery(e.target.value)
-            if (semanticMatches) clearSmart()
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void runSmartSearch()
-            }
-          }}
-          disabled={smartLoading}
+          onChange={e => setQuery(e.target.value)}
           placeholder={L.placeholder}
           className="w-full max-w-md px-4 py-2.5 text-sm rounded-lg border border-zinc-200 bg-white
                      text-zinc-900 placeholder:text-zinc-400
-                     focus:outline-none focus:ring-2 focus:ring-taime-600 focus:border-transparent
-                     disabled:opacity-60"
+                     focus:outline-none focus:ring-2 focus:ring-taime-600 focus:border-transparent"
         />
       </div>
 
-      {smartLoading && (
+      {loading && (
         <div className="mb-5 flex items-center gap-2 text-xs text-zinc-500">
           <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
             <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
           </svg>
-          {L.smartLoading}
+          {L.loading}
         </div>
       )}
-      {semanticMatches && !smartLoading && (
-        <div className="mb-5 flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
-                           bg-taime-50 text-taime-700 border border-taime-100">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2l2.39 7.36H22l-6.19 4.5L18.18 22 12 17.5 5.82 22l2.37-8.14L2 9.36h7.61z" />
-            </svg>
-            {L.smart}
-          </span>
-          <span className="text-xs text-zinc-500">{L.smartHint}</span>
-          <button
-            type="button"
-            onClick={clearSmart}
-            className="text-xs text-taime-600 hover:underline ml-1"
-          >
-            {L.smartClear}
-          </button>
-        </div>
-      )}
-      {smartError && (
+      {error && !loading && (
         <div className="mb-5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-md">
-          {L.smartFailed}
+          {L.failed}
         </div>
       )}
 
@@ -184,7 +103,7 @@ export default function HomeSearch({
             const snap  = fw?.executive_snapshot ?? ''
             const prev  = snap.length > 140 ? snap.slice(0, 140).trimEnd() + '...' : snap
             const href  = isLoggedIn ? `/reports/${trend.report_id}` : '/login'
-            const scoreText = trend.taime_score >= 80 ? 'text-emerald-600'
+            const scoreColor = trend.taime_score >= 80 ? 'text-emerald-600'
               : trend.taime_score >= 60 ? 'text-amber-600'
               : 'text-orange-600'
             const scoreBg = trend.taime_score >= 80 ? 'bg-emerald-50 border-emerald-100'
@@ -201,7 +120,7 @@ export default function HomeSearch({
               >
                 <div className="flex items-start gap-4">
                   <div className={`shrink-0 rounded-xl ${scoreBg} border px-2.5 py-1.5 text-center min-w-[48px]`}>
-                    <p className={`font-bold text-lg tabular-nums leading-none ${scoreText}`}>
+                    <p className={`font-bold text-lg tabular-nums leading-none ${scoreColor}`}>
                       {trend.taime_score}
                     </p>
                     <p className="text-[8px] text-zinc-400 font-bold tracking-widest mt-0.5">SCORE</p>
@@ -221,8 +140,7 @@ export default function HomeSearch({
             )
           })}
         </div>
-      ) : (query.trim() || semanticMatches) ? (
-        // Só mostra "nada encontrado" quando o usuário de fato buscou.
+      ) : (query.trim() && results && !loading) ? (
         <div className="rounded-xl border border-dashed border-zinc-200 p-10 text-center text-zinc-400 text-sm">
           {L.empty}
         </div>
