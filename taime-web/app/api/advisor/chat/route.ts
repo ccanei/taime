@@ -10,6 +10,7 @@ import {
 } from '@/lib/plan'
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
+import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 
 interface AdvisorProfile {
   company_name:           string | null
@@ -1018,6 +1019,20 @@ export async function POST(req: NextRequest) {
   }
 
   const userMessage = message.trim()
+
+  // ── Gate de limite de mensagens ────────────────────────────────────────────
+  // Free: 10 vitalicias. Essential: 100 por janela de 30 dias. Strategic: ilimitado.
+  // Consome ANTES de gerar: se esgotou, devolve 403 sem gastar API do modelo. A
+  // abertura proativa e os chips (/api/advisor/opening) NAO passam por aqui, entao
+  // nao contam contra a cota.
+  const usage = await checkAndConsumeMessage(user.id, plan)
+  if (!usage.allowed) {
+    return NextResponse.json(
+      { error: 'message_limit_reached', limit: usage.limit, used: usage.used, plan: usage.plan },
+      { status: 403 },
+    )
+  }
+
   const service     = createSupabaseService()
 
   // ── Load advisor profile ──────────────────────────────────────────────────
@@ -1389,5 +1404,7 @@ export async function POST(req: NextRequest) {
     console.warn('[advisor-sessions] upsert exception:', e)
   }
 
-  return NextResponse.json({ reply })
+  // Retorna a resposta + o estado da cota, para o contador da UI atualizar sem
+  // um roundtrip extra. Strategic vem com limit null (sem contador).
+  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan })
 }
