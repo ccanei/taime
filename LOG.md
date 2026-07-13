@@ -2,6 +2,46 @@
 
 ---
 
+## [2026-07-13] - Advisor migra para Sonnet 5 (teste reversivel do modelo de resposta)
+
+### Objetivo
+- Testar o Advisor com Claude Sonnet 5 (claude-sonnet-5) no lugar do Sonnet 4.6.
+  Mesmo tier de preco; promete menor alucinacao/bajulacao e mais forca em
+  knowledge work. O teste e do MODELO, nao do prompt: o system prompt v5.1
+  permanece IDENTICO.
+
+### O que mudou (SOMENTE o modelo da resposta)
+- app/api/advisor/chat/route.ts: a constante do modelo da resposta foi extraida e
+  renomeada de MODEL para ADVISOR_MODEL, com valor 'claude-sonnet-5'. Valor
+  anterior: 'claude-sonnet-4-6'. Usada so na chamada principal (callMain), que
+  cobre tanto a resposta inicial quanto a retentativa corretiva de grounding.
+- NAO tocado: ROUTER_MODEL (claude-haiku-4-5), usado pelo roteador de contexto,
+  pelo refinador de chunks e pela extracao de perfil. Grounding-safety, busca
+  vetorial, memoria e filtro de plano intactos. System prompt v5.1 identico.
+
+### Compatibilidade verificada (Sonnet 5)
+- Parametros da chamada: o corpo envia apenas model, max_tokens, system, messages
+  (via HTTP cru). Nao ha temperature/top_p/top_k (que dariam 400 no Sonnet 5).
+  anthropic-version e o beta de prompt-caching sao independentes de modelo e
+  seguem validos. Prompt caching dos blocos estaveis (RULES_BLOCK, perfil,
+  contexto) permanece por cache_control ephemeral, inalterado.
+- CAVEAT de thinking (nenhuma mudanca de codigo, so observacao): no Sonnet 4.6,
+  omitir 'thinking' rodava thinking OFF; no Sonnet 5, omitir 'thinking' liga
+  ADAPTIVE thinking por padrao, e max_tokens e teto do total (thinking + texto).
+  Como o pickMaxTokens usa 1536 (leve) / 4096 (pesado), respostas longas podem
+  encostar no teto leve. Ha ja rede anti-truncamento (stop_reason max_tokens ->
+  nota "quer que eu continue?"), entao o pior caso e gracioso. Optei por NAO
+  adicionar 'thinking' nem mexer em max_tokens para manter "SOMENTE o modelo" e
+  testar o Sonnet 5 no seu default. Se houver truncamento perceptivel, as opcoes
+  minimas sao: (a) thinking: {type:'disabled'} para replicar o comportamento do
+  4.6, ou (b) subir o teto leve.
+
+### Reversao
+- Trivial: trocar ADVISOR_MODEL de volta para 'claude-sonnet-4-6' (1 linha). O
+  resto do arquivo nao precisa mudar. Build 0 erros TypeScript.
+
+---
+
 ## [2026-07-02] - Newsletter do Radar vira resumo SEMANAL sintetizado por tema (segunda 09h BRT)
 
 ### Objetivo

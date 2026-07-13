@@ -102,7 +102,11 @@ type SystemBlock = { type: 'text'; text: string; cache_control?: { type: 'epheme
 type Lang = 'pt' | 'en'
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
-const MODEL         = 'claude-sonnet-4-6'
+// Modelo da RESPOSTA do Advisor (teste do Sonnet 5, mesmo tier de preco, promete
+// menor alucinacao/bajulacao e mais forca em knowledge work). Anterior:
+// 'claude-sonnet-4-6' (reverter aqui em 1 linha se o teste for negativo).
+// System prompt v5.1 permanece IDENTICO: o teste e do modelo, nao do prompt.
+const ADVISOR_MODEL = 'claude-sonnet-5'
 const ROUTER_MODEL  = 'claude-haiku-4-5'
 
 function reportLabel(r: { period: string; period_label: string | null }): string {
@@ -968,7 +972,7 @@ async function callMain(
       'anthropic-beta':    'prompt-caching-2024-07-31',
     },
     body: JSON.stringify({
-      model:      MODEL,
+      model:      ADVISOR_MODEL,
       max_tokens: maxTokens,
       system,
       messages,
