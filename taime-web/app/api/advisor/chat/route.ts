@@ -12,6 +12,12 @@ import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-groun
 import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 
+// Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
+// teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
+// da funcao. Mesmo padrao dos crons (60s). max_tokens e teto, nao alvo: respostas
+// curtas seguem rapidas.
+export const maxDuration = 60
+
 interface AdvisorProfile {
   company_name:           string | null
   sector:                 string | null
@@ -131,12 +137,19 @@ function detectLanguage(text: string): Lang {
   return ptHits > enHits ? 'pt' : 'en'
 }
 
-// Heurística leve de max_tokens: respostas curtas por padrão, teto alto só
-// quando a mensagem pede plano/detalhe/aprofundamento.
+// Heurística leve de max_tokens: teto por padrão, folga maior quando a mensagem
+// pede plano/detalhe/aprofundamento.
+//
+// IMPORTANTE (Sonnet 5): max_tokens e teto do TOTAL (adaptive thinking + texto
+// visivel), que roda por padrao no Sonnet 5. Os valores do 4.6 (1536/4096) eram
+// pequenos demais: o thinking consumia o orcamento e a resposta era cortada em
+// TODA chamada (stop_reason=max_tokens). Subimos com folga; o teto e limite, nao
+// alvo, entao respostas curtas continuam curtas e rapidas. Longe do maximo do
+// Sonnet 5 (128k), e a funcao tem maxDuration=60s de folga de tempo.
 function pickMaxTokens(message: string): number {
   const m = message.toLowerCase()
   const heavy = /(plano|plan\b|roadmap|detalh|detail|completo|complete|aprofund|deep dive|passo a passo|step by step|estrat[ée]gia detalhada|breakdown)/.test(m)
-  return heavy ? 4096 : 1536
+  return heavy ? 8192 : 5120
 }
 
 function languageInstruction(lang: Lang): string {
@@ -1320,13 +1333,22 @@ export async function POST(req: NextRequest) {
   }
   const attributionFlag = groundingViolations.length > 0
 
-  // ── Anti-truncamento: se a resposta bateu no teto, sinaliza e avisa ────────
+  // ── Anti-truncamento: exceção, não regra. Só dispara quando a geração bate no
+  //    teto (stop_reason=max_tokens). Com o teto calibrado para o Sonnet 5
+  //    (thinking + texto), isso deve ser raro. Se o texto visível veio vazio (o
+  //    thinking consumiu quase todo o orçamento), evita mandar só o aviso solto.
   const truncated = stopReason === 'max_tokens'
   if (truncated) {
-    const note = lang === 'pt'
-      ? 'Resposta resumida por limite de espaço. Quer que eu continue?'
-      : 'Response shortened due to space limits. Want me to continue?'
-    reply = `${reply}\n\n${note}`
+    if (reply.trim().length === 0) {
+      reply = lang === 'pt'
+        ? 'Preciso de mais espaço para responder isso por completo. Quer que eu vá direto ao ponto principal?'
+        : 'I need more room to answer this in full. Want me to go straight to the key point?'
+    } else {
+      const note = lang === 'pt'
+        ? 'Resposta resumida por limite de espaço. Quer que eu continue?'
+        : 'Response shortened due to space limits. Want me to continue?'
+      reply = `${reply}\n\n${note}`
+    }
   }
 
   // ── Persist both messages to advisory_memory ──────────────────────────────
