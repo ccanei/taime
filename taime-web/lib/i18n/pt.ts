@@ -44,6 +44,25 @@ export const pt = {
       cta:   'Teste o Executive Advisor',
     },
 
+    ask: {
+      title:        'Faça uma pergunta estratégica ao Executive Advisor',
+      subtitle:     'Sem cadastro. Descreva o que está em jogo e receba a leitura de um parceiro estratégico, com base na inteligência do arquivo TAIME.',
+      placeholder:  'Ex: devo colocar agentes de IA em produção este ano, ou espero a governança amadurecer?',
+      send:         'Perguntar',
+      sending:      'Analisando...',
+      counter:      (n: number, total: number) => `Pergunta ${n} de ${total}`,
+      captchaWait:  'Confirme que você não é um robô para começar.',
+      captchaFail:  'Não foi possível validar. Recarregue a página e tente de novo.',
+      unavailable:  'O Advisor de demonstração está temporariamente indisponível. Volte em breve.',
+      genericError: 'Houve um erro ao gerar a resposta. Tente novamente.',
+      limitTitle:   'Você usou suas 3 perguntas de demonstração.',
+      limitBody:    'Crie sua conta gratuita para continuar: mais 10 perguntas no Free, 100 no Essential.',
+      limitCta:     'Criar conta gratuita',
+      ipTitle:      'Muitas perguntas em pouco tempo.',
+      ipBody:       'Aguarde alguns minutos, ou crie sua conta gratuita para continuar sem espera.',
+      note:         'Esta é uma amostra. O arquivo completo e as fontes são exclusivos de assinantes.',
+    },
+
     painsLabel: 'O problema que o TAIME resolve',
     pains: [
       { title: 'Excesso sem estrutura',    desc: 'Toda semana surgem novas tecnologias, tendências e alertas. Sem estrutura, é ruído, não inteligência.' },
