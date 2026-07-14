@@ -197,8 +197,9 @@ export const en: Translations = {
         { role: 'advisor', text: 'Then that is the real risk, and it is not technical, it is sequencing. The organizations that put agents into production successfully followed the same pattern: one well scoped problem, taken to production, observed where it breaks, and only then expanded. Sequencing beat speed, consistently. The layer that concentrates value now is not the agent itself, it is the orchestration that decides which task goes to which model, at what cost and with what human oversight.' },
         { role: 'advisor', text: 'My recommendation: pick a single low risk, high repetition workflow, build the data foundation and the oversight before turning the agent on, and treat the trough of disillusionment as a design constraint, not a setback. Want me to help you identify which workflow in your operation has the best balance of low risk and fast learning?' },
       ],
-      soonNote: 'Available on your plan.',
-      cta:      'Start with Essential',
+      ctaTitle: 'Try the Executive Advisor.',
+      ctaBody:  'A strategic partner that knows the TAIME archive, challenges your assumptions and helps you decide with the full picture.',
+      cta:      'Try the Executive Advisor',
     },
 
     footerDesc: 'TAIME is a strategic technology intelligence platform. Built for those who decide based on evidence.',

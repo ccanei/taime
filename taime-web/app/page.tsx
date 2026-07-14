@@ -966,9 +966,10 @@ export default async function LandingPage() {
         title={h.advisor.title}
         subtitle={h.advisor.subtitle}
         messages={h.advisor.messages}
-        soonNote={h.advisor.soonNote}
+        ctaTitle={h.advisor.ctaTitle}
+        ctaBody={h.advisor.ctaBody}
         cta={h.advisor.cta}
-        ctaHref="/login?plan=essential"
+        ctaHref="/ask"
       />
 
       {/* ── SEÇÃO 7: PLANOS ──────────────────────────────────────────── */}

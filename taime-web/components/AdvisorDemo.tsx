@@ -13,7 +13,8 @@ interface AdvisorDemoProps {
   title:    string
   subtitle: string
   messages: AdvisorMessage[]
-  soonNote: string
+  ctaTitle: string
+  ctaBody:  string
   cta:      string
   ctaHref:  string
 }
@@ -31,7 +32,7 @@ function isAdvisor(role: string): boolean {
 }
 
 export default function AdvisorDemo({
-  label, title, subtitle, messages, soonNote, cta, ctaHref,
+  label, title, subtitle, messages, ctaTitle, ctaBody, cta, ctaHref,
 }: AdvisorDemoProps) {
   const [visible, setVisible] = useState(0)
   const [typing, setTyping]   = useState(false)
@@ -179,9 +180,10 @@ export default function AdvisorDemo({
           </div>
         </div>
 
-        {/* Nota + CTA de acesso antecipado */}
-        <div className="mt-8 text-center">
-          <p className="text-xs text-white/50 font-medium mb-5">{soonNote}</p>
+        {/* Convite ao /ask (Advisor anonimo, 3 perguntas sem cadastro) */}
+        <div className="mt-10 text-center">
+          <h3 className="text-xl sm:text-2xl font-bold text-white leading-snug mb-3">{ctaTitle}</h3>
+          <p className="text-sm text-white/70 leading-relaxed max-w-xl mx-auto mb-6">{ctaBody}</p>
           <Link
             href={ctaHref}
             className="inline-flex items-center justify-center gap-2 px-7 py-3 rounded-lg

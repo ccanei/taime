@@ -195,8 +195,9 @@ export const pt = {
         { role: 'advisor', text: 'Então esse é o risco real, e não é técnico, é de sequência. Quem colocou agentes em produção com sucesso seguiu o mesmo padrão: um problema bem delimitado, levado até produção, observado onde quebra, e só então expandido. Sequência venceu velocidade, de forma consistente. A camada que concentra valor agora não é o agente em si, é a orquestração que decide qual tarefa vai para qual modelo, a que custo e com qual supervisão humana.' },
         { role: 'advisor', text: 'Minha recomendação: escolha um único fluxo de baixo risco e alta repetição, construa a base de dados e a supervisão antes de ligar o agente, e trate o vale da desilusão como restrição de projeto, não como contratempo. Quer que eu te ajude a identificar qual fluxo da sua operação tem o melhor equilíbrio entre baixo risco e aprendizado rápido?' },
       ],
-      soonNote: 'Disponível no seu plano.',
-      cta:      'Começar com o Essential',
+      ctaTitle: 'Teste o Executive Advisor.',
+      ctaBody:  'Um parceiro estratégico que conhece o arquivo TAIME, pressiona suas premissas e ajuda você a decidir com o quadro completo.',
+      cta:      'Teste o Executive Advisor',
     },
 
     footerDesc: 'TAIME é uma plataforma de inteligência estratégica em tecnologia. Construída para quem decide com base em evidências.',
