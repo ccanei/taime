@@ -1065,11 +1065,10 @@ export default async function LandingPage() {
           <p className="text-lg text-white/70 leading-relaxed max-w-2xl mx-auto mb-10">
             {h.finalCta.body}
           </p>
-          {/* NOTA: o Executive Advisor ainda é gateado (apenas Strategic). O CTA leva
-              ao acesso/login (nunca a checkout). Quando o gate abrir para free/essential,
-              este mesmo fluxo (login → dashboard/advisor) já estará correto sem mudança. */}
+          {/* Logado vai direto ao Advisor real; visitante experimenta no /ask
+              (3 perguntas sem login, mesmo modelo, com captcha + rate limit). */}
           <Link
-            href={isLoggedIn ? '/dashboard/advisor' : '/login'}
+            href={isLoggedIn ? '/dashboard/advisor' : '/ask'}
             className="inline-flex items-center gap-2 px-7 py-3 rounded-lg
                        bg-taime-500 text-white text-sm font-semibold
                        hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
