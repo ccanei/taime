@@ -23,7 +23,7 @@ export const pt = {
     proof: {
       signalsLabel: 'sinais analisados',
       trendsLabel:  'tendências mapeadas',
-      window:       '3 anos de inteligência (últimos 36 meses)',
+      window:       'Inteligência desde 2020',
     },
     trendCards: {
       label: 'Tendências recentes',
@@ -38,12 +38,6 @@ export const pt = {
         `Nas últimas semanas, o TAIME analisou ${a} e ${b}. Veja o que isso muda para a sua estratégia.`,
       cta:   'Comece agora',
     },
-    finalCta: {
-      title: 'Teste o Executive Advisor.',
-      body:  'Um parceiro estratégico que conhece o arquivo TAIME, pressiona suas premissas e ajuda você a decidir com o quadro completo.',
-      cta:   'Teste o Executive Advisor',
-    },
-
     ask: {
       title:        'Faça uma pergunta estratégica ao Executive Advisor',
       subtitle:     'Sem cadastro. Descreva o que está em jogo e receba a leitura de um parceiro estratégico, com base na inteligência do arquivo TAIME.',
@@ -172,13 +166,13 @@ export const pt = {
       {
         name: 'Essencial', price: null, badge: null,
         desc: 'Inteligência completa, gratuito por tempo limitado',
-        features: ['Relatório completo com todas as trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Score dimensions detalhado', 'Histórico completo de 3 anos', 'Preview de todo o histórico anterior', 'Executive Advisor (100 mensagens/mês)'],
+        features: ['Relatório completo com todas as trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Score dimensions detalhado', 'Histórico de 5 anos', 'Preview de todo o histórico anterior', 'Executive Advisor (100 mensagens/mês)'],
         cta: 'Começar com o Essential', href: '/login', highlight: true,
       },
       {
         name: 'Estratégico', price: 'Em breve', badge: null,
         desc: 'Inteligência contínua e histórica',
-        features: ['Tudo do Essencial', 'Arquivo histórico completo', 'Executive Advisor ampliado'],
+        features: ['Tudo do Essencial', 'Arquivo histórico completo desde 2000', 'Executive Advisor com acesso ao arquivo inteiro, sem limite temporal', 'Mensagens ilimitadas no Advisor', 'Profundidade temporal máxima para análise de ciclos longos'],
         cta: 'Entrar na lista de espera', href: '/login', highlight: false,
       },
     ],
@@ -319,9 +313,9 @@ export const pt = {
       { label: 'THEN / NOW / NEXT',               free: false,    essential: true,            strategic: true       },
       { label: 'Implicações organizacionais',     free: false,    essential: true,            strategic: true       },
       { label: 'Gatilhos de decisão',             free: false,    essential: true,            strategic: true       },
-      { label: 'Histórico',                       free: '1 ano',  essential: '3 anos',        strategic: 'Completo' },
+      { label: 'Histórico',                       free: '1 ano',  essential: '5 anos',        strategic: 'Desde 2000' },
       { label: 'Preview do histórico',            free: false,    essential: 'Todo o arquivo', strategic: false     },
-      { label: 'Executive Advisor',               free: '10 mensagens', essential: '100 mensagens/mês', strategic: 'Ampliado' },
+      { label: 'Executive Advisor',               free: '10 mensagens', essential: '100 mensagens/mês', strategic: 'Ilimitado' },
     ],
     tableHeaders: ['Recurso', 'Gratuito', 'Essencial', 'Estratégico'],
     advisorExplain: 'Executive Advisor: assistente estratégico que responde suas perguntas com base no acervo de relatórios do TAIME, trazendo contexto, scores e movimentos recomendados de cada período.',

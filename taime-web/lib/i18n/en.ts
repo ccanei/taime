@@ -24,7 +24,7 @@ export const en: Translations = {
     proof: {
       signalsLabel: 'signals analyzed',
       trendsLabel:  'trends mapped',
-      window:       '3 years of intelligence (last 36 months)',
+      window:       'Intelligence since 2020',
     },
     trendCards: {
       label: 'Recent trends',
@@ -39,12 +39,6 @@ export const en: Translations = {
         `In recent weeks, TAIME analyzed ${a} and ${b}. See what it changes for your strategy.`,
       cta:   'Start now',
     },
-    finalCta: {
-      title: 'Try the Executive Advisor.',
-      body:  'A strategic partner that knows the TAIME archive, challenges your assumptions and helps you decide with the full picture.',
-      cta:   'Try the Executive Advisor',
-    },
-
     ask: {
       title:        'Ask the Executive Advisor a strategic question',
       subtitle:     'No sign up. Describe what is at stake and get a strategic partner\'s read, grounded in the TAIME archive intelligence.',
@@ -174,13 +168,13 @@ export const en: Translations = {
       {
         name: 'Essential', price: null, badge: null,
         desc: 'Complete intelligence, free for a limited time',
-        features: ['Full report with all trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Detailed score dimensions', '3 years of full history', 'Preview of the full prior archive', 'Executive Advisor (100 messages/month)'],
+        features: ['Full report with all trends', 'Framework TYPE→ACT→IMPACT→MOVE→EXIT', 'Detailed score dimensions', '5 years of history', 'Preview of the full prior archive', 'Executive Advisor (100 messages/month)'],
         cta: 'Start with Essential', href: '/login', highlight: true,
       },
       {
         name: 'Strategic', price: 'Coming soon', badge: null,
         desc: 'Continuous and historical intelligence',
-        features: ['Everything in Essential', 'Full historical archive', 'Extended Executive Advisor'],
+        features: ['Everything in Essential', 'Full historical archive since 2000', 'Executive Advisor with access to the entire archive, no time limit', 'Unlimited Advisor messages', 'Maximum temporal depth for long-cycle analysis'],
         cta: 'Join the waitlist', href: '/login', highlight: false,
       },
     ],
@@ -321,9 +315,9 @@ export const en: Translations = {
       { label: 'THEN / NOW / NEXT',               free: false,   essential: true,            strategic: true     },
       { label: 'Organizational implications',     free: false,   essential: true,            strategic: true     },
       { label: 'Decision triggers',               free: false,   essential: true,            strategic: true     },
-      { label: 'History',                         free: '1 year', essential: '3 years',      strategic: 'Full'   },
+      { label: 'History',                         free: '1 year', essential: '5 years',      strategic: 'Since 2000' },
       { label: 'Archive preview',                 free: false,   essential: 'Full archive',  strategic: false    },
-      { label: 'Executive Advisor',               free: '10 messages', essential: '100 messages/month', strategic: 'Extended' },
+      { label: 'Executive Advisor',               free: '10 messages', essential: '100 messages/month', strategic: 'Unlimited' },
     ],
     tableHeaders: ['Feature', 'Free', 'Essential', 'Strategic'],
     advisorExplain: 'Executive Advisor: a strategic assistant that answers your questions using TAIME\'s report archive, bringing context, scores and recommended moves from every period.',

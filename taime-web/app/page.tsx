@@ -1044,41 +1044,6 @@ export default async function LandingPage() {
         </section>
       )}
 
-      {/* ── BANNER FINAL ESCURO (CTA: Teste o Executive Advisor) ──────── */}
-      <section className="relative bg-taime-900 overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 opacity-[0.08] pointer-events-none"
-          style={{
-            backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-            backgroundSize: '24px 24px',
-          }}
-        />
-        <div
-          aria-hidden="true"
-          className="absolute -bottom-32 -left-32 w-[420px] h-[420px] rounded-full
-                     bg-taime-600/30 blur-3xl pointer-events-none"
-        />
-        <div className="relative max-w-4xl mx-auto px-6 py-24 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white leading-snug mb-4">
-            {h.finalCta.title}
-          </h2>
-          <p className="text-lg text-white/70 leading-relaxed max-w-2xl mx-auto mb-10">
-            {h.finalCta.body}
-          </p>
-          {/* Logado vai direto ao Advisor real; visitante experimenta no /ask
-              (3 perguntas sem login, mesmo modelo, com captcha + rate limit). */}
-          <Link
-            href={isLoggedIn ? '/dashboard/advisor' : '/ask'}
-            className="inline-flex items-center gap-2 px-7 py-3 rounded-lg
-                       bg-taime-500 text-white text-sm font-semibold
-                       hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
-          >
-            {h.finalCta.cta}
-          </Link>
-        </div>
-      </section>
-
       <Footer />
     </div>
   )
