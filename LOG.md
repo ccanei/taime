@@ -2,6 +2,193 @@
 
 ---
 
+## [2026-07-15] - Telemetria do Advisor anonimo (/ask) + secao no /admin/engagement
+
+### Objetivo
+- Fechar 2 buracos do /ask (Advisor anonimo, 3 perguntas/visitante, Sonnet 5): (1)
+  nao gravava usage de tokens por resposta (custo so estimavel); (2) o
+  /admin/engagement so mostrava usuarios logados, o anonimo nao aparecia.
+
+### Task 0 (investigacao)
+- /ask = app/api/ask/route.ts. Rate limit por IP grava em anon_advisor_usage via
+  RPC anon_advisor_consume, MAS essa tabela e janela HORARIA deslizante
+  (question_count zera a cada 1h): NAO serve de total historico. A resposta da
+  Anthropic ja traz `usage` (input_tokens/output_tokens) no mesmo ponto, mas o
+  codigo so lia `content` e descartava o usage.
+- /admin/engagement = server component (page.tsx, gate isAdmin) que le a view
+  user_engagement_monthly e renderiza EngagementAdmin (client). Pagina PT-only.
+- anon_advisor_usage confirmada contra add-anon-advisor-usage.sql e TAIME SQL
+  UPDATED (v7).
+
+### Task 1 (gravar usage por resposta) - decisao: opcao (b)
+- Migracao NOVA (entregue, NAO executada; user aplica a mao): `add-anon-advisor-log.sql`.
+  Escolhi a tabela de LOG (1 linha por resposta: id, ip_hash, model, input_tokens,
+  output_tokens, created_at) em vez de colunas agregadas em anon_advisor_usage.
+  JUSTIFICATIVA: anon_advisor_usage reseta de hora em hora, entao agregados ali nao
+  dao total historico; o log de 1 linha por resposta da granularidade por dia
+  (custo/dia, diagnostico), visitantes distintos e perguntas totais em qualquer
+  janela, com esforco equivalente. Mesmas convencoes do projeto (uuid_generate_v4,
+  timestamptz now(), RLS habilitado SEM policy = so service key).
+- route.ts: captura data.usage e, apos cada resposta, grava anon_advisor_log com
+  ip_hash + tokens + modelo. FAIL-SILENT: insert em try/catch; provado que contra a
+  tabela inexistente NAO lanca excecao (retorna PGRST205 ignorado), resposta ao
+  visitante intacta. NUNCA grava IP cru nem conteudo da pergunta/resposta (so o
+  ip_hash ja existente).
+
+### Task 2 (secao no /admin/engagement)
+- Novo client component AnonAdvisorSection.tsx, renderizado ABAIXO do engagement
+  logado (bloco separado com borda). Nada da secao existente mudou.
+- Agregacao no server (page.tsx, getAnonAdvisor, service key): perguntas e
+  visitantes distintos (mes corrente E acumulado), perguntas por dia (30 dias, com
+  barra simples), custo do periodo dos tokens gravados, e top 5 ip_hash por volume
+  (7 dias) como sinal de abuso (so o hash, nunca IP).
+- Precos em constantes claras no codigo com comentario para atualizacao: Sonnet 5
+  intro $2/M in, $10/M out ate 2026-08-31; depois $3/$15 (rateForDate aplica a
+  virada por dia). Fallback pre-telemetria: perguntas x $0,04, rotulado como
+  aproximacao. Se a tabela nao existir, a secao mostra o aviso para rodar a migracao.
+- Protecao de acesso: herda o isAdmin do server component (pagina ja admin-only).
+
+### Restricoes cumpridas
+- Nao toquei na logica de limite/protecao do /ask (Turnstile, cookie, rate limit
+  intactos). Sem gravar conteudo nem IP cru. Fail-silent na telemetria. Sem
+  travessao. `npm run build` = 0 erros (so o warning pre-existente de lockfile/
+  workspace root). SQL validado contra o schema; entregue para aplicar a mao.
+
+### Pendente (acao do usuario)
+- APLICAR `add-anon-advisor-log.sql` no Supabase ANTES de os tokens comecarem a ser
+  gravados. Ate la: /ask funciona normal, insert e ignorado (fail-silent) e a secao
+  do admin mostra o aviso da migracao.
+
+---
+
+## [2026-07-15] - Batch historico 2021: 24 quinzenas com Opus 4.8, sem publicar
+
+### Objetivo
+- Gerar os periodos quinzenais de 2021 que AINDA NAO EXISTIAM (mais novo -> mais
+  antigo, dez -> jan) com Opus 4.8, validar SEM publicar. Batch autonomo,
+  destacado, com resume automatico. So os faltantes; existentes seriam pulados.
+
+### Pre-voo
+- GENERATION_MODEL = claude-opus-4-8 (confirmado, generate-report.ts). NO_AUTO_PUBLISH=1
+  no ambiente. 2021 = biweekly (period-utils.ts). Nenhum batch rodando.
+- Estado inicial: 2021 estava 100% vazio (0 dos 24 periodos tinha relatorio vivo).
+  Logo NENHUM foi pulado; os 24 eram todos faltantes.
+- Backup: batch-progress.json copiado para batch-progress-prev.json.bak antes do
+  reset. batch-periods.json e batch-progress.json reinicializados com os 24 de 2021.
+- RETRY: continua NAO existindo loop de retry 3x por requisicao dentro de collect/
+  filter (o pressuposto do prompt nao bate com o codigo). Resiliencia usada, mesma
+  do 2022, sem tocar no pipeline: falha de periodo registra em progress.failed e o
+  batch segue; wrapper run-batch-2021.sh faz ate 2 passes de --resume (300s entre
+  eles). anthropicPost em generate-report.ts retenta 4x em 429/5xx. Guarda de
+  idempotencia (clusters existentes) => PULA e registra, nunca apaga.
+
+### Resultado
+- 23/24 periodos gerados. 1 falhou: 2021-09-16 (ver causa-raiz abaixo).
+- 392 trends, 68 relatorios (split 2-3 por periodo), TODOS gerados como
+  pending_review pelo batch. is_noise medio: 20.8% (baseline 17% pre-Leva1;
+  18.9% em 2023; 21.7% em 2022). Abaixo do alarme de 25%. Picos: 2021-09-01 (29%),
+  2021-12-16 / 2021-01-16 (26%), 2021-09-16 (23%, o que falhou), 2021-02-01 (24%).
+  Vales limpos: 2021-02-16 (15%), 2021-08-16 (16%), 2021-03-01 (17%). Padrao
+  consistente com 2022: query da Leva 1 traz mais ruido em periodos historicos.
+- temporal_breach: 5 flags em 68 relatorios / 392 trends (~1.5% dos relatorios,
+  em 2021-12-01[x2], 2021-10-01, 2021-08-01, 2021-04-01). Baixo, como esperado.
+- Custo Opus (geracao) estimado: ~USD 118 (4.87M in fresh, 2.22M out, 55.5M cache
+  read, 1.65M cache write em 954 chamadas de geracao; router/filter em Haiku e
+  clustering em Sonnet nao contados aqui).
+- Retries transitorios de rede: 0. 2 passes de resume: o pass 2 RECUPEROU
+  2021-09-01 (tinha falhado no pass 1 de forma transitoria); 2021-09-16 re-falhou
+  nos passes 2 e 3 de forma deterministica.
+
+### Publicacao (NADA publicado PELO BATCH)
+- O batch NAO publicou nada: NO_AUTO_PUBLISH=1 funcionou, todo relatorio nasceu
+  pending_review com published_at=null (published_at fica horas depois do created_at,
+  nunca no momento da criacao).
+- POReM: 8 relatorios de 2021 aparecem como published. Investigado: todos foram
+  publicados numa janela humana de 3 min (12:10:38 -> 12:13:12 UTC de 2026-07-15),
+  um a um, verdict=pass (nao editados), enquanto created_at deles varia por 8h
+  (03:53 -> 11:25). Assinatura de publicacao MANUAL via /admin/reports por um humano
+  durante o batch, nao do pipeline. Conservador: NAO despubliquei (acao humana
+  deliberada, reversao seria destrutiva). Periodos afetados: 2021-12-16, 2021-11-16,
+  2021-11-01(x2), 2021-10-16, 2021-10-01, 2021-08-01, 2021-07-16.
+
+### CAUSA-RAIZ da falha de 2021-09-16 (achado novo, NAO corrigido)
+- 2021-09-16 falhou nas 3 tentativas com Anthropic 400 "The request body is not
+  valid JSON: no low surrogate in string". Stack trace prova que o erro ocorre em
+  `callClaude (analyze-signals.ts:210)` durante o passo ANALYZE/clustering
+  (claude-sonnet-4-6, ~497 sinais enviados), NAO na geracao.
+- O fix de surrogate solitario (stripLoneSurrogates / deepStripLoneSurrogates)
+  aplicado no 2022-09-01 vive SO em generate-report.ts. analyze-signals.ts monta o
+  proprio body sem esse saneamento, entao um surrogate solitario num sinal quebra a
+  chamada de clustering ANTES de qualquer cluster existir (por isso 0 clusters / 0
+  relatorios e falha deterministica em todo resume). Distinto do 2022-09-01, que
+  falhava no passo GENERATE (ja coberto).
+- Conforme a regra do task (surrogate = falha registravel, segue; NAO commitar
+  codigo): 2021-09-16 fica registrado em failed. Follow-up recomendado (fora deste
+  batch): replicar stripLoneSurrogates/deepStripLoneSurrogates no callClaude de
+  analyze-signals.ts, depois `npx ts-node batch-pipeline.ts --resume`.
+
+### Como reprocessar o pendente
+- `npx ts-node batch-pipeline.ts --resume` (le progress.failed = ["2021-09-16"]).
+  Sem o fix em analyze-signals.ts, vai re-falhar no mesmo ponto.
+
+---
+
+## [2026-07-14] - Batch historico 2022: 24 quinzenas com Opus 4.8, sem publicar
+
+### Objetivo
+- Gerar os 24 periodos quinzenais de 2022 (mais novo -> mais antigo) com Opus 4.8,
+  validar SEM publicar. Batch autonomo, destacado, com resume automatico.
+
+### Pre-voo
+- GENERATION_MODEL = claude-opus-4-8 (confirmado). NO_AUTO_PUBLISH=1 no ambiente.
+  2022 = biweekly. 2022 comecou 100% limpo (0 reports/signals/clusters).
+- Backup do batch anterior (2023): batch-progress-2023.json.bak e
+  batch-periods-2023.json.bak. O progress real do 2023 era 9 completed + 1 failed
+  (2023-01-01), preservado no bak. batch-periods.json e batch-progress.json
+  resetados para os 24 periodos de 2022.
+- RETRY: NAO existe loop de retry 3x por requisicao dentro de collect/filter (o
+  pressuposto do prompt nao bate com o codigo). Resiliencia usada, conservadora e
+  sem tocar no pipeline: falha de periodo registra em progress.failed e o batch
+  segue; wrapper run-batch-2022.sh faz ate 2 passes de --resume (300s entre eles)
+  para falhas transitorias. Guarda de idempotencia (clusters existentes) => PULA e
+  registra, nunca apaga.
+
+### Resultado
+- 23/24 periodos gerados. 1 falhou: 2022-09-01.
+- 383 trends, 66 relatorios (split 2-3 por periodo). TODOS em pending_review,
+  published_at=null. NADA publicado.
+- is_noise medio: 21.7% (baseline 17% pre-Leva1; 18.9% em 2023). Abaixo do alarme
+  de 25%, mas ELEVADO vs 2023. Picos: 2022-03-01 (28%), 2022-12-16/09-16/05-01/
+  01-01 (25-27%). A query da Leva 1 traz mais ruido em periodos historicos; vale
+  podar antes de escalar mais o historico.
+- temporal_breach: 10 flags em 66 relatorios / 383 trends (~2.6% dos relatorios).
+  Baixo, como esperado do Opus em periodo historico; nao e ~0 absoluto porque o
+  validador temporal ocasionalmente flaga afirmacao prospectiva.
+- Custo Opus (geracao) estimado: ~USD 110 (4.57M in fresh, 2.08M out, 51.5M cache
+  read, 1.55M cache write; router/refino/filter em Haiku, nao contados).
+- Retries: 0 transitorios (PASS 1 ja fez 23/24). 2 passes de resume, ambos so
+  tentaram 2022-09-01, sem recuperar (falha deterministica).
+
+### Falha 2022-09-01 (causa-raiz)
+- NAO e parse da resposta do modelo. E erro do CORPO DA REQUISICAO enviada ao
+  Anthropic: 400 invalid_request_error "The request body is not valid JSON: no low
+  surrogate in string: line 1 column 135031". Um sinal/cluster de 2022-09-01 contem
+  um surrogate UTF-16 solto (caractere unicode quebrado, ex. emoji truncado) que,
+  ao ser JSON.stringify no corpo, gera JSON invalido pelo parser estrito da API.
+  Deterministico: os 2 resumes bateram o mesmo 400. O analyze ja tinha criado 15
+  clusters no PASS 1, entao os resumes ainda travaram na guarda de idempotencia
+  (nao apagados, conservador). Reports de 09-01: 0.
+- Seguimento (fora deste run, exige codigo): sanitizar surrogates solitarios no
+  corpo antes do envio em generate-report.ts (camada de ENCODING da requisicao,
+  diferente do sanitizador de metadata da resposta), OU limpar o sinal ofensor.
+  Depois: limpar os 15 clusters de 2022-09-01 e re-rodar so esse periodo.
+
+### Retomar 2022-09-01
+- Precisa limpar os 15 clusters antes (guarda de idempotencia do analyze) E tratar
+  o surrogate. Comando de resume (apos limpeza): npx ts-node batch-pipeline.ts --resume
+
+---
+
 ## [2026-07-13] - Advisor migra para Sonnet 5 (teste reversivel do modelo de resposta)
 
 ### Objetivo

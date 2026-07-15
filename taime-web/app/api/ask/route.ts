@@ -250,6 +250,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = clientIp(req)
+  const ipHash = hashIp(ip)
 
   // ── Captcha na 1a pergunta (cookie novo = used 0) ──────────────────────────
   if (used === 0) {
@@ -267,7 +268,7 @@ export async function POST(req: NextRequest) {
   const service = createSupabaseService()
   try {
     const { data, error } = await service.rpc('anon_advisor_consume', {
-      p_ip_hash:    hashIp(ip),
+      p_ip_hash:    ipHash,
       p_hourly_cap: IP_HOURLY_CAP,
     })
     if (!error) {
@@ -310,6 +311,8 @@ export async function POST(req: NextRequest) {
   ]
 
   let reply = ''
+  let inputTokens = 0
+  let outputTokens = 0
   try {
     const res = await fetch(ANTHROPIC_API, {
       method: 'POST',
@@ -330,8 +333,13 @@ export async function POST(req: NextRequest) {
       console.error('[ask] anthropic error:', res.status, await res.text())
       return NextResponse.json({ error: 'ai_error' }, { status: 502 })
     }
-    const data = await res.json() as { content?: Array<{ type: string; text: string }> }
+    const data = await res.json() as {
+      content?: Array<{ type: string; text: string }>
+      usage?:   { input_tokens?: number; output_tokens?: number }
+    }
     reply = data.content?.find(b => b.type === 'text')?.text ?? ''
+    inputTokens  = data.usage?.input_tokens  ?? 0
+    outputTokens = data.usage?.output_tokens ?? 0
   } catch (e) {
     console.error('[ask] anthropic exception:', e)
     return NextResponse.json({ error: 'ai_error' }, { status: 502 })
@@ -339,6 +347,21 @@ export async function POST(req: NextRequest) {
 
   if (!reply.trim()) {
     return NextResponse.json({ error: 'ai_error' }, { status: 502 })
+  }
+
+  // ── Telemetria de usage por resposta (fail-silent) ─────────────────────────
+  // Grava SO ip_hash + tokens + modelo (nunca IP cru nem conteudo). Alimenta o
+  // painel /admin/engagement. Se a tabela ainda nao existir (migration nao
+  // aplicada) ou a gravacao falhar, NAO quebra a resposta ao visitante.
+  try {
+    await service.from('anon_advisor_log').insert({
+      ip_hash:       ipHash,
+      model:         ADVISOR_MODEL,
+      input_tokens:  inputTokens,
+      output_tokens: outputTokens,
+    })
+  } catch (e) {
+    console.error('[ask] usage log failed (ignored):', e)
   }
 
   // ── Sucesso: incrementa o cookie do visitante ──────────────────────────────
