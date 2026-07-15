@@ -282,9 +282,9 @@ export async function POST(req: NextRequest) {
     // fail-open no teto de IP: o cookie ainda limita a 3.
   }
 
-  // ── Geracao: vector search (36 meses) + refino + Sonnet 5, SEM fontes ───────
+  // ── Geracao: vector search (60 meses) + refino + Sonnet 5, SEM fontes ───────
   const lang = detectLanguage(message)
-  const periodFloor = getAdvisorPeriodFloor('free') // janela de 36 meses
+  const periodFloor = getAdvisorPeriodFloor('free') // janela de 60 meses (5 anos)
 
   let chunks: TrendChunk[] = []
   const emb = await embedQuery(message)

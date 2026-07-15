@@ -86,21 +86,22 @@ export const ADVISOR_PERMISSIVE_CEILING = '9999-12-01'
  * Janela de contexto do Advisor em MESES, por plano (Opcao C: a janela de
  * contexto do Advisor = a janela de relatorios do plano).
  *
- *   strategic -> null  (sem limite, ve todo o arquivo)
- *   essential -> 36    (ultimos 3 anos)
- *   free/null -> 36    (free nao chega aqui; default restrito por seguranca)
+ *   strategic -> null  (sem limite, ve todo o arquivo desde 2000)
+ *   essential -> 60    (ultimos 5 anos)
+ *   free/null -> 60    (ultimos 5 anos; default alinhado ao Free)
  *
- * Este e o UNICO lugar onde o numero 36 vive. Nao espalhar pelo codigo.
+ * Este e o UNICO lugar onde o numero 60 vive. Nao espalhar pelo codigo.
  */
 export function getAdvisorWindowMonths(plan: Plan | null): number | null {
   if (plan === 'strategic') return null
-  return 36
+  return 60
 }
 
 /**
  * Deriva o period_floor (primeiro dia do mes de hoje menos a janela) a partir
- * do plano. Strategic (janela null) devolve o piso permissivo. Essential devolve
- * 'YYYY-MM-01' de (hoje - 36 meses). Em UTC para nao depender do fuso do server.
+ * do plano. Strategic (janela null) devolve o piso permissivo. Free/Essential
+ * devolvem 'YYYY-MM-01' de (hoje - 60 meses). Em UTC para nao depender do fuso
+ * do server.
  */
 export function getAdvisorPeriodFloor(plan: Plan | null, now: Date = new Date()): string {
   const months = getAdvisorWindowMonths(plan)

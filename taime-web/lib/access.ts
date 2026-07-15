@@ -6,7 +6,7 @@ export type AccessReason =
   | 'preview_only'         // somente preview (sem motivo específico)
   | 'free_limit_reached'   // free: já desbloqueou 2 nos últimos 30 dias
   | 'too_old_for_plan'     // (desativado) faixa de preview do Essential, até o arquivo histórico ser populado
-  | 'strategic_only'       // essential: relatório com mais de 3 anos (36 meses)
+  | 'strategic_only'       // essential: relatório com mais de 5 anos (60 meses)
   | 'out_of_range'         // free: relatório com mais de 1 ano
 
 export interface AccessLevel {
@@ -24,11 +24,11 @@ export interface AccessLevel {
  *                           Cada relatório desbloqueado fica acessível por 30 dias
  *                           a partir do unlock. Previews disponíveis até 1 ano.
  *                           Relatórios > 1 ano: out_of_range (nem preview).
- *   - Essential           → completo até 3 anos (36 meses); acima de 3 anos →
+ *   - Essential           → completo até 5 anos (60 meses); acima de 5 anos →
  *                           bloqueado, upgrade para Strategic. Faixa de preview
  *                           desativada temporariamente até o arquivo histórico
  *                           ser populado.
- *   - Strategic           → tudo, sem limite de data.
+ *   - Strategic           → tudo, sem limite de data (arquivo completo desde 2000).
  */
 export function getAccessLevel(params: {
   plan:              Plan | null
@@ -59,11 +59,11 @@ export function getAccessLevel(params: {
     return { canSeePreview: true, canSeeFullReport: true, reason: 'full' }
   }
 
-  // ── ESSENTIAL: completo até 3 anos (36 meses); acima disso, bloqueado com
+  // ── ESSENTIAL: completo até 5 anos (60 meses); acima disso, bloqueado com
   // upgrade para Strategic. A faixa intermediária de preview (too_old_for_plan)
   // está desativada por enquanto, até o arquivo histórico ser populado.
   if (plan === 'essential') {
-    if (yearsDiff <= 3) {
+    if (yearsDiff <= 5) {
       return { canSeePreview: true, canSeeFullReport: true, reason: 'full' }
     }
     return { canSeePreview: false, canSeeFullReport: false, reason: 'strategic_only' }
