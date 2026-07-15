@@ -23,7 +23,7 @@ export const pt = {
     proof: {
       signalsLabel: 'sinais analisados',
       trendsLabel:  'tendências mapeadas',
-      window:       'Inteligência desde 2020',
+      window:       'Memória estratégica de tecnologia desde 2020',
     },
     trendCards: {
       label: 'Tendências recentes',

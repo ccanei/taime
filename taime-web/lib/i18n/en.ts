@@ -24,7 +24,7 @@ export const en: Translations = {
     proof: {
       signalsLabel: 'signals analyzed',
       trendsLabel:  'trends mapped',
-      window:       'Intelligence since 2020',
+      window:       'Strategic technology memory since 2020',
     },
     trendCards: {
       label: 'Recent trends',
