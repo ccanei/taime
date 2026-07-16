@@ -113,6 +113,8 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       }
 
       if (res.status === 503) { setBlocked(null); setError(L.unavailable); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
+      // Teto de 30 dias por IP: bloqueio persistente, mesma mensagem de cadastro do limite de 3.
+      if (res.status === 429 && json.error === 'ip_month_limit') { setBlocked('limit'); setUsed(QUESTION_LIMIT); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
       if (res.status === 429 && json.error === 'ip_limit') { setBlocked('ip'); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
       if (res.status === 403 && json.error === 'limit_reached') { setBlocked('limit'); setUsed(QUESTION_LIMIT); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
       if ((res.status === 403) && (json.error === 'captcha_failed' || json.error === 'captcha_required')) {

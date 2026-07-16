@@ -19,8 +19,11 @@ const ADVISOR_MODEL = 'claude-sonnet-5'
 const ROUTER_MODEL  = 'claude-haiku-4-5'
 
 // Limites
-const ANON_QUESTION_LIMIT = 3       // por visitante (cookie assinado)
-const IP_HOURLY_CAP        = 8       // por ip_hash, janela de 1h
+const ANON_QUESTION_LIMIT = 3       // por visitante (cookie assinado, persistente 1 ano)
+const IP_HOURLY_CAP        = 8       // por ip_hash, janela deslizante de 1h (anti-rajada)
+const IP_MONTHLY_CAP       = 12      // por ip_hash, janela de 30 dias (teto acumulado).
+                                     // Alto de proposito: CGNAT das operadoras moveis BR
+                                     // poe muitos usuarios legitimos atras do mesmo IP.
 const COOKIE_NAME          = 'taime_ask'
 const VECTOR_MATCH_COUNT   = 16
 
@@ -264,21 +267,33 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Teto horario por IP (atomico) ──────────────────────────────────────────
+  // ── Teto por IP (atomico): 8/h anti-rajada + 12/30d acumulado ──────────────
+  // Duas janelas na mesma funcao SQL (SELECT ... FOR UPDATE). O teto de 30 dias e
+  // o que impede o reset infinito quando o visitante limpa o cookie ou usa aba
+  // anonima: o cookie some, mas o ip_hash continua contando ate 12 no mes.
   const service = createSupabaseService()
   try {
     const { data, error } = await service.rpc('anon_advisor_consume', {
-      p_ip_hash:    ipHash,
-      p_hourly_cap: IP_HOURLY_CAP,
+      p_ip_hash:     ipHash,
+      p_hourly_cap:  IP_HOURLY_CAP,
+      p_monthly_cap: IP_MONTHLY_CAP,
     })
     if (!error) {
-      const row = (Array.isArray(data) ? data[0] : data) as { allowed?: boolean } | undefined
+      const row = (Array.isArray(data) ? data[0] : data) as
+        { allowed?: boolean; month_used?: number; month_cap?: number } | undefined
       if (row && row.allowed === false) {
-        return NextResponse.json({ error: 'ip_limit' }, { status: 429 })
+        // Distingue o teto de 30 dias (bloqueio persistente, CTA de cadastro) do
+        // teto horario (transitorio, "aguarde alguns minutos").
+        const monthly = (row.month_used ?? 0) >= (row.month_cap ?? IP_MONTHLY_CAP)
+        return NextResponse.json(
+          { error: monthly ? 'ip_month_limit' : 'ip_limit' },
+          { status: 429 },
+        )
       }
     }
-    // Se a RPC nao existir ainda (migration nao aplicada), error e ignorado e o
-    // cookie continua limitando a 3. O teto de IP so entra quando a tabela existir.
+    // Se a RPC nao existir ainda (migration nao aplicada), o error do PostgREST e
+    // ignorado e o cookie continua limitando a 3. Os tetos de IP so entram quando
+    // a migration (colunas month_* + funcao de 3 args) estiver aplicada.
   } catch {
     // fail-open no teto de IP: o cookie ainda limita a 3.
   }
