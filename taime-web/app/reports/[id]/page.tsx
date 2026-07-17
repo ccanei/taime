@@ -1,8 +1,15 @@
 import { notFound } from 'next/navigation'
+import { headers, cookies } from 'next/headers'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import ReportClient from '@/components/ReportClient'
+import ReportRateLimited from '@/components/ReportRateLimited'
 import type { Report, ReportTrend } from '@/lib/types'
 import { getAccessLevel, type Plan } from '@/lib/access'
+import { detectLocale } from '@/lib/i18n'
+
+// Teto de aberturas de report COMPLETO por conta, por hora. Generoso para leitura
+// humana; barra exportacao em massa (scraping logado).
+const READ_HOURLY_CAP = 30
 
 interface Props {
   params: Promise<{ id: string }>
@@ -105,6 +112,32 @@ export default async function ReportPage({ params }: Props) {
       )
   }
 
+  const isPt = detectLocale((await cookies()).get('taime-locale')?.value) === 'pt'
+
+  // ── Rate limit de leitura: so conta abertura de conteudo INTEGRAL por conta.
+  //   Ignora prefetch do Next (link em viewport/hover) para nao inflar o contador.
+  //   Fail-open se a funcao ainda nao existir (migration nao aplicada).
+  if (user && accessLevel.canSeeFullReport) {
+    const isPrefetch = (await headers()).get('next-router-prefetch') === '1'
+    if (!isPrefetch) {
+      try {
+        const service = createSupabaseService()
+        const { data: consume, error } = await service.rpc('report_read_consume', {
+          p_user_id:    user.id,
+          p_hourly_cap: READ_HOURLY_CAP,
+        })
+        if (!error) {
+          const row = (Array.isArray(consume) ? consume[0] : consume) as { allowed?: boolean } | undefined
+          if (row && row.allowed === false) {
+            return <ReportRateLimited isPt={isPt} />
+          }
+        }
+      } catch {
+        // fail-open: nunca bloqueia leitura legitima por causa de erro de infra.
+      }
+    }
+  }
+
   return (
     <ReportClient
       report={data.report}
@@ -112,6 +145,7 @@ export default async function ReportPage({ params }: Props) {
       savedScrollPct={accessLevel.canSeeFullReport ? savedScrollPct : 0}
       accessLevel={accessLevel}
       plan={plan}
+      viewerEmail={accessLevel.canSeeFullReport ? user?.email ?? null : null}
     />
   )
 }

@@ -69,3 +69,47 @@
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 }
+
+/* ── Protecao de conteudo: marca d'agua e impressao de report logado ──────────
+   Na tela, o overlay .wm-layer e sutil (opacity inline 0.04) e as bandas
+   carimbadas ficam escondidas. Na impressao/PDF, o overlay fica mais visivel e as
+   bandas de cabecalho/rodape aparecem em cada pagina, com a UI de navegacao
+   oculta. Objetivo: rastreabilidade, sem sabotar a leitura. */
+
+/* Bandas so na impressao */
+.wm-print-band { display: none; }
+
+@media print {
+  /* Oculta navegacao/UI para o PDF sair limpo */
+  .no-print { display: none !important; }
+
+  /* Marca d'agua reforcada e repetida em todas as paginas impressas */
+  .wm-layer {
+    position: fixed !important;
+    inset: 0 !important;
+    opacity: 0.13 !important;
+    z-index: 9999 !important;
+  }
+
+  /* Cabecalho/rodape carimbado em cada pagina */
+  .wm-print-band {
+    display: block !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    font-size: 9px;
+    line-height: 1.4;
+    color: #52525b;
+    text-align: center;
+    padding: 4px 10px;
+    z-index: 10000;
+  }
+  .wm-print-band-top    { top: 0; }
+  .wm-print-band-bottom { bottom: 0; }
+
+  /* Margens da pagina para o conteudo nao colar nas bandas */
+  @page { margin: 15mm 10mm; }
+
+  /* Evita fundo cinza pesado no papel; mantem o conteudo legivel */
+  .bg-zinc-50 { background: #ffffff !important; }
+}

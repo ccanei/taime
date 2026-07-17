@@ -110,7 +110,28 @@ export default function TermsPage() {
 
           {/* 7 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">7. Disclaimer</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">7. Content license and traceability</h2>
+            <p className="mb-3">
+              Your subscription grants a limited, personal and non-exclusive license to use the reports
+              and analyses for your own decision-making and for the internal purposes of your
+              organization. It does not transfer ownership of the content, which remains the property
+              of TAIME.
+            </p>
+            <p className="mb-3">
+              You may not publicly redistribute, resell, republish or share the content outside your
+              organization, in whole or in part, without prior written authorization from TAIME.
+            </p>
+            <p>
+              To support this license, the full content shown to a logged-in subscriber is associated
+              with the subscriber's account, including a visible identifier, for traceability purposes.
+              Violation of these conditions may result in suspension or cancellation of the account,
+              without prejudice to any other applicable measures.
+            </p>
+          </section>
+
+          {/* 8 */}
+          <section>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">8. Disclaimer</h2>
             <p className="mb-3">
               TAIME analyses and reports are prepared to support strategic decision-making and
               do not constitute, under any circumstances, legal, financial, accounting or any
@@ -123,9 +144,9 @@ export default function TermsPage() {
             </p>
           </section>
 
-          {/* 8 */}
+          {/* 9 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">8. Cancellation and subscriptions</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">9. Cancellation and subscriptions</h2>
             <p className="mb-3">
               Subscriptions can be cancelled at any time by the user. Access remains active until
               the end of the already-paid period, with no penalties or additional charges.
@@ -137,9 +158,9 @@ export default function TermsPage() {
             </p>
           </section>
 
-          {/* 9 */}
+          {/* 10 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">9. Modifications to these terms</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">10. Modifications to these terms</h2>
             <p>
               TAIME may update these Terms of Use at any time. Material changes will be
               communicated with at least 15 days' notice by email. Continued use of the
@@ -147,9 +168,9 @@ export default function TermsPage() {
             </p>
           </section>
 
-          {/* 10 */}
+          {/* 11 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">10. Jurisdiction and applicable law</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">11. Jurisdiction and applicable law</h2>
             <p>
               These terms are governed by the laws of the Federative Republic of Brazil.
               The courts of São Paulo/SP are elected as the venue for resolution of any
@@ -158,9 +179,9 @@ export default function TermsPage() {
             </p>
           </section>
 
-          {/* 11 */}
+          {/* 12 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">11. Contact</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">12. Contact</h2>
             <p>
               For questions about these terms:{' '}
               <a href="mailto:contact@taime.tech" className="text-taime-600 hover:text-taime-700 font-medium">

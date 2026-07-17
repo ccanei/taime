@@ -110,7 +110,27 @@ export default function TermosPage() {
 
           {/* 7 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">7. Isenção de responsabilidade</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">7. Licença de uso e rastreabilidade</h2>
+            <p className="mb-3">
+              Sua assinatura concede uma licença limitada, pessoal e não exclusiva para usar os
+              relatórios e análises na sua própria tomada de decisão e para fins internos da sua
+              organização. Ela não transfere a propriedade do conteúdo, que permanece do TAIME.
+            </p>
+            <p className="mb-3">
+              É vedado redistribuir publicamente, revender, republicar ou compartilhar o conteúdo fora
+              da sua organização, no todo ou em parte, sem autorização prévia por escrito do TAIME.
+            </p>
+            <p>
+              Para sustentar esta licença, o conteúdo completo exibido a um assinante logado é
+              associado à conta do assinante, incluindo um identificador visível, para fins de
+              rastreabilidade. A violação destas condições pode resultar em suspensão ou cancelamento
+              da conta, sem prejuízo de outras medidas cabíveis.
+            </p>
+          </section>
+
+          {/* 8 */}
+          <section>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">8. Isenção de responsabilidade</h2>
             <p className="mb-3">
               As análises e relatórios do TAIME são elaborados para apoio à tomada de decisão
               estratégica e não constituem, em nenhuma hipótese, consultoria jurídica, financeira,
@@ -123,9 +143,9 @@ export default function TermosPage() {
             </p>
           </section>
 
-          {/* 8 */}
+          {/* 9 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">8. Cancelamento e assinaturas</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">9. Cancelamento e assinaturas</h2>
             <p className="mb-3">
               Assinaturas podem ser canceladas a qualquer momento pelo próprio usuário. O acesso
               permanece ativo até o fim do período já pago, sem penalidades ou cobranças adicionais.
@@ -137,9 +157,9 @@ export default function TermosPage() {
             </p>
           </section>
 
-          {/* 9 */}
+          {/* 10 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">9. Modificações dos termos</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">10. Modificações dos termos</h2>
             <p>
               O TAIME pode atualizar estes Termos de Uso a qualquer momento. Alterações
               materiais serão comunicadas com aviso prévio de pelo menos 15 dias por email.
@@ -147,9 +167,9 @@ export default function TermosPage() {
             </p>
           </section>
 
-          {/* 10 */}
+          {/* 11 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">10. Foro e lei aplicável</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">11. Foro e lei aplicável</h2>
             <p>
               Estes termos são regidos pelas leis da República Federativa do Brasil. Fica eleito
               o foro da Comarca de São Paulo/SP para resolução de quaisquer conflitos decorrentes
@@ -157,9 +177,9 @@ export default function TermosPage() {
             </p>
           </section>
 
-          {/* 11 */}
+          {/* 12 */}
           <section>
-            <h2 className="text-lg font-bold text-zinc-900 mb-3">11. Contato</h2>
+            <h2 className="text-lg font-bold text-zinc-900 mb-3">12. Contato</h2>
             <p>
               Para dúvidas sobre estes termos:{' '}
               <a href="mailto:contact@taime.tech" className="text-taime-600 hover:text-taime-700 font-medium">

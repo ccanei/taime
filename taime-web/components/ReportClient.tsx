@@ -7,6 +7,7 @@ import { formatPeriod, formatPeriodFull, scoreColor, scoreBg, scoreRing } from '
 import type { AccessLevel, AccessReason, Plan } from '@/lib/access'
 import LanguageSelector from '@/components/LanguageSelector'
 import { ScoreGauge, ScoreDimensionsPanel, ThenNowNextPanel } from '@/components/ReportVisuals'
+import ReportWatermark from '@/components/ReportWatermark'
 
 // ─── TAIME Framework ──────────────────────────────────────────────────────────
 
@@ -311,6 +312,7 @@ export default function ReportClient({
   accessLevel,
   plan,
   publicUnlock,
+  viewerEmail,
 }: {
   report: Report
   trends: ReportTrend[]
@@ -318,6 +320,10 @@ export default function ReportClient({
   accessLevel?: AccessLevel
   plan?: Plan | null
   publicUnlock?: PublicUnlock | null
+  // Email do assinante logado. So chega quando o conteudo INTEGRAL e servido a um
+  // usuario autenticado (nunca em pagina publica nem preview): habilita a marca
+  // d'agua por usuario. Vem da sessao server-side, nunca de estado do cliente.
+  viewerEmail?: string | null
 }) {
   const [lang, setLang] = useState<Lang>('pt-BR')
   const isPt = lang === 'pt-BR'
@@ -328,6 +334,8 @@ export default function ReportClient({
   // própria UX (resumo completo + 1 trend + demais borradas com CTA).
   const isPreview = !publicUnlock && (accessLevel ? !accessLevel.canSeeFullReport : false)
   const isPublic  = !!publicUnlock
+  // Marca d'agua so no conteudo integral de assinante logado: nunca publico/preview.
+  const showWatermark = !!viewerEmail && !isPublic && !isPreview
 
   useEffect(() => {
     const match = document.cookie.match(/(?:^|;\s*)taime-locale=([^;]+)/)
@@ -583,8 +591,9 @@ export default function ReportClient({
 
   return (
     <div className="min-h-screen bg-zinc-50">
+      {showWatermark && <ReportWatermark email={viewerEmail!} isPt={isPt} />}
       {/* Sticky header */}
-      <header className="bg-white border-b border-zinc-200 px-6 py-3 sticky top-0 z-20">
+      <header className="no-print bg-white border-b border-zinc-200 px-6 py-3 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <a href={isPublic ? '/' : '/dashboard'} className="font-bold text-lg tracking-tight text-zinc-900 shrink-0">
@@ -692,8 +701,15 @@ export default function ReportClient({
         )}
       </main>
 
-      <footer className="max-w-5xl mx-auto px-6 py-8 text-xs text-zinc-400 text-center">
-        TAIME · {formatPeriod(report.period, lang)}
+      <footer className="max-w-5xl mx-auto px-6 py-8 text-xs text-zinc-400 text-center space-y-1">
+        <p>TAIME · {formatPeriod(report.period, lang)}</p>
+        {showWatermark && (
+          <p className="text-zinc-400/90">
+            {isPt
+              ? `Conteúdo licenciado para ${viewerEmail}. Uso individual; redistribuição proibida.`
+              : `Content licensed to ${viewerEmail}. Individual use; redistribution prohibited.`}
+          </p>
+        )}
       </footer>
     </div>
   )
