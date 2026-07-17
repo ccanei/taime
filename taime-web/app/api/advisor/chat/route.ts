@@ -239,7 +239,7 @@ DEPTH, NOT VOLUME. A sharper response is not a longer response. Analytical depth
 
 LINKING RULES:
 
-11. LINK WHAT YOU CITE. Whenever you mention a report, include a markdown link to it. Whenever you draw on a specific trend, cite it BY NAME and turn that name into a markdown link to its report anchor (e.g. [Trend Name](/reports/ID#trend-rank)), using the exact title and URL given for it in the intelligence block. Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL, and never link a trend you are not actually using. Only trends inside the client's access appear in the block, so linking what is there is always safe.
+11. LINK WHAT YOU CITE, WITH A STANDARD FORMAT. Whenever you mention a report, include a markdown link to it. Whenever you draw on a specific trend, cite it using the trend's CITE_AS string from the intelligence block EXACTLY as given: the EXACT_TITLE as the link text, never paraphrased, translated, summarized or shortened, immediately followed by the PERIOD in parentheses. The standard shape is: [Exact Trend Title](/reports/ID#trend-rank) (mmm/yyyy). For example: [Agentic AI Moves to Production: Governance Gaps Are Now a Strategic Liability](/reports/abc#trend-2) (jun/2024). Always keep the period in parentheses right after the link, in the response language (jun/2024 in Portuguese, Jun 2024 in English), using the PERIOD value provided. Do NOT drop the period, do NOT use only the month or only the year as the link text, and do NOT replace the title with a paraphrase like "AI governance". Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL, and never link a trend you are not actually using. Only trends inside the client's access appear in the block, so linking what is there is always safe.
 
 HOW YOU ACCESS THE ARCHIVE:
 
@@ -959,25 +959,43 @@ async function refineChunks(
   }
 }
 
-// Monta o bloco de contexto a partir dos chunks selecionados. Mantem as regras
-// existentes: cita o periodo de origem (grounding) e linka a ancora da trend
-// (/reports/{report_id}#trend-{rank}, v4). Mesmo header de "URLs apenas abaixo".
-function buildTrendContextBlock(chunks: TrendChunk[], titleById?: Map<string, string>): string {
+// Rotulo de periodo para CITACAO, no idioma da resposta. period = 'YYYY-MM-01'.
+// PT: 'jun/2024'. EN: 'Jun 2024'. Fallback: os 7 primeiros chars (YYYY-MM).
+const CITE_MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const CITE_MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function citePeriodLabel(period: string, lang: Lang): string {
+  const m = /^(\d{4})-(\d{2})/.exec(period)
+  if (!m) return period.slice(0, 7)
+  const year = m[1]
+  const idx  = Number(m[2]) - 1
+  if (idx < 0 || idx > 11) return `${m[2]}/${year}`
+  return lang === 'pt' ? `${CITE_MONTHS_PT[idx]}/${year}` : `${CITE_MONTHS_EN[idx]} ${year}`
+}
+
+// Monta o bloco de contexto a partir dos chunks selecionados. Cada trend traz o
+// TITULO EXATO, o PERIODO de citacao (mmm/aaaa no idioma da resposta) e a URL da
+// ancora (/reports/{report_id}#trend-{rank}), de forma inequivoca, para o Advisor
+// citar sem parafrasear nem encurtar. Grounding (periodo de origem) preservado.
+function buildTrendContextBlock(chunks: TrendChunk[], lang: Lang, titleById?: Map<string, string>): string {
   if (chunks.length === 0) {
     return 'TAIME INTELLIGENCE LOADED FOR THIS TURN: none.'
   }
   const periods = [...new Set(chunks.map(c => c.period))]
   const body = chunks.map(c => {
-    const url   = `/reports/${c.report_id}#trend-${c.rank}`
-    const title = titleById?.get(c.trend_id)
-    const tags  = [c.period, c.theme_slug, c.category].filter(Boolean).join(' | ')
-    // Titulo explicito + URL: o Advisor cita a trend pelo nome e linka ao report.
-    const head  = title ? `Trend "${title}" [${tags}] [URL: ${url}]` : `Trend [${tags}] [URL: ${url}]`
-    return `${head}:\n${c.content}`
+    const url    = `/reports/${c.report_id}#trend-${c.rank}`
+    const title  = titleById?.get(c.trend_id)
+    const citeP  = citePeriodLabel(c.period, lang)
+    const tags   = [c.theme_slug, c.category].filter(Boolean).join(' | ')
+    // Linha de citacao explicita: o modelo copia o titulo exato e o periodo tal
+    // como estao aqui. Sem titulo (falha ao buscar), cai no formato so-tags.
+    const head = title
+      ? `Trend:\n  EXACT_TITLE: ${title}\n  PERIOD: ${citeP}\n  URL: ${url}\n  CITE_AS: [${title}](${url}) (${citeP})${tags ? `\n  tags: ${tags}` : ''}`
+      : `Trend [${c.period}${tags ? ` | ${tags}` : ''}] [URL: ${url}]`
+    return `${head}\n  Content: ${c.content}`
   }).join('\n\n---\n\n')
 
   return `TAIME INTELLIGENCE LOADED FOR THIS TURN (semantic match across the archive; periods: ${periods.join(', ')}):
-Use only the URLs below when linking. Do not invent URLs. When you draw on a trend, cite it by its name and link the name to its report URL.
+Use only the URLs below when linking. Do not invent URLs. When you draw on a trend, cite it using its CITE_AS string EXACTLY: the EXACT_TITLE as the link text (never paraphrased or shortened) immediately followed by the PERIOD in parentheses.
 
 ${body}`
 }
@@ -1207,7 +1225,7 @@ export async function POST(req: NextRequest) {
         if (title) titleById.set(t.id, title)
       }
     } catch { /* segue sem titulos */ }
-    contextBlock = buildTrendContextBlock(selected, titleById)
+    contextBlock = buildTrendContextBlock(selected, lang, titleById)
   } else if (periodIntent && emb.ok) {
     // ── Periodo explicito sem conteudo (v4.6) ─────────────────────────────
     // O usuario citou um periodo, a busca vetorial naquele intervalo voltou
@@ -1218,7 +1236,7 @@ export async function POST(req: NextRequest) {
     // nao ha relatorio para aquele periodo e oferecer o mais proximo.
     selectionSource = 'vector'
     lang            = preferLang
-    contextBlock    = buildTrendContextBlock([])
+    contextBlock    = buildTrendContextBlock([], lang)
     // Se o periodo pedido esta DENTRO da janela do plano (sem out-of-window
     // hit), buscamos o periodo disponivel mais proximo para oferecer. Quando ha
     // out-of-window hit, a recusa construtiva do Passo 4 ja cobre o caso.
