@@ -5,6 +5,8 @@ import { createSupabaseService } from '@/lib/supabase-server'
 import type { Report, ReportTrend } from '@/lib/types'
 import ReportClient from '@/components/ReportClient'
 import type { LockedTrendStub } from '@/components/ReportClient'
+import JsonLd from '@/components/JsonLd'
+import { articleNode, toIsoDate, SITE_URL } from '@/lib/structured-data'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -81,6 +83,24 @@ export default async function PublicReportPage({ params }: Props) {
   if (!data) notFound()
 
   const { report, trends } = data
+
+  // ── JSON-LD Article: mesma logica de locale do generateMetadata (crawler sem
+  // cookie ve EN). So campos VISIVEIS na pagina: titulo e o preview do resumo.
+  const isEn = (await cookies()).get('taime-locale')?.value !== 'pt'
+  const headline = isEn ? report.title_en : report.title_pt_br
+  const summary  = (isEn ? report.executive_summary_en : report.executive_summary_pt_br) ?? ''
+  const description = summary.split('\n').find(s => s.trim().length > 60)?.slice(0, 200)
+    ?? summary.slice(0, 200)
+  const updatedAt = (report as unknown as { updated_at?: string }).updated_at
+  const articleData = articleNode({
+    headline,
+    description,
+    datePublished: toIsoDate(report.published_at ?? report.period),
+    dateModified:  toIsoDate(updatedAt),
+    inLanguage:    isEn ? 'en' : 'pt-BR',
+    url:           `${SITE_URL}/r/${report.id}`,
+  })
+
   const unlockedRank = report.public_unlocked_rank ?? 1
 
   // Sanitização server-side: o cliente NUNCA recebe o conteúdo das trends
@@ -97,10 +117,13 @@ export default async function PublicReportPage({ params }: Props) {
     }))
 
   return (
-    <ReportClient
-      report={report}
-      trends={unlocked}
-      publicUnlock={{ unlockedRank, lockedStubs }}
-    />
+    <>
+      <JsonLd data={articleData} />
+      <ReportClient
+        report={report}
+        trends={unlocked}
+        publicUnlock={{ unlockedRank, lockedStubs }}
+      />
+    </>
   )
 }

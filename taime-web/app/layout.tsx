@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
+import JsonLd from '@/components/JsonLd'
+import { globalGraph } from '@/lib/structured-data'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -46,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <head>
         <link rel="icon" href="/taime-icon.svg" type="image/svg+xml" />
+        <JsonLd data={globalGraph()} />
       </head>
       <body className="min-h-screen">
         {children}
