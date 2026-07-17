@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useLocale } from '@/lib/useLocale'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
+import AdvisorFeedback from '@/components/AdvisorFeedback'
 
 interface Message {
   id:      string
@@ -30,8 +31,9 @@ declare global {
 }
 
 export default function AskChat({ siteKey }: { siteKey: string | null }) {
-  const { t } = useLocale()
+  const { t, locale } = useLocale()
   const L = t.home.ask
+  const isPt = locale === 'pt'
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input,    setInput]    = useState('')
@@ -178,7 +180,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
           </div>
         )}
 
-        {messages.map(msg => (
+        {messages.map((msg, i) => (
           <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
             <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold
               ${msg.role === 'user' ? 'bg-zinc-800 text-white' : 'bg-taime-600 text-white'}`}>
@@ -190,7 +192,17 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
                 : 'bg-white border border-zinc-200 text-zinc-800 rounded-tl-sm shadow-sm'}`}>
               {msg.role === 'user'
                 ? msg.content
-                : <AdvisorMarkdown content={msg.content} />}
+                : (
+                  <>
+                    <AdvisorMarkdown content={msg.content} />
+                    <AdvisorFeedback
+                      question={messages[i - 1]?.role === 'user' ? messages[i - 1].content : ''}
+                      answer={msg.content}
+                      source="ask"
+                      isPt={isPt}
+                    />
+                  </>
+                )}
             </div>
           </div>
         ))}

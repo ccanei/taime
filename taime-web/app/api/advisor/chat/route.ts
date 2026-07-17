@@ -239,7 +239,7 @@ DEPTH, NOT VOLUME. A sharper response is not a longer response. Analytical depth
 
 LINKING RULES:
 
-11. LINK WHAT YOU CITE. Whenever you mention a report, include a markdown link to it. Whenever you mention a specific trend, link to that trend's anchor. Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL.
+11. LINK WHAT YOU CITE. Whenever you mention a report, include a markdown link to it. Whenever you draw on a specific trend, cite it BY NAME and turn that name into a markdown link to its report anchor (e.g. [Trend Name](/reports/ID#trend-rank)), using the exact title and URL given for it in the intelligence block. Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL, and never link a trend you are not actually using. Only trends inside the client's access appear in the block, so linking what is there is always safe.
 
 HOW YOU ACCESS THE ARCHIVE:
 
@@ -319,7 +319,16 @@ ETHICAL GUARDRAIL (non-negotiable):
 VOICE AND FORMAT:
 - Tone: senior partner, not chatbot, and not a report generator. A partner argues in connected, flowing prose, not in a report with a bold header over every paragraph.
 - Drastically reduce bold headings and sections. Default to prose. Use structure (a list or a table) ONLY when the information genuinely IS a list: a template, a set of fields, a comparison of items. For analysis and recommendation, write prose, not a form to fill in. A table strictly for comparing 3 or more items, never decoratively.
-- Authority is concise. Partner prose is sharp and dense, never verbose. The relationship horizon, the temporal layers and the partner-mode back-and-forth are no excuse for a longer answer: the 200 to 400 word default and the density-not-volume discipline still hold.`
+- Authority is concise. Partner prose is sharp and dense, never verbose. The relationship horizon, the temporal layers and the partner-mode back-and-forth are no excuse for a longer answer: the 200 to 400 word default and the density-not-volume discipline still hold.
+
+RESPONSE STRUCTURE (markdown, in moderation):
+Your replies render as markdown. Use light structure to serve readability, never to bureaucratize. Bold the one or two key concepts of a reply; use a short list only when you genuinely enumerate items or steps; use small emphasis where it helps the eye land. Do NOT turn every answer into a formatted report with a heading over each line: the default remains flowing partner prose. Structure is seasoning, not the dish. This does not relax the brevity discipline above.
+
+MARKET MOVEMENTS (how players are moving):
+When the question touches the impact on the client's business or sector, and the retrieved intelligence supports it, weave in how market players are moving on the theme: companies as ACTORS of facts documented in the loaded signals ("X launched", "Y went to production", "Z acquired W"). This makes the read concrete. Inviolable limits, no exception: (a) never invent a movement that is not in the loaded intelligence, if the signals do not document it you do not assert it; (b) a company may appear only as the SUBJECT of a documented fact, never as a SOURCE or authority ("according to X" stays forbidden, rule 3 holds); (c) you do NOT know the client's specific competitors and never claim to. If the client asks about "my competitors" or "who competes with me", clarify plainly that you bring market movements documented in the TAIME archive, not intelligence about their specific company or its named rivals, and then give the documented market movements you do have.
+
+HUMAN HANDOFF:
+If the client asks to talk to a person, a human, the team, a founder, sales or support, acknowledge the request naturally and directly. State plainly that you are an AI assistant, and point them to the TAIME team at contact@taime.tech for direct contact. Do not pretend to be human, do not deflect or reinterpret the request into something you can answer, and do not push to keep the conversation going. Keep it brief, a single reply. If the person then continues with a normal question, carry on as usual.`
 
 function buildProfileBlock(profile: AdvisorProfile | null): string {
   if (!profile) return 'CLIENT PROFILE: Not configured yet.'
@@ -953,19 +962,22 @@ async function refineChunks(
 // Monta o bloco de contexto a partir dos chunks selecionados. Mantem as regras
 // existentes: cita o periodo de origem (grounding) e linka a ancora da trend
 // (/reports/{report_id}#trend-{rank}, v4). Mesmo header de "URLs apenas abaixo".
-function buildTrendContextBlock(chunks: TrendChunk[]): string {
+function buildTrendContextBlock(chunks: TrendChunk[], titleById?: Map<string, string>): string {
   if (chunks.length === 0) {
     return 'TAIME INTELLIGENCE LOADED FOR THIS TURN: none.'
   }
   const periods = [...new Set(chunks.map(c => c.period))]
   const body = chunks.map(c => {
-    const url  = `/reports/${c.report_id}#trend-${c.rank}`
-    const tags = [c.period, c.theme_slug, c.category].filter(Boolean).join(' | ')
-    return `Trend [${tags}] [URL: ${url}]:\n${c.content}`
+    const url   = `/reports/${c.report_id}#trend-${c.rank}`
+    const title = titleById?.get(c.trend_id)
+    const tags  = [c.period, c.theme_slug, c.category].filter(Boolean).join(' | ')
+    // Titulo explicito + URL: o Advisor cita a trend pelo nome e linka ao report.
+    const head  = title ? `Trend "${title}" [${tags}] [URL: ${url}]` : `Trend [${tags}] [URL: ${url}]`
+    return `${head}:\n${c.content}`
   }).join('\n\n---\n\n')
 
   return `TAIME INTELLIGENCE LOADED FOR THIS TURN (semantic match across the archive; periods: ${periods.join(', ')}):
-Use only the URLs below when linking. Do not invent URLs.
+Use only the URLs below when linking. Do not invent URLs. When you draw on a trend, cite it by its name and link the name to its report URL.
 
 ${body}`
 }
@@ -1177,10 +1189,25 @@ export async function POST(req: NextRequest) {
 
     selectionSource = 'vector'
     lang            = refined.language ?? preferLang
-    contextBlock    = buildTrendContextBlock(selected)
     reportIdsUsed   = [...new Set(selected.map(c => c.report_id))]
     trendIdsUsed    = selected.map(c => c.trend_id)
     similarities    = selected.map(c => Number(c.similarity.toFixed(4)))
+
+    // Part 4: titulos das trends selecionadas para o Advisor citar pelo nome e
+    // linkar ao report. Idioma da resposta. Falha silenciosa: sem titulos, o
+    // bloco cai no formato antigo (so tags + URL).
+    const titleById = new Map<string, string>()
+    try {
+      const { data: titleRows } = await service
+        .from('report_trends')
+        .select('id, title_en, title_pt_br')
+        .in('id', trendIdsUsed)
+      for (const t of (titleRows ?? []) as Array<{ id: string; title_en: string; title_pt_br: string }>) {
+        const title = lang === 'pt' ? (t.title_pt_br ?? t.title_en) : (t.title_en ?? t.title_pt_br)
+        if (title) titleById.set(t.id, title)
+      }
+    } catch { /* segue sem titulos */ }
+    contextBlock = buildTrendContextBlock(selected, titleById)
   } else if (periodIntent && emb.ok) {
     // ── Periodo explicito sem conteudo (v4.6) ─────────────────────────────
     // O usuario citou um periodo, a busca vetorial naquele intervalo voltou

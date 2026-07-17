@@ -8,10 +8,20 @@ import type { FeedbackRecord } from './FeedbackAdmin'
 
 async function getFeedback(): Promise<FeedbackRecord[]> {
   const supabase = createSupabaseService()
-  const { data } = await supabase
+  // rating/question/answer/source existem apos add-advisor-feedback-columns.sql.
+  // Se a migration ainda nao rodou, o select falha; caimos no conjunto basico
+  // para nao quebrar o admin existente.
+  const { data, error } = await supabase
     .from('feedback')
-    .select('id, user_id, user_email, type, message, locale, status, created_at')
+    .select('id, user_id, user_email, type, message, locale, status, created_at, rating, question, answer, source')
     .order('created_at', { ascending: false })
+  if (error) {
+    const { data: basic } = await supabase
+      .from('feedback')
+      .select('id, user_id, user_email, type, message, locale, status, created_at')
+      .order('created_at', { ascending: false })
+    return (basic as FeedbackRecord[]) ?? []
+  }
   return (data as FeedbackRecord[]) ?? []
 }
 

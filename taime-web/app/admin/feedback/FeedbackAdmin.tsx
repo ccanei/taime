@@ -6,19 +6,32 @@ export interface FeedbackRecord {
   id:         string
   user_id:    string | null
   user_email: string | null
-  type:       'suggestion' | 'problem' | 'praise' | string
+  type:       'suggestion' | 'problem' | 'praise' | 'advisor' | string
   message:    string
   locale:     string | null
   status:     'new' | 'reviewed' | string
   created_at: string
+  // Campos do feedback do Advisor (NULL nas linhas antigas do dashboard).
+  rating?:    'up' | 'down' | null
+  question?:  string | null
+  answer?:    string | null
+  source?:    'dashboard' | 'advisor' | 'ask' | null
 }
 
 type Filter = 'all' | 'new' | 'reviewed'
+type Origin = 'all' | 'dashboard' | 'advisor'
 
 const TYPE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   suggestion: { bg: 'bg-blue-50',    text: 'text-blue-700',    label: 'Sugestão' },
   problem:    { bg: 'bg-red-50',     text: 'text-red-700',     label: 'Problema' },
   praise:     { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Elogio'   },
+  advisor:    { bg: 'bg-taime-50',   text: 'text-taime-700',   label: 'Advisor'  },
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  dashboard: 'Dashboard',
+  advisor:   'Advisor (logado)',
+  ask:       'Advisor (/ask)',
 }
 
 function formatDate(iso: string) {
@@ -35,20 +48,37 @@ export default function FeedbackAdmin({
 }) {
   const [records, setRecords] = useState<FeedbackRecord[]>(initialRecords)
   const [filter, setFilter]   = useState<Filter>('all')
+  const [origin, setOrigin]   = useState<Origin>('all')
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map())
 
+  // Origem: 'advisor' cobre o feedback in-chat (type='advisor', source advisor/ask);
+  // 'dashboard' cobre o feedback antigo do dashboard (todo o resto).
+  const isAdvisor = (r: FeedbackRecord) => r.type === 'advisor'
+
+  const byOrigin = useMemo(() => {
+    if (origin === 'advisor')   return records.filter(isAdvisor)
+    if (origin === 'dashboard') return records.filter(r => !isAdvisor(r))
+    return records
+  }, [records, origin])
+
   const counts = useMemo(() => ({
-    all:      records.length,
-    new:      records.filter(r => r.status === 'new').length,
-    reviewed: records.filter(r => r.status === 'reviewed').length,
+    all:      byOrigin.length,
+    new:      byOrigin.filter(r => r.status === 'new').length,
+    reviewed: byOrigin.filter(r => r.status === 'reviewed').length,
+  }), [byOrigin])
+
+  const originCounts = useMemo(() => ({
+    all:       records.length,
+    advisor:   records.filter(isAdvisor).length,
+    dashboard: records.filter(r => !isAdvisor(r)).length,
   }), [records])
 
   const filtered = useMemo(() => {
-    if (filter === 'new')      return records.filter(r => r.status === 'new')
-    if (filter === 'reviewed') return records.filter(r => r.status === 'reviewed')
-    return records
-  }, [records, filter])
+    if (filter === 'new')      return byOrigin.filter(r => r.status === 'new')
+    if (filter === 'reviewed') return byOrigin.filter(r => r.status === 'reviewed')
+    return byOrigin
+  }, [byOrigin, filter])
 
   async function markReviewed(record: FeedbackRecord) {
     setReviewing(record.id)
@@ -83,9 +113,32 @@ export default function FeedbackAdmin({
     { key: 'reviewed', label: `Revisados (${counts.reviewed})` },
   ]
 
+  const ORIGIN_TABS: { key: Origin; label: string }[] = [
+    { key: 'all',       label: `Todas as origens (${originCounts.all})` },
+    { key: 'dashboard', label: `Dashboard (${originCounts.dashboard})`  },
+    { key: 'advisor',   label: `Advisor (${originCounts.advisor})`      },
+  ]
+
   return (
     <div>
-      {/* Filtros */}
+      {/* Filtro por origem */}
+      <div className="flex gap-1 mb-3 p-1 bg-zinc-100 rounded-xl w-fit">
+        {ORIGIN_TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setOrigin(key)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all
+              ${origin === key
+                ? 'bg-white text-zinc-900 shadow-sm'
+                : 'text-zinc-500 hover:text-zinc-700'
+              }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filtro por status */}
       <div className="flex gap-1 mb-6 p-1 bg-zinc-100 rounded-xl w-fit">
         {TABS.map(({ key, label }) => (
           <button
@@ -140,15 +193,49 @@ export default function FeedbackAdmin({
                         {record.locale}
                       </span>
                     )}
+                    {isAdvisor(record) && record.rating && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold
+                        ${record.rating === 'up' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                        {record.rating === 'up' ? '▲ Útil' : '▼ Não útil'}
+                      </span>
+                    )}
+                    {isAdvisor(record) && record.source && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-50 text-zinc-500 border border-zinc-100">
+                        {SOURCE_LABEL[record.source] ?? record.source}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-zinc-400 tabular-nums">
                     {formatDate(record.created_at)}
                   </span>
                 </header>
 
-                <p className="text-sm text-zinc-800 leading-relaxed whitespace-pre-wrap mb-3">
-                  {record.message}
-                </p>
+                {isAdvisor(record) ? (
+                  <div className="space-y-2 mb-3">
+                    {record.question && (
+                      <div className="rounded-lg bg-zinc-50 border border-zinc-100 px-3 py-2">
+                        <p className="text-[10px] font-bold tracking-widest text-zinc-400 mb-1">PERGUNTA</p>
+                        <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap">{record.question}</p>
+                      </div>
+                    )}
+                    {record.answer && (
+                      <div className="rounded-lg bg-white border border-zinc-100 px-3 py-2">
+                        <p className="text-[10px] font-bold tracking-widest text-zinc-400 mb-1">RESPOSTA AVALIADA</p>
+                        <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap line-clamp-6">{record.answer}</p>
+                      </div>
+                    )}
+                    {record.message?.trim() && (
+                      <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+                        <p className="text-[10px] font-bold tracking-widest text-amber-500 mb-1">COMENTÁRIO</p>
+                        <p className="text-sm text-zinc-800 leading-relaxed whitespace-pre-wrap">{record.message}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-800 leading-relaxed whitespace-pre-wrap mb-3">
+                    {record.message}
+                  </p>
+                )}
 
                 <footer className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-zinc-100">
                   <span className="text-xs text-zinc-500">
