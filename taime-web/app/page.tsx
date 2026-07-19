@@ -254,9 +254,12 @@ export default async function LandingPage() {
   const showcaseFw     = showcase ? (isEn ? showcase.taime_framework_en : showcase.taime_framework_pt_br) : null
   const showcaseTnn    = showcase ? (isEn ? showcase.then_now_next_en   : showcase.then_now_next_pt_br)   : null
   const showcaseTitle  = showcase ? (isEn ? showcase.title_en           : showcase.title_pt_br)           : ''
+  // Nao logado: o CTA da amostra passa a levar ao login (com origem para futura
+  // mensagem contextual), em vez do report publico /r/{sample}. Logado segue direto
+  // ao report completo.
   const showcaseHref   = showcase
-    ? (isLoggedIn ? `/reports/${showcase.report_id}` : (sampleId ? `/r/${sampleId}` : '/login'))
-    : '/login'
+    ? (isLoggedIn ? `/reports/${showcase.report_id}` : '/login?from=report')
+    : '/login?from=report'
 
   // Mockup data: top trend by score (rank 1 da query)
   const firstTrend    = topTrends[0] ?? null
@@ -434,11 +437,11 @@ export default async function LandingPage() {
                       ))}
                     </div>
 
-                    {/* CTA unico: leva a amostra limitada (/r/{sample}). Sem despejo de
-                        texto (THEN/NOW/NEXT completo saiu). Peca grafica + um CTA. */}
+                    {/* CTA unico: passa a levar ao login (/login?from=report) em vez da
+                        amostra publica /r/{sample}. Texto do botao inalterado. */}
                     {sampleId && (
                       <Link
-                        href={`/r/${sampleId}`}
+                        href="/login?from=report"
                         className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
                                    rounded-lg bg-taime-500 text-white text-xs font-semibold
                                    hover:bg-taime-400 transition-colors"
@@ -899,7 +902,7 @@ export default async function LandingPage() {
                     <h3 className="text-base font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
                     <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
                     <Link
-                      href={isLoggedIn ? `/reports/${r.report_id}` : (sampleId ? `/r/${sampleId}` : '/login')}
+                      href={isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'}
                       className="text-xs font-semibold text-taime-700 hover:text-taime-800 transition-colors"
                     >
                       {h.trendCards.cta}
