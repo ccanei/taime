@@ -40,6 +40,26 @@ export const pt = {
         { period: '2027 · 2028', label: 'NEXT · horizonte', text: 'Consolidação à frente: a fragmentação de plataformas de agentes tende a poucos ambientes dominantes, e a escolha de hoje fica cada vez mais difícil de reverter.' },
       ],
     },
+    cred: {
+      signals: 'sinais analisados',
+      trends:  'tendências mapeadas',
+      since:   'Memória desde 2020',
+    },
+    framework: {
+      label:    'Metodologia proprietária',
+      title:    'O framework TAIME',
+      subtitle: 'Toda análise passa pela mesma disciplina. Do tipo de cenário ao movimento recomendado, com a trajetória temporal e o score de convergência.',
+      flowCaption: 'Tipo de cenário, urgência de ação, impacto organizacional, movimento recomendado e critério de saída.',
+      timeTitle: 'A leitura temporal',
+      then: 'Como o mercado lia o sinal.',
+      now:  'O que realmente importa hoje.',
+      next: 'Para onde os sinais apontam.',
+      scoreTitle: 'TAIME Score',
+      scoreDesc:  '5 dimensões, de 0 a 100: maturidade de mercado, pressão competitiva, impacto estratégico, complexidade de execução e risco de atraso.',
+    },
+    capture: {
+      label: 'Resumo semanal',
+    },
     trendCards: {
       label: 'Tendências recentes',
       title: 'O que o TAIME analisou nas últimas semanas.',

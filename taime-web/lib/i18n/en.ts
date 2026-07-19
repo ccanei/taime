@@ -41,6 +41,26 @@ export const en: Translations = {
         { period: '2027 · 2028', label: 'NEXT · horizon', text: 'Consolidation ahead: the fragmentation of agent platforms narrows toward a few dominant environments, and today choice gets harder to reverse.' },
       ],
     },
+    cred: {
+      signals: 'signals analyzed',
+      trends:  'trends mapped',
+      since:   'Memory since 2020',
+    },
+    framework: {
+      label:    'Proprietary methodology',
+      title:    'The TAIME framework',
+      subtitle: 'Every analysis runs through the same discipline. From the type of scenario to the recommended move, with the temporal trajectory and the convergence score.',
+      flowCaption: 'Type of scenario, urgency to act, organizational impact, recommended move and exit criteria.',
+      timeTitle: 'The temporal reading',
+      then: 'How the market read the signal.',
+      now:  'What actually matters today.',
+      next: 'Where the signals point.',
+      scoreTitle: 'TAIME Score',
+      scoreDesc:  '5 dimensions, 0 to 100: market maturity, competitive pressure, strategic impact, execution complexity and lag risk.',
+    },
+    capture: {
+      label: 'Weekly digest',
+    },
     trendCards: {
       label: 'Recent trends',
       title: 'What TAIME analyzed in recent weeks.',

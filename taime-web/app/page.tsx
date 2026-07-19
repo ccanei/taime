@@ -17,6 +17,9 @@ import AdvisorDemo from '@/components/AdvisorDemo'
 import CountUp from '@/components/home/CountUp'
 import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
+import SignatureGraphic from '@/components/home/SignatureGraphic'
+import FrameworkSection from '@/components/home/FrameworkSection'
+import NewsletterSignup from '@/components/NewsletterSignup'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -367,11 +370,25 @@ export default async function LandingPage() {
                 {h.badge}
               </span>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold tracking-tight text-white leading-[1.1] mb-6">
+              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.02] mb-6">
                 {h.heroTitle}
               </h1>
 
-              <p className="text-lg text-white/70 leading-relaxed mb-10 max-w-xl">{h.heroBody}</p>
+              <p className="text-lg sm:text-xl text-white/70 leading-relaxed mb-8 max-w-xl">{h.heroBody}</p>
+
+              {/* Credenciais de autoridade tecidas no hero (nao so na faixa) */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-9">
+                {proofItems.map(it => (
+                  <span key={it.label} className="inline-flex items-baseline gap-1.5">
+                    <CountUp to={it.to} suffix={it.suffix} separator={it.separator}
+                             className="text-lg font-bold text-white tabular-nums" />
+                    <span className="text-xs text-white/50">{it.label}</span>
+                  </span>
+                ))}
+                <span className="inline-flex items-center gap-1.5 text-xs text-white/55">
+                  <span className="w-1 h-1 rounded-full bg-taime-400" />{h.cred.since}
+                </span>
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-3 mb-5">
                 <Link
@@ -386,86 +403,50 @@ export default async function LandingPage() {
               <p className="text-xs text-white/50 font-medium">{h.heroSub}</p>
             </div>
 
-            {/* ── Coluna direita: mockup do produto ─────────────────────── */}
+            {/* ── Coluna direita: grafico-assinatura como arte dominante ──── */}
             <div className="relative lg:pl-4">
-              <div className="rounded-2xl bg-zinc-900 border border-zinc-700/80 shadow-2xl overflow-hidden
-                              ring-1 ring-white/5">
-                {/* Chrome de janela */}
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-700/80 bg-zinc-900">
-                  <div className="flex gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/70" />
-                  </div>
-                  <p className="ml-auto text-[10px] text-zinc-500 font-mono">taime.tech/dashboard</p>
-                </div>
+              <div className="rounded-2xl bg-zinc-900/70 border border-white/10 shadow-2xl ring-1 ring-white/5
+                              p-6 sm:p-7 backdrop-blur-sm">
+                {/* Grafico-assinatura da metodologia (THEN -> NOW -> NEXT) */}
+                <p className="text-[9px] font-bold tracking-widest text-taime-300 mb-3">
+                  {isEn ? 'THE TRAJECTORY, NOT THE SNAPSHOT' : 'A TRAJETÓRIA, NÃO A FOTO'}
+                </p>
+                <SignatureGraphic
+                  labels={{ then: isEn ? 'Then' : 'Antes', now: isEn ? 'Now' : 'Hoje', next: isEn ? 'Next' : 'Adiante' }}
+                  className="w-full h-auto mb-6"
+                />
 
-                <div className="flex">
-                  {/* Sidebar */}
-                  <aside className="w-32 sm:w-36 shrink-0 border-r border-zinc-800 bg-zinc-950/40
-                                    py-4 px-3 hidden sm:block">
-                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-3 px-1">TAIME</p>
-                    {[
-                      { label: isEn ? 'Dashboard' : 'Dashboard', active: false },
-                      { label: isEn ? 'Reports'   : 'Relatórios', active: true  },
-                      { label: 'Advisor',           active: false },
-                      { label: isEn ? 'Account'   : 'Conta',      active: false },
-                    ].map(it => (
-                      <div
-                        key={it.label}
-                        className={`text-[11px] py-1.5 px-2 rounded mb-0.5
-                          ${it.active
-                            ? 'bg-taime-500/15 text-taime-300 font-semibold'
-                            : 'text-zinc-400'}`}
-                      >
-                        {it.label}
-                      </div>
-                    ))}
-                  </aside>
-
-                  {/* Main */}
-                  <div className="flex-1 p-4 sm:p-5 min-w-0">
-                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
-                      {isEn ? 'EXECUTIVE REPORT' : 'RELATÓRIO EXECUTIVO'}
-                    </p>
-                    <h3 className="text-sm font-bold text-white leading-snug mb-4 line-clamp-2">
-                      {mockupTitle}
-                    </h3>
-
-                    {/* Score dimensions — 4 mini-cards */}
-                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
-                      {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
-                    </p>
-                    <div className="mb-4">
-                      <ScoreBars dims={heroDims} variant="hero" />
+                {/* Faixa compacta da ultima analise (report integrado, menor) */}
+                <div className="border-t border-white/10 pt-5">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-1.5">
+                        {isEn ? 'LATEST ANALYSIS' : 'ÚLTIMA ANÁLISE'}
+                      </p>
+                      <h3 className="text-sm font-bold text-white leading-snug line-clamp-2">{mockupTitle}</h3>
                     </div>
-
-                    {/* CTA unico: passa a levar ao login (/login?from=report) em vez da
-                        amostra publica /r/{sample}. Texto do botao inalterado. */}
-                    {sampleId && (
-                      <Link
-                        href="/login?from=report"
-                        className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
-                                   rounded-lg bg-taime-500 text-white text-xs font-semibold
-                                   hover:bg-taime-400 transition-colors"
-                      >
-                        {isEn ? 'Read the analysis' : 'Leia a análise'}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14M13 6l6 6-6 6" />
-                        </svg>
-                      </Link>
-                    )}
+                    <span className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl
+                                     bg-taime-500 text-white shadow-lg shadow-taime-500/30 ring-4 ring-taime-900">
+                      <span className="text-lg font-bold leading-none">{mockupScore}</span>
+                      <span className="text-[7px] font-bold tracking-widest opacity-80">SCORE</span>
+                    </span>
                   </div>
+                  <ScoreBars dims={heroDims} variant="hero" />
+                  {sampleId && (
+                    <Link
+                      href="/login?from=report"
+                      className="mt-5 inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
+                                 rounded-lg bg-taime-500 text-white text-xs font-semibold
+                                 hover:bg-taime-400 transition-colors"
+                    >
+                      {isEn ? 'Read the analysis' : 'Leia a análise'}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14M13 6l6 6-6 6" />
+                      </svg>
+                    </Link>
+                  )}
                 </div>
-              </div>
-              {/* Score gauge flutuante */}
-              <div className="absolute -top-3 -right-3 sm:-right-5 w-16 h-16 rounded-2xl
-                              bg-taime-500 text-white shadow-xl shadow-taime-500/30
-                              flex flex-col items-center justify-center
-                              ring-4 ring-taime-900">
-                <span className="text-2xl font-bold leading-none">{mockupScore}</span>
-                <span className="text-[8px] font-bold tracking-widest opacity-80">SCORE</span>
               </div>
             </div>
           </div>
@@ -625,10 +606,11 @@ export default async function LandingPage() {
         />
         <div className="relative max-w-6xl mx-auto px-6">
           <p className="section-label mb-3">{h.painsLabel}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-14 max-w-3xl leading-snug">
-            {isEn
-              ? 'From signal chaos to clear decision'
-              : 'Do caos de sinais à decisão clara'}
+          <h2 className="text-3xl sm:text-4xl font-bold text-zinc-900 mb-14 max-w-3xl leading-tight">
+            {isEn ? 'Information is everywhere.' : 'Informação está em todo lugar.'}{' '}
+            <span className="text-zinc-400">
+              {isEn ? 'Reliable intelligence is not.' : 'Inteligência confiável, não.'}
+            </span>
           </h2>
 
           {/* Grid 3 estágios, com linha conectora */}
@@ -799,6 +781,9 @@ export default async function LandingPage() {
         </div>
       </section>
 
+      {/* ── SEÇÃO 3b: O FRAMEWORK TAIME (metodologia como produto nomeado) ── */}
+      <FrameworkSection copy={h.framework} />
+
       {/* ── SEÇÃO 4: É ASSIM QUE A RESPOSTA SE PARECE (showcase) ──────── */}
       {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
         <section className="py-24 border-t border-zinc-100 bg-white">
@@ -869,12 +854,14 @@ export default async function LandingPage() {
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {[
-                        { label: 'THEN', val: stripPeriodLabel(showcaseTnn.then), tone: 'bg-zinc-800/40' },
-                        { label: 'NOW',  val: showcaseTnn.now,                    tone: 'bg-zinc-800/60' },
-                        { label: 'NEXT', val: showcaseTnn.next,                   tone: 'bg-taime-500/10 border-taime-500/30' },
-                      ].map(({ label, val, tone }) => (
-                        <div key={label} className={`rounded-lg border border-white/10 ${tone} p-4`}>
-                          <p className="text-[10px] font-bold tracking-widest text-zinc-400 mb-2">{label}</p>
+                        { label: 'THEN', val: stripPeriodLabel(showcaseTnn.then), tone: 'bg-zinc-800/40 border-white/10',        dot: 'bg-zinc-400',    lab: 'text-zinc-300' },
+                        { label: 'NOW',  val: showcaseTnn.now,                    tone: 'bg-emerald-500/[0.06] border-emerald-500/20', dot: 'bg-emerald-400', lab: 'text-emerald-300' },
+                        { label: 'NEXT', val: showcaseTnn.next,                   tone: 'bg-taime-500/[0.08] border-taime-500/30',     dot: 'bg-taime-400',   lab: 'text-taime-300' },
+                      ].map(({ label, val, tone, dot, lab }) => (
+                        <div key={label} className={`rounded-lg border ${tone} p-4`}>
+                          <p className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest mb-2 ${lab}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{label}
+                          </p>
                           <p className="text-xs text-white/85 leading-relaxed line-clamp-4">{val}</p>
                         </div>
                       ))}
@@ -913,20 +900,30 @@ export default async function LandingPage() {
                 const tnn   = isEn ? r.then_now_next_en   : r.then_now_next_pt_br
                 const line  = firstWords(fw?.executive_snapshot ?? tnn?.now ?? '', 24)
                 const title = isEn ? r.title_en : r.title_pt_br
-                const scoreColor = score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-orange-600'
+                const scoreTone = score >= 80
+                  ? 'text-emerald-700 bg-emerald-50 ring-emerald-100'
+                  : score >= 60 ? 'text-amber-700 bg-amber-50 ring-amber-100'
+                  : 'text-orange-700 bg-orange-50 ring-orange-100'
                 return (
-                  <div key={i} className="rounded-2xl border border-zinc-200 bg-white p-5 flex flex-col gap-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase">
+                  <div key={i} className="group rounded-2xl border border-zinc-200 bg-white p-6 flex flex-col gap-3
+                                          transition-all hover:border-taime-200 hover:shadow-lg hover:shadow-zinc-200/60 hover:-translate-y-0.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-1.5">
                         {r.category ?? ''}
                       </span>
-                      <span className={`text-sm font-bold tabular-nums ${scoreColor}`}>{score}</span>
+                      {/* Score como elemento visual destacado (chip com anel) */}
+                      <span className={`shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl
+                                        ring-1 tabular-nums ${scoreTone}`}>
+                        <span className="text-lg font-bold leading-none">{score}</span>
+                        <span className="text-[7px] font-bold tracking-widest opacity-70">SCORE</span>
+                      </span>
                     </div>
-                    <h3 className="text-base font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
+                    <h3 className="text-lg font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
                     <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
                     <Link
                       href={isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'}
-                      className="text-xs font-semibold text-taime-700 hover:text-taime-800 transition-colors"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-taime-700
+                                 group-hover:text-taime-800 group-hover:gap-2 transition-all"
                     >
                       {h.trendCards.cta}
                     </Link>
@@ -983,6 +980,14 @@ export default async function LandingPage() {
           >
             {isEn ? 'See full Radar →' : 'Ver o Radar completo →'}
           </Link>
+        </div>
+      </section>
+
+      {/* ── SEÇÃO 6a: CAPTURA DE E-MAIL (resumo semanal, ligado a newsletter) ── */}
+      <section className="bg-white border-t border-zinc-100 py-20">
+        <div className="max-w-3xl mx-auto px-6">
+          <p className="section-label mb-4">{h.capture.label}</p>
+          <NewsletterSignup variant="dark" />
         </div>
       </section>
 
