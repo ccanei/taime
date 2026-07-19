@@ -26,6 +26,21 @@ export const en: Translations = {
       trendsLabel:  'trends mapped',
       window:       'Strategic technology memory since 2020',
     },
+    themes: {
+      label: '19 technology fronts under continuous analysis',
+      items: ['AI', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Data', 'Market', 'Fintech', 'Automation', 'Observability', 'Engineering', 'Edge', 'Healthtech', 'Sustainability', 'Quantum', 'Robotics', 'AI Governance', 'Spatial Computing', 'Networks'],
+    },
+    trajectory: {
+      label:    'Strategic memory',
+      title:    'The same theme, tracked across the years',
+      subtitle: 'This is what strategic memory means: the trajectory, not the snapshot.',
+      moments: [
+        { period: '2023', label: 'The turn',       text: 'RPA evolves into agents: automation stops being scripted tasks and starts becoming a process orchestration layer.' },
+        { period: '2024', label: 'The governance', text: 'Agents take on autonomous multi-step workflows. Agent governance stops being a detail and becomes a strategic liability.' },
+        { period: '2026', label: 'The imperative', text: 'Agentic AI leaves the pilots and starts redesigning the operating model. It stops being a curiosity and becomes an imperative.' },
+        { period: '2027 · 2028', label: 'NEXT · horizon', text: 'Consolidation ahead: the fragmentation of agent platforms narrows toward a few dominant environments, and today choice gets harder to reverse.' },
+      ],
+    },
     trendCards: {
       label: 'Recent trends',
       title: 'What TAIME analyzed in recent weeks.',

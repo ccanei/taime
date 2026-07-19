@@ -14,6 +14,9 @@ import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import HomeSearch from '@/components/HomeSearch'
 import AdvisorDemo from '@/components/AdvisorDemo'
+import CountUp from '@/components/home/CountUp'
+import ScoreBars from '@/components/home/ScoreBars'
+import ThemeTrajectory from '@/components/home/ThemeTrajectory'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,15 +219,18 @@ export default async function LandingPage() {
   const isEn = locale === 'en'
 
   // ── Faixa de prova: só sinais > 5000 e trends > 100 entram; janela é fixa. ──
-  const proofItems: { value: string; label: string }[] = []
+  // Alvo numerico + sufixo para o contador animado (CountUp).
+  const proofItems: { to: number; suffix: string; separator: boolean; label: string }[] = []
   if (proof.signals > 5000) {
     proofItems.push({
-      value: isEn ? `${Math.floor(proof.signals / 1000)}k+` : `${Math.floor(proof.signals / 1000)} mil+`,
+      to: Math.floor(proof.signals / 1000),
+      suffix: isEn ? 'k+' : ' mil+',
+      separator: false,
       label: h.proof.signalsLabel,
     })
   }
   if (proof.trends > 100) {
-    proofItems.push({ value: `${proof.trends}`, label: h.proof.trendsLabel })
+    proofItems.push({ to: proof.trends, suffix: '', separator: true, label: h.proof.trendsLabel })
   }
 
   // ── Cards de tendências: top por score, sem repetir theme_slug, 3 a 4. ──
@@ -260,6 +266,22 @@ export default async function LandingPage() {
   const showcaseHref   = showcase
     ? (isLoggedIn ? `/reports/${showcase.report_id}` : '/login?from=report')
     : '/login?from=report'
+
+  // Dimensoes de score do showcase como [label, score][] para o ScoreBars animado.
+  const showcaseDimLabels: Record<string, { pt: string; en: string }> = {
+    market_maturity:      { pt: 'Maturidade',   en: 'Maturity' },
+    competitive_pressure: { pt: 'Pressão',      en: 'Pressure' },
+    strategic_impact:     { pt: 'Impacto',      en: 'Impact' },
+    execution_complexity: { pt: 'Complexidade', en: 'Complexity' },
+    competitive_lag_risk: { pt: 'Risco',        en: 'Risk' },
+  }
+  const showcaseDims: [string, number][] = showcaseFw?.score_dimensions
+    ? (Object.keys(showcaseFw.score_dimensions) as Array<keyof NonNullable<typeof showcaseFw.score_dimensions>>)
+        .map(k => [
+          (isEn ? showcaseDimLabels[k as string]?.en : showcaseDimLabels[k as string]?.pt) ?? String(k),
+          showcaseFw.score_dimensions![k].score,
+        ] as [string, number])
+    : []
 
   // Mockup data: top trend by score (rank 1 da query)
   const firstTrend    = topTrends[0] ?? null
@@ -414,27 +436,8 @@ export default async function LandingPage() {
                     <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-2">
                       {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
                     </p>
-                    <div className="grid grid-cols-2 gap-2 mb-4">
-                      {heroDims.map(([label, val]) => (
-                        <div key={label} className="rounded-lg bg-zinc-800/60 border border-zinc-700/50 p-2.5">
-                          <p className="text-[8px] text-zinc-400 tracking-wide uppercase leading-tight mb-1.5
-                                        line-clamp-1">{label}</p>
-                          <div className="flex items-baseline gap-2">
-                            <span className={`text-lg font-bold tabular-nums leading-none
-                              ${val >= 80 ? 'text-emerald-400'
-                                : val >= 60 ? 'text-amber-400'
-                                : 'text-orange-400'}`}>
-                              {val}
-                            </span>
-                            <div className="flex-1 h-1 rounded-full bg-zinc-700 overflow-hidden">
-                              <div
-                                className={`h-full ${val >= 80 ? 'bg-emerald-400' : val >= 60 ? 'bg-amber-400' : 'bg-orange-400'}`}
-                                style={{ width: `${val}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="mb-4">
+                      <ScoreBars dims={heroDims} variant="hero" />
                     </div>
 
                     {/* CTA unico: passa a levar ao login (/login?from=report) em vez da
@@ -469,20 +472,52 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 1c: FAIXA DE PROVA (dados reais, enxuta) ─────────────── */}
+      {/* ── SEÇÃO 1c: FAIXA DE PROVA (contadores animados + micro-grafico) ── */}
       <section className="border-t border-zinc-100 bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-8 flex flex-wrap items-center justify-center
-                        gap-x-10 gap-y-4 text-center">
+        <div className="max-w-5xl mx-auto px-6 py-9 flex flex-wrap items-center justify-center
+                        gap-x-12 gap-y-6 text-center">
           {proofItems.map(it => (
-            <div key={it.label} className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-taime-700 tabular-nums">{it.value}</span>
-              <span className="text-sm text-zinc-500">{it.label}</span>
+            <div key={it.label} className="flex items-center gap-3">
+              {/* Sparkline abstrata decorativa (tendencia de subida) */}
+              <svg aria-hidden="true" width="44" height="26" viewBox="0 0 44 26" fill="none"
+                   className="text-taime-400 shrink-0">
+                <path d="M1 22 L9 17 L16 19 L24 10 L31 12 L43 2" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
+                <circle cx="43" cy="2" r="2.5" fill="currentColor" />
+              </svg>
+              <div className="flex items-baseline gap-2">
+                <CountUp
+                  to={it.to}
+                  suffix={it.suffix}
+                  separator={it.separator}
+                  className="text-2xl font-bold text-taime-700 tabular-nums"
+                />
+                <span className="text-sm text-zinc-500">{it.label}</span>
+              </div>
             </div>
           ))}
           {proofItems.length > 0 && (
             <span aria-hidden="true" className="hidden sm:block w-px h-6 bg-zinc-200" />
           )}
           <span className="text-sm text-zinc-500">{h.proof.window}</span>
+        </div>
+      </section>
+
+      {/* ── SEÇÃO 1c-2: BADGES DE TEMAS COBERTOS (19 frentes) ──────────── */}
+      <section className="border-t border-zinc-100 bg-zinc-50/60 py-10">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <p className="section-label mb-5 justify-center">{h.themes.label}</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {h.themes.items.map(theme => (
+              <span
+                key={theme}
+                className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium
+                           bg-white text-zinc-600 border border-zinc-200"
+              >
+                {theme}
+              </span>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -577,8 +612,18 @@ export default async function LandingPage() {
       </section>
 
       {/* ── SEÇÃO 2: DO CAOS À DECISÃO (infográfico de fluxo) ─────────── */}
-      <section className="py-24 bg-zinc-50 border-t border-zinc-100">
-        <div className="max-w-6xl mx-auto px-6">
+      <section className="relative py-24 bg-zinc-50 border-t border-zinc-100 overflow-hidden">
+        {/* Textura sutil de pontos, para profundidade */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 opacity-[0.55] pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(84,121,255,0.10) 1px, transparent 0)',
+            backgroundSize: '26px 26px',
+            maskImage: 'radial-gradient(ellipse 90% 70% at 50% 30%, black 45%, transparent 100%)',
+          }}
+        />
+        <div className="relative max-w-6xl mx-auto px-6">
           <p className="section-label mb-3">{h.painsLabel}</p>
           <h2 className="text-3xl font-bold text-zinc-900 mb-14 max-w-3xl leading-snug">
             {isEn
@@ -707,8 +752,14 @@ export default async function LandingPage() {
       </section>
 
       {/* ── SEÇÃO 3: COMO FUNCIONA (4 passos) ──────────────────────────── */}
-      <section id="como-funciona" className="bg-zinc-50 border-t border-zinc-100 py-24">
-        <div className="max-w-5xl mx-auto px-6">
+      <section id="como-funciona" className="relative bg-zinc-50 border-t border-zinc-100 py-24 overflow-hidden">
+        {/* Wash sutil de gradiente, para ritmo entre secoes */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 h-64 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, rgba(84,121,255,0.05), transparent)' }}
+        />
+        <div className="relative max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.howLabel}</p>
           <h2 className="text-3xl font-bold text-zinc-900 mb-14">{h.howTitle}</h2>
 
@@ -808,43 +859,7 @@ export default async function LandingPage() {
                     <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-3">
                       {isEn ? 'SCORE DIMENSIONS' : 'DIMENSÕES DE SCORE'}
                     </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      {(() => {
-                        const dims = showcaseFw.score_dimensions!
-                        return (Object.keys(dims) as Array<keyof typeof dims>).map(key => {
-                          const dim = dims[key]
-                          const labelMap: Record<string, { pt: string; en: string }> = {
-                            market_maturity:      { pt: 'Maturidade',  en: 'Maturity' },
-                            competitive_pressure: { pt: 'Pressão',     en: 'Pressure' },
-                            strategic_impact:     { pt: 'Impacto',     en: 'Impact' },
-                            execution_complexity: { pt: 'Complexidade',en: 'Complexity' },
-                            competitive_lag_risk: { pt: 'Risco',       en: 'Risk' },
-                          }
-                          const label = isEn ? labelMap[key as string]?.en : labelMap[key as string]?.pt
-                          return (
-                            <div key={key as string} className="rounded-lg bg-white/[0.04] border border-white/10 p-2.5">
-                              <p className="text-[9px] text-zinc-400 uppercase tracking-wide leading-tight mb-1.5">
-                                {label}
-                              </p>
-                              <div className="flex items-baseline gap-2">
-                                <span className={`text-base font-bold tabular-nums leading-none
-                                  ${dim.score >= 80 ? 'text-emerald-400'
-                                    : dim.score >= 60 ? 'text-amber-400'
-                                    : 'text-orange-400'}`}>
-                                  {dim.score}
-                                </span>
-                                <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                                  <div
-                                    className={`h-full ${dim.score >= 80 ? 'bg-emerald-400' : dim.score >= 60 ? 'bg-amber-400' : 'bg-orange-400'}`}
-                                    style={{ width: `${dim.score}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })
-                      })()}
-                    </div>
+                    <ScoreBars dims={showcaseDims} variant="showcase" />
                   </div>
 
                   {/* THEN / NOW / NEXT — versão dark */}
@@ -875,6 +890,14 @@ export default async function LandingPage() {
           </div>
         </section>
       )}
+
+      {/* ── SEÇÃO 4b: A TRAJETÓRIA DE UM TEMA (o fosso temporal, prova estática) ── */}
+      <ThemeTrajectory
+        label={h.trajectory.label}
+        title={h.trajectory.title}
+        subtitle={h.trajectory.subtitle}
+        moments={h.trajectory.moments}
+      />
 
       {/* ── SEÇÃO 5: TENDÊNCIAS RECENTES (cards dinâmicos) + BUSCA ─────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-24">

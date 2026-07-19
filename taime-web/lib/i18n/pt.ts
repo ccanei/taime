@@ -25,6 +25,21 @@ export const pt = {
       trendsLabel:  'tendências mapeadas',
       window:       'Memória estratégica de tecnologia desde 2020',
     },
+    themes: {
+      label: '19 frentes de tecnologia sob análise contínua',
+      items: ['IA', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Data', 'Market', 'Fintech', 'Automation', 'Observability', 'Engineering', 'Edge', 'Healthtech', 'Sustainability', 'Quantum', 'Robotics', 'AI Governance', 'Spatial Computing', 'Networks'],
+    },
+    trajectory: {
+      label:    'Memória estratégica',
+      title:    'O mesmo tema, acompanhado através dos anos',
+      subtitle: 'É isso que memória estratégica significa: a trajetória, não a foto.',
+      moments: [
+        { period: '2023', label: 'A virada',        text: 'RPA evolui para agentes: a automação deixa de ser tarefa roteirizada e começa a virar camada de orquestração de processos.' },
+        { period: '2024', label: 'A governança',    text: 'Agentes assumem fluxos autônomos de múltiplos passos. Governança de agentes deixa de ser detalhe e vira passivo estratégico.' },
+        { period: '2026', label: 'O imperativo',    text: 'IA agêntica sai dos pilotos e passa a redesenhar o modelo operacional. Deixa de ser curiosidade e vira imperativo.' },
+        { period: '2027 · 2028', label: 'NEXT · horizonte', text: 'Consolidação à frente: a fragmentação de plataformas de agentes tende a poucos ambientes dominantes, e a escolha de hoje fica cada vez mais difícil de reverter.' },
+      ],
+    },
     trendCards: {
       label: 'Tendências recentes',
       title: 'O que o TAIME analisou nas últimas semanas.',
