@@ -46,6 +46,11 @@ export const en: Translations = {
       trends:  'trends mapped',
       since:   'Memory since 2020',
     },
+    tempo: { then: 'Then', now: 'Now', next: 'Next' },
+    heroGraph: {
+      title:    'How TAIME reads a technology',
+      subtitle: 'The full trajectory: where it came from, where it stands, where the signals point.',
+    },
     framework: {
       label:    'Proprietary methodology',
       title:    'The TAIME framework',

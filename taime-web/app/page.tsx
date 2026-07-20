@@ -407,12 +407,15 @@ export default async function LandingPage() {
             <div className="relative lg:pl-4">
               <div className="rounded-2xl bg-zinc-900/70 border border-white/10 shadow-2xl ring-1 ring-white/5
                               p-6 sm:p-7 backdrop-blur-sm">
-                {/* Grafico-assinatura da metodologia (THEN -> NOW -> NEXT) */}
-                <p className="text-[9px] font-bold tracking-widest text-taime-300 mb-3">
-                  {isEn ? 'THE TRAJECTORY, NOT THE SNAPSHOT' : 'A TRAJETÓRIA, NÃO A FOTO'}
+                {/* Grafico-assinatura da metodologia: a trajetoria de uma tecnologia */}
+                <p className="text-[10px] font-bold tracking-widest uppercase text-taime-300 mb-1.5">
+                  {h.heroGraph.title}
+                </p>
+                <p className="text-xs text-white/55 leading-relaxed mb-5 max-w-sm">
+                  {h.heroGraph.subtitle}
                 </p>
                 <SignatureGraphic
-                  labels={{ then: isEn ? 'Then' : 'Antes', now: isEn ? 'Now' : 'Hoje', next: isEn ? 'Next' : 'Adiante' }}
+                  labels={{ then: h.tempo.then, now: h.tempo.now, next: h.tempo.next }}
                   className="w-full h-auto mb-6"
                 />
 
@@ -782,7 +785,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── SEÇÃO 3b: O FRAMEWORK TAIME (metodologia como produto nomeado) ── */}
-      <FrameworkSection copy={h.framework} />
+      <FrameworkSection copy={h.framework} tempo={h.tempo} />
 
       {/* ── SEÇÃO 4: É ASSIM QUE A RESPOSTA SE PARECE (showcase) ──────── */}
       {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
@@ -847,19 +850,19 @@ export default async function LandingPage() {
                     <ScoreBars dims={showcaseDims} variant="showcase" />
                   </div>
 
-                  {/* THEN / NOW / NEXT — versão dark */}
+                  {/* Leitura temporal (ANTES / AGORA / A SEGUIR em PT), versao dark */}
                   <div>
-                    <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-3">
-                      THEN · NOW · NEXT
+                    <p className="text-[9px] font-bold tracking-widest uppercase text-zinc-500 mb-3">
+                      {h.tempo.then} · {h.tempo.now} · {h.tempo.next}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {[
-                        { label: 'THEN', val: stripPeriodLabel(showcaseTnn.then), tone: 'bg-zinc-800/40 border-white/10',        dot: 'bg-zinc-400',    lab: 'text-zinc-300' },
-                        { label: 'NOW',  val: showcaseTnn.now,                    tone: 'bg-emerald-500/[0.06] border-emerald-500/20', dot: 'bg-emerald-400', lab: 'text-emerald-300' },
-                        { label: 'NEXT', val: showcaseTnn.next,                   tone: 'bg-taime-500/[0.08] border-taime-500/30',     dot: 'bg-taime-400',   lab: 'text-taime-300' },
+                        { label: h.tempo.then, val: stripPeriodLabel(showcaseTnn.then), tone: 'bg-zinc-800/40 border-white/10',        dot: 'bg-zinc-400',    lab: 'text-zinc-300' },
+                        { label: h.tempo.now,  val: showcaseTnn.now,                    tone: 'bg-emerald-500/[0.06] border-emerald-500/20', dot: 'bg-emerald-400', lab: 'text-emerald-300' },
+                        { label: h.tempo.next, val: showcaseTnn.next,                   tone: 'bg-taime-500/[0.08] border-taime-500/30',     dot: 'bg-taime-400',   lab: 'text-taime-300' },
                       ].map(({ label, val, tone, dot, lab }) => (
                         <div key={label} className={`rounded-lg border ${tone} p-4`}>
-                          <p className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest mb-2 ${lab}`}>
+                          <p className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase mb-2 ${lab}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{label}
                           </p>
                           <p className="text-xs text-white/85 leading-relaxed line-clamp-4">{val}</p>
@@ -884,6 +887,18 @@ export default async function LandingPage() {
         title={h.trajectory.title}
         subtitle={h.trajectory.subtitle}
         moments={h.trajectory.moments}
+      />
+
+      {/* ── SEÇÃO 4c: EXECUTIVE ADVISOR (conversa animada) ─────────────── */}
+      <AdvisorDemo
+        label={h.advisor.label}
+        title={h.advisor.title}
+        subtitle={h.advisor.subtitle}
+        messages={h.advisor.messages}
+        ctaTitle={h.advisor.ctaTitle}
+        ctaBody={h.advisor.ctaBody}
+        cta={h.advisor.cta}
+        ctaHref="/ask"
       />
 
       {/* ── SEÇÃO 5: TENDÊNCIAS RECENTES (cards dinâmicos) + BUSCA ─────── */}
@@ -990,18 +1005,6 @@ export default async function LandingPage() {
           <NewsletterSignup variant="dark" />
         </div>
       </section>
-
-      {/* ── SEÇÃO 6b: EXECUTIVE ADVISOR (conversa animada) ─────────────── */}
-      <AdvisorDemo
-        label={h.advisor.label}
-        title={h.advisor.title}
-        subtitle={h.advisor.subtitle}
-        messages={h.advisor.messages}
-        ctaTitle={h.advisor.ctaTitle}
-        ctaBody={h.advisor.ctaBody}
-        cta={h.advisor.cta}
-        ctaHref="/ask"
-      />
 
       {/* ── SEÇÃO 7: PLANOS ──────────────────────────────────────────── */}
       <section id="planos" className="py-24">

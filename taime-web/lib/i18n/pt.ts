@@ -45,6 +45,11 @@ export const pt = {
       trends:  'tendências mapeadas',
       since:   'Memória desde 2020',
     },
+    tempo: { then: 'Antes', now: 'Agora', next: 'A seguir' },
+    heroGraph: {
+      title:    'Como o TAIME lê uma tecnologia',
+      subtitle: 'A trajetória completa: de onde veio, onde está, para onde os sinais apontam.',
+    },
     framework: {
       label:    'Metodologia proprietária',
       title:    'O framework TAIME',
