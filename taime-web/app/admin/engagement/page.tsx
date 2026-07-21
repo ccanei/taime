@@ -7,6 +7,8 @@ import EngagementAdmin from './EngagementAdmin'
 import type { EngagementRow } from './EngagementAdmin'
 import AnonAdvisorSection from './AnonAdvisorSection'
 import type { AnonAdvisorSummary } from './AnonAdvisorSection'
+import ContactRequestsSection from './ContactRequestsSection'
+import type { ContactRequestRecord, ConvMessage } from './ContactRequestsSection'
 
 // A view user_engagement_monthly é entregue em add-engagement-view.sql mas
 // pode ainda não ter sido executada no banco. Distinguimos "view ausente" de
@@ -128,6 +130,65 @@ async function getAnonAdvisor(): Promise<AnonAdvisorSummary> {
   }
 }
 
+// Pedidos de contato do Advisor logado: lista + conversa associada (advisory_memory
+// do conversation_id) + plano do usuario. Graceful se a tabela ainda nao existe.
+async function getContactRequests(): Promise<{ rows: ContactRequestRecord[]; tableMissing: boolean }> {
+  const supabase = createSupabaseService()
+  const { data, error } = await supabase
+    .from('contact_requests')
+    .select('id, created_at, subject, message, status, conversation_id, user_id, users(email, full_name)')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) {
+    return { rows: [], tableMissing: true } // 42P01 = tabela ausente (migration nao aplicada)
+  }
+
+  type Raw = {
+    id: string; created_at: string; subject: string; message: string; status: string
+    conversation_id: string | null; user_id: string
+    users: { email: string | null; full_name: string | null } | { email: string | null; full_name: string | null }[] | null
+  }
+  const raw = (data ?? []) as Raw[]
+
+  // Plano por usuario.
+  const userIds = [...new Set(raw.map(r => r.user_id))]
+  const planByUser = new Map<string, string>()
+  if (userIds.length) {
+    const { data: subs } = await supabase.from('subscriptions').select('user_id, plan').in('user_id', userIds)
+    for (const s of (subs ?? []) as { user_id: string; plan: string | null }[]) {
+      if (s.plan) planByUser.set(s.user_id, s.plan)
+    }
+  }
+
+  // Conversa por conversation_id (advisory_memory), ordem cronologica.
+  const convIds = [...new Set(raw.map(r => r.conversation_id).filter((x): x is string => !!x))]
+  const convById = new Map<string, ConvMessage[]>()
+  if (convIds.length) {
+    const { data: msgs } = await supabase
+      .from('advisory_memory')
+      .select('session_id, role, content, created_at')
+      .in('session_id', convIds)
+      .order('created_at', { ascending: true })
+      .limit(2000)
+    for (const m of (msgs ?? []) as { session_id: string; role: string; content: string }[]) {
+      const arr = convById.get(m.session_id) ?? []
+      arr.push({ role: m.role, content: m.content })
+      convById.set(m.session_id, arr)
+    }
+  }
+
+  const rows: ContactRequestRecord[] = raw.map(r => {
+    const u = Array.isArray(r.users) ? r.users[0] : r.users
+    return {
+      id: r.id, created_at: r.created_at, subject: r.subject, message: r.message, status: r.status,
+      email: u?.email ?? null, full_name: u?.full_name ?? null,
+      plan: planByUser.get(r.user_id) ?? 'free',
+      conversation: r.conversation_id ? (convById.get(r.conversation_id) ?? []) : [],
+    }
+  })
+  return { rows, tableMissing: false }
+}
+
 export const metadata = { title: 'Engajamento · TAIME Admin' }
 
 export default async function AdminEngagementPage() {
@@ -138,6 +199,7 @@ export default async function AdminEngagementPage() {
 
   const { rows, viewMissing } = await getEngagement()
   const anon = await getAnonAdvisor()
+  const contact = await getContactRequests()
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -177,6 +239,11 @@ export default async function AdminEngagementPage() {
         ) : (
           <EngagementAdmin rows={rows} />
         )}
+
+        {/* Pedidos de contato do Advisor logado. */}
+        <div className="mt-14 pt-10 border-t border-zinc-200">
+          <ContactRequestsSection initial={contact.rows} tableMissing={contact.tableMissing} />
+        </div>
 
         {/* Advisor anonimo (/ask): bloco separado, abaixo do engagement logado. */}
         <div className="mt-14 pt-10 border-t border-zinc-200">

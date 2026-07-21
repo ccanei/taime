@@ -5,6 +5,10 @@ import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useLocale } from '@/lib/useLocale'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
+import AdvisorContactModal from '@/components/AdvisorContactModal'
+
+// Intencao de contato humano: pedir para falar com alguem/equipe/suporte/comercial.
+const HANDOFF_RE = /\b(falar|conversar|contat\w+)\b[^.?!]{0,40}\b(algu[eé]m|uma pessoa|humano|pessoa real|equipe|time|suporte|comercial|vendas|atendimento|respons[aá]vel)\b|\b(talk|speak|connect|get in touch)\b[^.?!]{0,40}\b(someone|a (human|person|rep)|the team|sales|support|a human)\b|\b(human (support|agent|being)|real person|contact (the )?(team|support|sales))\b/i
 
 interface Message {
   id:         string
@@ -114,6 +118,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [loading,    setLoading]    = useState(false)
   const [sessionId,  setSessionId]  = useState<string>('')
   const [hasHistory, setHasHistory] = useState(false)
+
+  // Contato humano: popup (valvula) + oferta contextual quando a intencao aparece.
+  const [contactOpen,    setContactOpen]    = useState(false)
+  const [handoffOffered, setHandoffOffered] = useState(false)
 
   const [sessions,     setSessions]     = useState<SessionRow[]>([])
   const [viewArchived, setViewArchived] = useState(false)
@@ -333,6 +341,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         created_at: new Date().toISOString(),
       }
       setMessages(prev => [...prev, assistantMsg])
+      // Intencao de contato humano: o Advisor respondeu normalmente; alem disso,
+      // oferecemos abrir o popup de contato. O Advisor segue a via principal.
+      if (HANDOFF_RE.test(text)) setHandoffOffered(true)
       // Atualiza o contador com o estado real vindo do servidor; se esta foi a
       // ultima mensagem permitida, bloqueia o proximo envio.
       if (typeof json.used === 'number') {
@@ -491,10 +502,16 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
             {onOpenProfile && (
               <button
                 onClick={onOpenProfile}
-                className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap">
+                className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap hidden sm:block">
                 {isPt ? 'Completar meu perfil' : 'Complete my profile'}
               </button>
             )}
+            {/* Valvula discreta: falar com a equipe. O Advisor segue como via principal. */}
+            <button
+              onClick={() => setContactOpen(true)}
+              className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap">
+              {isPt ? 'Falar com a equipe' : 'Talk to the team'}
+            </button>
           </div>
         </div>
 
@@ -592,6 +609,29 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           <div ref={bottomRef} />
         </div>
 
+        {/* Oferta contextual: aparece quando o usuario pede contato humano. */}
+        {handoffOffered && !contactOpen && (
+          <div className="border-t border-taime-100 bg-taime-50/60 px-4 py-2.5 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-600 leading-snug">
+              {isPt ? 'Prefere falar com uma pessoa do time?' : 'Prefer to reach a person on the team?'}
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setContactOpen(true)}
+                className="text-xs font-semibold text-white bg-taime-600 hover:bg-taime-700 transition-colors rounded-lg px-3 py-1.5">
+                {isPt ? 'Falar com a equipe' : 'Talk to the team'}
+              </button>
+              <button
+                onClick={() => setHandoffOffered(false)}
+                aria-label={isPt ? 'Dispensar' : 'Dismiss'}
+                className="text-zinc-400 hover:text-zinc-600 p-1">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Input (ou CTA de upgrade quando a cota esgota) */}
         <div className="border-t border-zinc-100 bg-white px-4 py-3">
           {blocked ? (
@@ -637,6 +677,14 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           )}
         </div>
       </div>
+
+      {contactOpen && (
+        <AdvisorContactModal
+          isPt={isPt}
+          conversationId={sessionId || null}
+          onClose={() => { setContactOpen(false); setHandoffOffered(false) }}
+        />
+      )}
     </div>
   )
 }

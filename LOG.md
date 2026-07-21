@@ -2,6 +2,377 @@
 
 ---
 
+## [2026-07-21] - Contato contextual no Advisor logado + redirect do /ask para logados
+
+### Parte A: pedido de contato humano dentro do Advisor (SO logado; /ask intacto)
+- Migracao NOVA (aplicar a mao): taime-web/add-contact-requests.sql. Tabela
+  contact_requests (id uuid_generate_v4, user_id FK users, conversation_id uuid =
+  session_id do Advisor, subject, message, status new/replied com CHECK, created_at;
+  indices em user_id e status; RLS sem policy = so service key). Validada contra
+  TAIME SQL UPDATED (padrao de advisory_memory).
+- /api/advisor/contact: grava o pedido com o conversation_id da conversa atual;
+  identidade (user_id/email/nome/plano) vem da SESSAO, nunca do client. Notifica o
+  admin por email via Resend (mesmo destino/config do /api/contact existente:
+  from johnb@taime.tech -> claudineicanei1@gmail.com; o /api/feedback nao tinha
+  email). Email leva nome/email/plano/assunto/mensagem, SEM transcricao. Fail-silent:
+  se o email falhar, o pedido fica gravado.
+- AdvisorChat: botao discreto permanente "Falar com a equipe" no header (valvula, nao
+  atalho; o Advisor segue como via principal). Deteccao de intencao de contato humano
+  na mensagem do usuario (regex PT/EN) mostra uma oferta contextual acima do input
+  apos a resposta. Popup (AdvisorContactModal): assunto (select Comercial/Suporte/
+  Feedback/Outro) + mensagem, aviso de transparencia "A equipe podera ver esta
+  conversa...", PT/EN. Nome/email/plano nao sao perguntados (vem da sessao).
+- /admin/engagement: secao "Pedidos de contato" (admin-only, mesma protecao):
+  usuario/plano/assunto/mensagem/status/data, conversa da sessao expandivel (lida de
+  advisory_memory pelo conversation_id), e acao "marcar como respondido"
+  (/api/admin/contact-request). Graceful se a tabela ainda nao existe.
+
+### Parte B: /ask redireciona logados
+- /ask/page.tsx: se ha sessao valida, redirect server-side para /dashboard/advisor
+  antes de renderizar a experiencia anonima. /ask fica exclusivo de anonimos. Nada
+  mais mudou no /ask (limites, Turnstile, cookies, telemetria intactos).
+
+### Pendente (acao do usuario)
+- APLICAR taime-web/add-contact-requests.sql no Supabase ANTES de testar a Parte A.
+  Ate la: o popup grava e retorna erro (tabela ausente) e o admin mostra o aviso de
+  migracao; o resto (botao, oferta, redirect do /ask) ja funciona.
+- Build 0 erros, parity PT/EN, sem travessao. NAO commitado ainda no fim desta linha.
+
+---
+
+## [2026-07-20] - Batch historico 2018 MENSAL: 12 meses com Opus 4.8, sem publicar (EM EXECUCAO)
+
+### Objetivo
+- Gerar os 12 periodos MENSAIS de 2018, com Opus 4.8, do mais novo para o mais
+  antigo, validar SEM publicar. Mesmo padrao do batch 2019 (que fechou 11/11 sem
+  falhas). 2018 desce mais um degrau na cobertura das fontes vs 2019.
+
+### Pre-voo
+- GENERATION_MODEL = 'claude-opus-4-8', temperature comentado (confirmado).
+  NO_AUTO_PUBLISH=1 exportado.
+- 2018 = MONTHLY (period-utils, corte year <= 2019). parsePeriod('2018-12-01') =
+  monthly, janela dez 1-31. Confirmado (Intervalo 2018-12-01 -> 2018-12-31).
+- Os 12 periodos de 2018 estavam 100% limpos (0 reports/clusters).
+- Nenhum processo do pipeline rodando na largada. Backup: batch-progress.json ->
+  batch-progress-2019.json.bak. batch-periods.json e batch-progress.json
+  reinicializados com os 12 de 2018.
+- Protecoes confirmadas: sourceDomain (https em dominio nu), extractFirstJsonObject
+  (parse robusto do JSON), stripLoneSurrogates (generate/analyze).
+- caffeinate -i -w <pid> em background.
+
+### Execucao
+- Lancado destacado: nohup npx ts-node batch-pipeline.ts >> batch-2018.log (12
+  periodos mensais, dez -> jan). Regra: periodo que falha (rede/parse/rate limit OU
+  densidade < 4 clusters) vai para progress.failed e o batch SEGUE; nunca aborta.
+  Falha por densidade minima e RESULTADO do teste de viabilidade de 2018, nao erro.
+- Retomar: npx ts-node batch-pipeline.ts --resume.
+
+### Metricas finais
+- PENDENTE (batch roda por horas, 12 x Opus): por mes (brutos/uteis/ruido, clusters/
+  trends/reports, verdict, temporal_breach), curva de densidade vs 2019 (601/493/17.7),
+  fontes com zero por mes e apagadas o ano todo (vs 62/mes e 21 de 2019), custo Opus
+  e confirmacao pending_review/published_at=null: apurados ao concluir (nova passada).
+
+### Lembrete do modelo
+- Apos este batch, generate-report.ts fica em OPUS. Proximo periodo PRESENTE
+  (ago/2026+) exige reverter para 'claude-sonnet-4-6' e DESCOMENTAR o temperature.
+
+---
+
+## [2026-07-19] - Batch historico 2019 MENSAL: jan-nov com Opus 4.8, sem publicar (CONCLUIDO 11/11)
+
+### Objetivo
+- Gerar os 11 periodos MENSAIS de 2019 (jan a nov; dez/2019 ja existe do teste A/B
+  e NAO foi tocado), com Opus 4.8, do mais novo para o mais antigo, validar SEM
+  publicar. 2019 = ano mais antigo ate agora; densidade esperada menor que 2020+.
+
+### Pre-voo
+- GENERATION_MODEL = 'claude-opus-4-8', temperature comentado (confirmado).
+  NO_AUTO_PUBLISH=1 exportado.
+- 2019 = MONTHLY (period-utils, corte year <= 2019 do teste A/B). parsePeriod
+  ('2019-11-01') = monthly, janela nov 1-30. Confirmado.
+- Os 11 periodos (jan-nov/2019) estavam 100% limpos (0 reports/clusters). 2019-12-01
+  (mensal do A/B) tem 3 reports pending_review e FICA FORA da lista, intacto.
+- Nenhum processo do pipeline rodando na largada. Backup: batch-progress.json ->
+  batch-progress-prev.json.bak. batch-periods.json e batch-progress.json
+  reinicializados com os 11 de 2019.
+- Protecoes confirmadas: sourceDomain (https em dominio nu), extractFirstJsonObject
+  (parse robusto do JSON), stripLoneSurrogates (generate/analyze).
+- caffeinate -i -w <pid> em background.
+
+### Execucao
+- Lancado destacado: nohup npx ts-node batch-pipeline.ts >> batch-2019.log (11
+  periodos mensais, nov -> jan). Regra: periodo que falha (rede/parse/rate limit OU
+  densidade < 4 clusters) vai para progress.failed e o batch SEGUE; nunca aborta.
+  Falha por densidade minima e RESULTADO do teste de viabilidade de 2019, nao erro.
+- Retomar: npx ts-node batch-pipeline.ts --resume.
+
+### Resultado: 11/11 CONCLUIDOS, 0 falhas (nenhum mes falhou por densidade)
+- 33 reports (3 por mes), 195 trends, TODOS pending_review, published_at=null.
+  NADA publicado (published=0, fora-de-pending=0; NO_AUTO_PUBLISH funcionou).
+
+### Metricas por mes (brutos / uteis / %ruido / clusters / verdicts / tbreach)
+- 2019-11: 653 / 532 / 18.5% / 18 / needs_review,fail,fail / tb 3
+- 2019-10: 671 / 566 / 15.6% / 18 / needs_review,fail,fail / tb 1
+- 2019-09: 586 / 478 / 18.4% / 18 / fail,pass,fail / tb 0
+- 2019-08: 587 / 492 / 16.2% / 18 / pass,pass,needs_review / tb 0
+- 2019-07: 589 / 453 / 23.1% / 18 / fail,fail,fail / tb 0
+- 2019-06: 589 / 482 / 18.2% / 18 / fail,pass,fail / tb 4
+- 2019-05: 589 / 478 / 18.8% / 18 / fail,fail,fail / tb 2
+- 2019-04: 600 / 478 / 20.3% / 16 / fail,fail,fail / tb 1
+- 2019-03: 572 / 475 / 17.0% / 18 / needs_review,fail,pass / tb 2
+- 2019-02: 602 / 526 / 12.6% / 18 / fail,pass,fail / tb 2
+- 2019-01: 574 / 467 / 18.6% / 17 / needs_review,fail,fail / tb 0
+- Media mensal 2019: 601 brutos / 493 uteis / ~18% ruido / 17.7 clusters. Todos os
+  meses >= 16 clusters (bem acima do minimo de 4): NENHUM falhou por densidade.
+- temporal_breach: 15 no total em 33 reports (~0.45/report), baixo como esperado do
+  Opus. Verdicts em geral fail/needs_review: rigor do validador em grounding/
+  temporal de periodo antigo, NAO densidade; tudo pending_review para revisao humana.
+
+### Curva de densidade (leitura de viabilidade)
+- 2019 mensal (1 coleta por mes):   601 brutos / 493 uteis / 17.7 clusters.
+- dez/2019 A/B (2 coletas mescladas): 926 brutos / 678 uteis / 18 clusters.
+- 2020 biweekly (1 coleta por metade): 518 brutos / 415 uteis / 16.6 clusters.
+- 2020 equivalente mensal (2 metades):  1035 brutos / 831 uteis / 33.2 clusters.
+- LEITURA: comparando por COLETA, uma coleta mensal de 2019 (601 brutos) rende MAIS
+  que uma coleta biweekly de 2020 (518), porque a janela mensal (30d) e mais larga.
+  O numero de dez/2019 (926) era alto por MESCLAR duas coletas; a cadencia mensal com
+  UMA coleta por mes entrega ~601/493, folgado acima do saudavel (>250 uteis, >8
+  clusters). 2019 e solidamente viavel como mensal. 2018 e anteriores devem seguir
+  viaveis como mensais, com a ressalva de que a fracao de fontes "apagadas" cresce
+  indo para tras (ver abaixo); o ponto de ruptura provavel fica mais para ~2016-2015.
+
+### Cobertura de fontes em 2019
+- Media de 62 das 175 fontes retornaram +0 sinais por mes (~35%). 21 fontes
+  retornaram 0 em TODOS os 11 meses (apagadas para 2019, ~12%). Ou seja, ~113/175
+  fontes contribuiram ativamente em 2019. Indo para 2018-2015, mais fontes apagam.
+
+### Custo e resiliencia
+- Opus (geracao) estimado: ~USD 58 (2.40M in, 1.06M out, 28.7M cache read, 0.82M
+  cache write, 456 chamadas de trend). 1 retry transitorio de rede. 0 erros de
+  surrogate/parse (sourceDomain, extractFirstJsonObject e stripLoneSurrogates
+  seguraram; a coleta mensal completou sem crash de URL).
+
+### Retomar / pulados
+- Nenhum falho, nenhum pulado. 2019-12-01 (A/B) ficou fora e intacto (3 reports
+  pending_review). Se preciso: npx ts-node batch-pipeline.ts --resume (progress vazio).
+
+### Lembrete do modelo
+- Apos este batch, generate-report.ts fica em OPUS. Proximo periodo PRESENTE
+  (ago/2026+) exige reverter para 'claude-sonnet-4-6' e DESCOMENTAR o temperature.
+
+---
+
+## [2026-07-19] - TESTE DE DENSIDADE dez/2019 FASE 2 (mensal) + REGRA NOVA DE CADENCIA
+
+### Objetivo
+- Fase 2 do A/B: regerar dez/2019 como MENSAL unico, reutilizando os sinais ja
+  coletados nas duas quinzenas da fase 1, e comparar a validacao. Pergunta: o
+  mensal valida limpo onde o quinzenal dava bloqueantes, com a MESMA materia-prima?
+
+### Mecanismo de cadencia (investigado antes de mexer)
+- Ponto UNICO: period-utils.ts getPeriodType(year) decidia biweekly vs monthly por
+  ano ('if year <= 2014 monthly else biweekly'). Por isso 2019 caia como quinzenal.
+- Periodo mensal = period 'YYYY-MM-01' com type=monthly; parsePeriod da janela do
+  mes inteiro (dia 1 a ultimo) e label "Mes de AAAA".
+- O pipeline carrega sinais/clusters por PERIOD EXATO (signals?period=eq.PERIOD no
+  analyze; clusters por period; reports por period), NAO por intervalo de datas.
+
+### Intervencao minima e reversivel (agora PERMANENTE, provada pelo A/B)
+- period-utils.ts: corte movido de 2014 para 2019. getPeriodType: 'if year <= 2019
+  return monthly; return biweekly'. Ou seja: MENSAL ate 2019, QUINZENAL so de 2020
+  em diante. tsc --noEmit: 0 erros. parsePeriod('2019-12-01') agora = monthly,
+  janela 2019-12-01 a 2019-12-31, label "Dezembro de 2019".
+
+### Limpeza do teste quinzenal (antes de regerar)
+- Deletados (signals PRESERVADOS): 35 report_trends, 6 reports, 35 signal_clusters
+  (3+3 reports e 18+17 clusters/trends de 2019-12-01 e 2019-12-16).
+- Sinais: como o load e por period exato, movidos os 436 sinais de 2019-12-16 para
+  period 2019-12-01 (reversivel; contagem registrada). 2019-12-01 passou a ter 926
+  sinais totais, 678 uteis (is_noise=false); 2019-12-16 ficou vazio. Filter/is_noise
+  preservado (nao re-filtrado; nao re-coletado).
+
+### Resultado MENSAL 2019-12 (pending_review, published_at=null, 0 publicado)
+- 678 sinais uteis -> 18 clusters (23 formados, capado nos 18 mais densos) -> 18
+  trends -> 3 reports. Score medio 71. Custo Opus adicional da geracao ~ (18 trends
+  PT+EN + metadata, sobre cache).
+- Verdicts: report 1 PASS, report 2 NEEDS_REVIEW (so warnings), report 3 PASS.
+- temporal_breach: 0. Flags bloqueantes: 0. Warnings: 5 (nao bloqueiam).
+
+### A/B (mesmo mes, mesma materia-prima)
+- QUINZENAL (fase 1): 2 periodos, 6 reports, verdicts fail/fail/fail (2019-12-16) e
+  needs_review/fail/pass (2019-12-01) = 4 de 6 com BLOQUEANTE; temporal_breach 3.
+  Clusters fragmentados (17 + 18 em duas metades finas).
+- MENSAL (fase 2): 1 periodo, 3 reports, 2 PASS + 1 NEEDS_REVIEW, 0 bloqueante,
+  0 temporal_breach. 18 clusters densos de um pool unico.
+- Leitura: fatiar dez/2019 em duas quinzenas finas deixava cada cluster com poucos
+  sinais -> grounding fraco -> o modelo completava com afirmacoes nao suportadas ->
+  bloqueantes. O pool mensal adensa os clusters -> validacao limpa. PROVADO.
+
+### Conclusao (regra nova permanente)
+- REGRA VALIDADA com A/B do mesmo mes: QUINZENAL so de 2020 em diante; MENSAL de 2019
+  para tras. O corte em period-utils.ts (2019) fica PERMANENTE. Para 2018-2015, gerar
+  como mensal (getPeriodType ja resolve). Nao commitado (diff para revisao).
+
+### Modelo
+- GENERATION_MODEL segue em OPUS (historico). Para periodo PRESENTE futuro, reverter
+  para Sonnet + descomentar temperature.
+
+---
+
+## [2026-07-19] - TESTE DE DENSIDADE dez/2019 (piloto de decisao de cadencia)
+
+### Objetivo
+- Gerar as duas quinzenas de dez/2019 (2019-12-16 e 2019-12-01) com o pipeline
+  normal (Opus 4.8, sem publicar) para medir se a cadencia quinzenal se sustenta em
+  2019. Piloto de decisao, nao producao.
+
+### Pre-voo
+- Batch 2020 TERMINADO (24/24 com relatorio vivo); nenhum processo do pipeline
+  rodando (so um caffeinate -t 300 avulso, sem relacao). GENERATION_MODEL =
+  'claude-opus-4-8', temperature comentado (confirmado). NO_AUTO_PUBLISH=1.
+- 2019-12-16 e 2019-12-01 vazios (0 reports/clusters/signals). 2019 = biweekly
+  (period-utils: quinzenal de 2015 em diante).
+
+### Resultado por quinzena (tudo pending_review, published_at=null, 0 publicado)
+- 2019-12-16: 436 brutos, 332 uteis (is_noise=false), 23.9% ruido, 17 clusters,
+  3 reports, 17 trends, verdicts fail/fail/fail, temporal_breach 3 (frases com
+  janela "through 2020", hindsight leve, pego pelo validador). 74/175 fontes
+  retornaram 0 sinais.
+- 2019-12-01: 490 brutos, 346 uteis, 29.4% ruido, 18 clusters, 3 reports, 18 trends,
+  verdicts needs_review/fail/pass, temporal_breach 0. 65/175 fontes retornaram 0.
+
+### Leitura de densidade (regua: 250+ uteis e 8+ clusters = quinzenal saudavel)
+- AS DUAS quinzenas sao QUINZENAL SAUDAVEL com folga: 332/346 uteis (>250) e 17/18
+  clusters (>8). Dez/2019 sustenta quinzenal claramente.
+- Baselines (media 24 periodos): 2021 = 429 uteis / 17.1 clusters / 20.9% ruido;
+  2020 = 415 uteis / 16.6 clusters / 19.7% ruido; dez/2019 = ~339 uteis / 17.5
+  clusters / ~26.7% ruido.
+- Curva: uteis caem ~21% de 2020 (415) para dez/2019 (339), mas seguem bem acima de
+  250. Clusters ficam estaveis (17-18, ate acima da media de 2020/2021, pois o
+  analyze capa em 18). Ruido SOBE indo para tras (20.9 -> 19.7 -> ~26.7%).
+- Fontes "inexistentes" para tras: ~40% das 175 fontes atuais (74 e 65) retornaram
+  0 em dez/2019; ~100-110 "existiam". Indo para 2018-2015, mais fontes apagam, o que
+  ACELERA a queda de densidade alem do drop de sinais-por-fonte.
+- Extrapolacao grosseira: com queda ~20%/ano em uteis e mais fontes apagando,
+  quinzenal deve segurar ate ~2017-2018, ficar anemico ~2016 e virar insustentavel
+  <=2015. Ressalva: dez e mes de menor atividade (feriados); outros meses de 2019
+  tendem a ser mais densos, entao esta leitura de dez e conservadora (piso).
+
+### Ruido das fontes novas (separado): NAO isolavel agora
+- As 16 fontes novas da leva do radar tinham URL sem esquema; foram NORMALIZADAS na
+  tabela sources desde o run de julho (0 fontes de dominio nu agora), entao o split
+  por coorte via heuristica de URL nao e mais possivel. O ruido geral elevado
+  (23.9%/29.4% vs 19.7% de 2020) e direcionalmente consistente com fontes mais novas/
+  amplas rendendo mais ruido em janelas historicas.
+
+### Custo e resiliencia
+- Opus (geracao) estimado: ~USD 8.64 (370k in, 190k out, 4.1M cache read; 82 chamadas
+  de trend). 0 retries de rede. sourceDomain/extractFirstJsonObject/stripLoneSurrogates
+  funcionaram (coleta completa sem crash de URL, analyze parseou o JSON do Opus).
+
+### Modelo
+- GENERATION_MODEL fica em OPUS. Para periodo PRESENTE futuro, reverter para Sonnet +
+  descomentar temperature.
+
+---
+
+## [2026-07-18] - Batch historico 2020: 24 quinzenas com Opus 4.8, sem publicar (EM EXECUCAO)
+
+### Objetivo
+- Gerar os periodos quinzenais de 2020 que faltam, com Opus 4.8, do mais novo para
+  o mais antigo (dez -> jan), validar SEM publicar. Batch autonomo, destacado.
+- 2020 e o periodo mais antigo ja gerado (pre-pandemia consolidada / comeco do boom
+  remoto); densidade e mix de fontes da epoca diferem de 2021-2023.
+
+### Pre-voo, REVERSAO DO MODELO (obrigatoria)
+- A geracao do periodo presente 2026-07-01 tinha deixado generate-report.ts em
+  Sonnet. REVERTIDO para o batch historico:
+  - GENERATION_MODEL: 'claude-sonnet-4-6' -> 'claude-opus-4-8' (linha 76).
+  - temperature: 0.1 RECOMENTADO nas duas chamadas (linhas ~896 e ~970). O Opus 4.8
+    depreca o parametro; se ficar ativo, as chamadas falham.
+  - npx tsc --noEmit: 0 erros apos a reversao.
+
+### Pre-voo, restante
+- NO_AUTO_PUBLISH=1 exportado no ambiente do batch (herdado pelos execSync filhos).
+- 2020 = biweekly (period-utils: quinzenal de 2015 em diante). Confirmado.
+- Estado: dos 24 periodos de 2020, 1 JA TEM relatorio vivo (2020-06-01): PULADO
+  (nao regenera, nao deleta), fora do batch-periods.json. 23 periodos vazios -> gerar.
+- Backup: batch-progress.json (do 2021) copiado para batch-progress-prev-2021.json.bak.
+  batch-periods.json e batch-progress.json reinicializados com os 23 periodos de 2020.
+- Nenhum processo do pipeline rodando na largada (o pipeline de 2026-07-01 ja tinha
+  terminado, PIPELINE3_DONE).
+- Resiliencia confirmada presente antes de rodar: sourceDomain (prefixo https em
+  fontes de dominio nu, collect-signals), extractFirstJsonObject (parse robusto do
+  JSON do analyze) e stripLoneSurrogates (generate/analyze). As duas primeiras foram
+  adicionadas ao corrigir a coleta de 2026-07-01 (16 das 175 fontes ativas tinham
+  URL sem esquema e derrubavam a coleta; o Sonnet as vezes punha prosa apos o JSON).
+- caffeinate -i -w <pid do batch> em background para manter o Mac acordado.
+
+### Execucao
+- Lancado destacado: nohup npx ts-node batch-pipeline.ts >> batch-2020.log (23
+  periodos, dez->jan). Regra: periodo que falha (rede/parse/rate limit) vai para
+  progress.failed e o batch SEGUE; nunca aborta o batch inteiro. Cluster/sinais
+  pre-existentes num periodo: PULA e registra, nao deleta.
+- Retomar apos falhas transitorias: npx ts-node batch-pipeline.ts --resume.
+
+### Metricas finais
+- PENDENTE: o batch roda por varias horas (23 periodos x Opus). Metricas por periodo
+  (sinais, is_noise %, clusters/trends, relatorios, verdict, temporal_breach), custo
+  Opus e confirmacao de pending_review/published_at=null serao apuradas ao concluir.
+
+### Lembrete do modelo
+- Apos ESTE batch, generate-report.ts fica em OPUS. Se o proximo trabalho for periodo
+  PRESENTE (ago/2026+), reverter para 'claude-sonnet-4-6' e DESCOMENTAR o temperature.
+
+---
+
+## [2026-07-16] - Ponte Radar to Signals (enriquecimento opcional, grounded)
+
+### Objetivo
+- Criar `promote-radar-signals.ts` (RAIZ) que promove sinais do Radar
+  (`radar_signals`) para `signals` como ENRIQUECIMENTO adicional a coleta normal,
+  nunca substituta. Passo OPCIONAL que roda entre collect e filter.
+
+### Grounding (requisito inviolavel, cumprido)
+- A ponte usa o Radar so como LISTA DE URLs candidatas e busca o CONTEUDO ORIGINAL
+  de cada URL (fetch do artigo, mesma extracao do collect-signals). O
+  `summary_pt/en` do Radar NUNCA vira base factual (so serviu para triagem de
+  relevancia). `title_pt/en` do Radar so como rotulo de fallback, nunca fato.
+  `metadata.snippet` sai de um slice do conteudo ORIGINAL, nao do Radar.
+
+### O que faz
+1. Seleciona candidatos cuja data efetiva (`published_at` quando presente, senao
+   `collected_at`) cai na janela quinzenal do periodo (via `period-utils`), ordenados
+   por relevance (high>medium>low). Fetch do Radar por superset (or= collected/
+   published na janela) + filtro autoritativo por data efetiva no codigo (string
+   YYYY-MM-DD, sem armadilha de fuso).
+2. Dedup por URL contra `signals` do mesmo periodo (idempotente; Set em memoria).
+3. Resolve `source_id` pelo dominio da URL contra `sources` (match exato do host
+   sem www, ou subdominio). Sem match: pula (`skipped_no_source`), sem inventar fonte.
+4. Fetch do conteudo original. Falha/timeout/paywall/vazio (<200 chars): pula
+   (`skipped_fetch_failed`).
+5. Insere sobreviventes em `signals` com `source_id`, `period` (arg cru), title (do
+   `<title>` original, fallback rotulo Radar), content (original), summary null,
+   `is_noise:false`, `metadata.origin='radar_bridge'` (+ rastreabilidade). O
+   filter-signals (Haiku) roda depois e pode remarcar is_noise.
+
+### Modo de teste
+- `--dry-run` (ou `DRY_RUN=1`) faz tudo INCLUSIVE o fetch (para medir rendimento
+  real), mas NAO insere. Relatorio no fim: candidatos, dedup, no_source,
+  fetch_failed, inseridos/inseriria.
+
+### Rendimento observado (dry-run 2026-07-01)
+- 216 candidatos, 0 dedup, 205 sem fonte curada, 5 fetch falho, 6 inseriria. O
+  Radar cobre dominios muito mais amplos que as 162 fontes curadas, entao a maioria
+  cai em `skipped_no_source`: entra pouco, mas curado e grounded.
+
+### Nao mexeu em
+- collect/analyze/generate/validate intactos. Novo arquivo isolado + doc
+  (`TAIME_guia_geracao_lotes.md`, criado). tsc --noEmit: 0 erros. Nao commitado.
+
+---
+
 ## [2026-07-15] - Telemetria do Advisor anonimo (/ask) + secao no /admin/engagement
 
 ### Objetivo
