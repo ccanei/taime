@@ -29,6 +29,21 @@ export const pt = {
       label: '19 frentes de tecnologia sob análise contínua',
       items: ['IA', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Data', 'Market', 'Fintech', 'Automation', 'Observability', 'Engineering', 'Edge', 'Healthtech', 'Sustainability', 'Quantum', 'Robotics', 'AI Governance', 'Spatial Computing', 'Networks'],
     },
+    themesCards: {
+      breadthTitle:  '19 frentes sob análise contínua',
+      depthTitle:    'Os temas que acompanhamos há mais tempo',
+      depthSubtitle: 'O mesmo tema, analisado ciclo após ciclo, por anos.',
+      depthItems: [
+        { name: 'Governança de IA',                          arc: '2018 → hoje' },
+        { name: 'Agentes autônomos de IA',                   arc: '2023 → hoje' },
+        { name: 'IA e cibersegurança: a corrida armamentista', arc: '2016 → hoje' },
+        { name: 'Computação quântica comercial',             arc: '2018 → hoje' },
+        { name: 'Soberania de semicondutores e geopolítica', arc: '2019 → hoje' },
+        { name: 'IA em serviços financeiros',                arc: '2018 → hoje' },
+        { name: 'Privacidade e fragmentação global de dados', arc: '2015 → hoje' },
+        { name: 'Energia e infraestrutura sustentável',      arc: '2016 → hoje' },
+      ],
+    },
     trajectory: {
       label:    'Memória estratégica',
       title:    'O mesmo tema, acompanhado através dos anos',

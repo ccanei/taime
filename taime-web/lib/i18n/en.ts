@@ -30,6 +30,21 @@ export const en: Translations = {
       label: '19 technology fronts under continuous analysis',
       items: ['AI', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Data', 'Market', 'Fintech', 'Automation', 'Observability', 'Engineering', 'Edge', 'Healthtech', 'Sustainability', 'Quantum', 'Robotics', 'AI Governance', 'Spatial Computing', 'Networks'],
     },
+    themesCards: {
+      breadthTitle:  '19 fronts under continuous analysis',
+      depthTitle:    'The themes we have tracked the longest',
+      depthSubtitle: 'The same theme, analyzed cycle after cycle, for years.',
+      depthItems: [
+        { name: 'AI governance',                             arc: '2018 → today' },
+        { name: 'Autonomous AI agents',                      arc: '2023 → today' },
+        { name: 'AI and cybersecurity: the arms race',       arc: '2016 → today' },
+        { name: 'Commercial quantum computing',              arc: '2018 → today' },
+        { name: 'Semiconductor sovereignty and geopolitics', arc: '2019 → today' },
+        { name: 'AI in financial services',                  arc: '2018 → today' },
+        { name: 'Privacy and global data fragmentation',     arc: '2015 → today' },
+        { name: 'Energy and sustainable infrastructure',     arc: '2016 → today' },
+      ],
+    },
     trajectory: {
       label:    'Strategic memory',
       title:    'The same theme, tracked across the years',

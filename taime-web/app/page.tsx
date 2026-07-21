@@ -125,6 +125,7 @@ interface RecentTrendRow {
   then_now_next_en:      ThenNowNext | null
   taime_framework_pt_br: TaimeFramework | null
   taime_framework_en:    TaimeFramework | null
+  reports?:              { period: string } | null
 }
 
 // Top trends por taime_score entre os últimos 5 períodos publicados.
@@ -236,30 +237,62 @@ export default async function LandingPage() {
     proofItems.push({ to: proof.trends, suffix: '', separator: true, label: h.proof.trendsLabel })
   }
 
-  // ── Cards de tendências: top por score, sem repetir theme_slug, 3 a 4. ──
+  // ── Cards de tendências: recencia+score, sem repetir theme_slug, E com
+  //    DIVERSIDADE de categoria (max 1 por categoria entre os 4; relaxa para 2
+  //    quando o periodo e pouco diverso). Evita a home dominada por um so tema. ──
   const seenTheme = new Set<string>()
-  const trendCardRows = recentRows.filter(r => {
+  const dedupedRows = recentRows.filter(r => {
     const key = r.theme_slug ?? r.title_en
     if (seenTheme.has(key)) return false
     seenTheme.add(key)
     return true
-  }).slice(0, 4)
+  })
+  // Chave de diversidade = categoria (as 19), MAS trends de IA agentica colapsam
+  // numa unica chave 'AGENTIC'. No arquivo atual, o tema agentico e classificado em
+  // varias categorias (Automation, IA, Cybersecurity, Fintech), entao a regra so por
+  // categoria ainda deixaria 3 cards agenticos; colapsar garante o resultado
+  // esperado: 1 agentico (o de maior score) + 3 de temas diferentes.
+  const isAgentic = (r: RecentTrendRow): boolean =>
+    /agent|ag[eê]ntic/i.test(`${r.theme_slug ?? ''} ${r.title_en} ${r.title_pt_br}`)
+  const divKey = (r: RecentTrendRow): string => (isAgentic(r) ? 'AGENTIC' : (r.category ?? '?'))
+
+  const CARD_COUNT = 4
+  const trendCardRows: typeof dedupedRows = []
+  const keyCount = new Map<string, number>()
+  const takeUnderCap = (cap: number) => {
+    for (const r of dedupedRows) {
+      if (trendCardRows.length >= CARD_COUNT) break
+      if (trendCardRows.includes(r)) continue
+      const k = divKey(r)
+      if ((keyCount.get(k) ?? 0) >= cap) continue
+      keyCount.set(k, (keyCount.get(k) ?? 0) + 1)
+      trendCardRows.push(r)
+    }
+  }
+  takeUnderCap(1)                       // passo 1: no maximo 1 por chave (categoria / agentic)
+  if (trendCardRows.length < CARD_COUNT) takeUnderCap(2) // passo 2: relaxa para 2
+  if (trendCardRows.length < CARD_COUNT)                 // passo 3: completa com o que houver
+    for (const r of dedupedRows) { if (trendCardRows.length >= CARD_COUNT) break; if (!trendCardRows.includes(r)) trendCardRows.push(r) }
 
   // ── Tópicos em pauta: 3 temas reais dos últimos reports (rótulo do título). ──
   const topicLabels = trendCardRows.slice(0, 3).map(r => topicLabel(isEn ? r.title_en : r.title_pt_br))
 
-  // ── Showcase: trend de maior score com dados completos no idioma ativo. ─
-  // Fallback: vai descendo a lista até achar uma com framework.score_dimensions
-  // + then_now_next + period embedidos. Se nada bater, a seção não renderiza.
-  // Pula topTrends[0] — essa é a trend usada pelo mockup "O que é o TAIME".
-  // O showcase pega a próxima com dados completos no idioma ativo, para
-  // que o visitante veja DUAS trends diferentes na home.
-  const showcase = topTrends.find((tr, idx) => {
-    if (idx === 0) return false
-    const fw  = isEn ? tr.taime_framework_en : tr.taime_framework_pt_br
-    const tnn = isEn ? tr.then_now_next_en   : tr.then_now_next_pt_br
-    return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next && !!tr.reports?.period
-  }) ?? null
+  // ── Showcase: trend CURADA de tema NAO-IA-centrico (infraestrutura de data
+  //    centers: energia, localizacao, escala e geopolitica), para diversificar a
+  //    vitrine hoje dominada por IA. Conteudo vem do banco (recentRows) pelo
+  //    theme_slug; usa o ciclo mais recente com dados completos. Fallback: a trend
+  //    de maior score com dados completos (comportamento antigo), para a secao
+  //    nunca ficar vazia se o tema curado sair do arquivo recente.
+  const SHOWCASE_THEME_SLUG = 'ia-energia-infraestrutura-sustentavel'
+  const hasFull = (r: RecentTrendRow): boolean => {
+    const fw  = isEn ? r.taime_framework_en : r.taime_framework_pt_br
+    const tnn = isEn ? r.then_now_next_en   : r.then_now_next_pt_br
+    return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next && !!r.reports?.period
+  }
+  const showcase: RecentTrendRow | null =
+    recentRows.find(r => r.theme_slug === SHOWCASE_THEME_SLUG && hasFull(r))
+    ?? recentRows.find(hasFull)
+    ?? null
   const showcaseFw     = showcase ? (isEn ? showcase.taime_framework_en : showcase.taime_framework_pt_br) : null
   const showcaseTnn    = showcase ? (isEn ? showcase.then_now_next_en   : showcase.then_now_next_pt_br)   : null
   const showcaseTitle  = showcase ? (isEn ? showcase.title_en           : showcase.title_pt_br)           : ''
@@ -487,20 +520,46 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 1c-2: BADGES DE TEMAS COBERTOS (19 frentes) ──────────── */}
-      <section className="border-t border-zinc-100 bg-zinc-50/60 py-10">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <p className="section-label mb-5 justify-center">{h.themes.label}</p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {h.themes.items.map(theme => (
-              <span
-                key={theme}
-                className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium
-                           bg-white text-zinc-600 border border-zinc-200"
-              >
-                {theme}
-              </span>
-            ))}
+      {/* ── SEÇÃO 1c-2: AMPLITUDE + PROFUNDIDADE (dois cards) ──────────── */}
+      {/* Mobile: card de profundidade primeiro (order-1). Desktop: lado a lado,
+          amplitude a esquerda. */}
+      <section className="border-t border-zinc-100 bg-zinc-50/60 py-16">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-6 items-start">
+
+            {/* Card 1: amplitude (19 frentes em chips) */}
+            <div className="order-2 lg:order-1 rounded-2xl border border-zinc-200 bg-white p-7">
+              <h3 className="text-lg font-bold text-zinc-900 mb-5">{h.themesCards.breadthTitle}</h3>
+              <div className="flex flex-wrap gap-2">
+                {h.themes.items.map(theme => (
+                  <span
+                    key={theme}
+                    className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium
+                               bg-zinc-50 text-zinc-600 border border-zinc-200"
+                  >
+                    {theme}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Card 2: profundidade (temas acompanhados ha mais tempo) */}
+            <div className="order-1 lg:order-2 rounded-2xl border border-taime-100 bg-white p-7">
+              <h3 className="text-lg font-bold text-zinc-900 mb-1.5">{h.themesCards.depthTitle}</h3>
+              <p className="text-sm text-zinc-500 leading-relaxed mb-5">{h.themesCards.depthSubtitle}</p>
+              <ul className="divide-y divide-zinc-100">
+                {h.themesCards.depthItems.map(it => (
+                  <li key={it.name} className="flex items-center justify-between gap-4 py-2.5">
+                    <span className="text-sm font-medium text-zinc-800 leading-snug">{it.name}</span>
+                    <span className="shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold
+                                     text-taime-700 bg-taime-50 tabular-nums whitespace-nowrap">
+                      {it.arc}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
           </div>
         </div>
       </section>
