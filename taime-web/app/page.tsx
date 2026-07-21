@@ -527,7 +527,6 @@ export default async function LandingPage() {
           <ThemeTimeline
             title={h.themesCards.title}
             subtitle={h.themesCards.subtitle}
-            footer={h.themesCards.footer}
             todayLabel={h.themesCards.today}
             sinceLabel={h.themesCards.since}
             items={h.themesCards.items}

@@ -25,11 +25,10 @@ function pos(year: number): number {
 }
 
 export default function ThemeTimeline({
-  title, subtitle, footer, todayLabel, sinceLabel, items,
+  title, subtitle, todayLabel, sinceLabel, items,
 }: {
   title:      string
   subtitle:   string
-  footer:     string
   todayLabel: string
   sinceLabel: string
   items:      TimelineItem[]
@@ -109,10 +108,6 @@ export default function ThemeTimeline({
           )
         })}
       </div>
-
-      {footer && (
-        <p className="mt-8 text-xs text-zinc-400">{footer}</p>
-      )}
     </div>
   )
 }

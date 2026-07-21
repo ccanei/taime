@@ -23,12 +23,11 @@ export const pt = {
     proof: {
       signalsLabel: 'sinais analisados',
       trendsLabel:  'tendências mapeadas',
-      window:       'Memória estratégica de tecnologia desde 2020',
+      window:       'Memória estratégica de tecnologia desde 2015',
     },
     themesCards: {
       title:    'Os temas que acompanhamos há mais tempo',
       subtitle: 'O mesmo tema, analisado ciclo após ciclo, por anos.',
-      footer:   '8 de 72 temas acompanhados no arquivo',
       today:    'hoje',
       since:    'desde',
       items: [
@@ -56,7 +55,7 @@ export const pt = {
     cred: {
       signals: 'sinais analisados',
       trends:  'tendências mapeadas',
-      since:   'Memória desde 2020',
+      since:   'Memória desde 2015',
     },
     tempo: { then: 'Antes', now: 'Agora', next: 'A seguir' },
     heroGraph: {

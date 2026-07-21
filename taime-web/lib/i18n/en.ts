@@ -24,12 +24,11 @@ export const en: Translations = {
     proof: {
       signalsLabel: 'signals analyzed',
       trendsLabel:  'trends mapped',
-      window:       'Strategic technology memory since 2020',
+      window:       'Strategic technology memory since 2015',
     },
     themesCards: {
       title:    'The themes we have tracked the longest',
       subtitle: 'The same theme, analyzed cycle after cycle, for years.',
-      footer:   '8 of 72 themes tracked in the archive',
       today:    'today',
       since:    'since',
       items: [
@@ -57,7 +56,7 @@ export const en: Translations = {
     cred: {
       signals: 'signals analyzed',
       trends:  'trends mapped',
-      since:   'Memory since 2020',
+      since:   'Memory since 2015',
     },
     tempo: { then: 'Then', now: 'Now', next: 'Next' },
     heroGraph: {
