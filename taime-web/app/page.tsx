@@ -19,6 +19,7 @@ import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
 import SignatureGraphic from '@/components/home/SignatureGraphic'
 import FrameworkSection from '@/components/home/FrameworkSection'
+import ThemeTimeline from '@/components/home/ThemeTimeline'
 import NewsletterSignup from '@/components/NewsletterSignup'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -520,47 +521,17 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── SEÇÃO 1c-2: AMPLITUDE + PROFUNDIDADE (dois cards) ──────────── */}
-      {/* Mobile: card de profundidade primeiro (order-1). Desktop: lado a lado,
-          amplitude a esquerda. */}
-      <section className="border-t border-zinc-100 bg-zinc-50/60 py-16">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-6 items-start">
-
-            {/* Card 1: amplitude (19 frentes em chips) */}
-            <div className="order-2 lg:order-1 rounded-2xl border border-zinc-200 bg-white p-7">
-              <h3 className="text-lg font-bold text-zinc-900 mb-5">{h.themesCards.breadthTitle}</h3>
-              <div className="flex flex-wrap gap-2">
-                {h.themes.items.map(theme => (
-                  <span
-                    key={theme}
-                    className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium
-                               bg-zinc-50 text-zinc-600 border border-zinc-200"
-                  >
-                    {theme}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Card 2: profundidade (temas acompanhados ha mais tempo) */}
-            <div className="order-1 lg:order-2 rounded-2xl border border-taime-100 bg-white p-7">
-              <h3 className="text-lg font-bold text-zinc-900 mb-1.5">{h.themesCards.depthTitle}</h3>
-              <p className="text-sm text-zinc-500 leading-relaxed mb-5">{h.themesCards.depthSubtitle}</p>
-              <ul className="divide-y divide-zinc-100">
-                {h.themesCards.depthItems.map(it => (
-                  <li key={it.name} className="flex items-center justify-between gap-4 py-2.5">
-                    <span className="text-sm font-medium text-zinc-800 leading-snug">{it.name}</span>
-                    <span className="shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold
-                                     text-taime-700 bg-taime-50 tabular-nums whitespace-nowrap">
-                      {it.arc}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-          </div>
+      {/* ── SEÇÃO 1c-2: PROFUNDIDADE TEMPORAL (linha do tempo Gantt) ──── */}
+      <section className="border-t border-zinc-100 bg-zinc-50/60 py-20">
+        <div className="max-w-5xl mx-auto px-6">
+          <ThemeTimeline
+            title={h.themesCards.title}
+            subtitle={h.themesCards.subtitle}
+            footer={h.themesCards.footer}
+            todayLabel={h.themesCards.today}
+            sinceLabel={h.themesCards.since}
+            items={h.themesCards.items}
+          />
         </div>
       </section>
 
