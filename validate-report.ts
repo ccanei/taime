@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { parsePeriod } from './period-utils';
+import { deepStripLoneSurrogates } from './sanitize';
 
 /**
  * TAIME — Report Validator (LLM-as-judge + checks determinísticos)
@@ -141,26 +142,54 @@ async function dbPatch(table: string, id: string, data: unknown): Promise<void> 
 // PILOT instrumentation: accumulate token usage across all calls in a run.
 const _USAGE_TOTAL = { calls: 0, input: 0, output: 0, cache_read: 0, cache_write: 0 };
 
+// Status transitorios da API Anthropic. 529 = Overloaded (o caso que motivou este
+// retry): a API esta sobrecarregada e o pedido deve ser repetido depois. Os demais
+// (429 rate limit, 5xx de gateway) tambem sao seguros para repetir.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+// Backoff exponencial: espera generosa antes de cada retry (30s, 60s, 120s). Sao 3
+// retries (ate 4 tentativas no total) antes de reportar falha definitiva.
+const RETRY_BACKOFF_MS = [30_000, 60_000, 120_000];
+const _sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
 async function anthropicPost(body: unknown): Promise<{ text: string; usage: AnthropicUsage }> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         cfg.anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta':    'prompt-caching-2024-07-31',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
-  const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage & { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
-  const text = data.content.find(b => b.type === 'text')?.text ?? '';
-  _USAGE_TOTAL.calls++;
-  _USAGE_TOTAL.input      += data.usage.input_tokens ?? 0;
-  _USAGE_TOTAL.output     += data.usage.output_tokens ?? 0;
-  _USAGE_TOTAL.cache_read += data.usage.cache_read_input_tokens ?? 0;
-  _USAGE_TOTAL.cache_write += data.usage.cache_creation_input_tokens ?? 0;
-  return { text, usage: data.usage };
+  // Rede final: remove surrogates orfaos de todo o body (todos os prompts do
+  // validador passam por aqui) antes de serializar.
+  const payload = JSON.stringify(deepStripLoneSurrogates(body));
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         cfg.anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta':    'prompt-caching-2024-07-31',
+      },
+      body: payload,
+    });
+
+    if (res.ok) {
+      const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage & { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+      const text = data.content.find(b => b.type === 'text')?.text ?? '';
+      _USAGE_TOTAL.calls++;
+      _USAGE_TOTAL.input      += data.usage.input_tokens ?? 0;
+      _USAGE_TOTAL.output     += data.usage.output_tokens ?? 0;
+      _USAGE_TOTAL.cache_read += data.usage.cache_read_input_tokens ?? 0;
+      _USAGE_TOTAL.cache_write += data.usage.cache_creation_input_tokens ?? 0;
+      return { text, usage: data.usage };
+    }
+
+    const errText = await res.text();
+    // Retry so em status transitorios (529 Overloaded incluido) e enquanto houver
+    // backoff restante. Erros permanentes (400, 401, 404...) falham na hora.
+    if (RETRYABLE_STATUS.has(res.status) && attempt < RETRY_BACKOFF_MS.length) {
+      const wait = RETRY_BACKOFF_MS[attempt];
+      console.warn(`  ⏳ Anthropic ${res.status} (overload/transitorio). Retry ${attempt + 1}/${RETRY_BACKOFF_MS.length} em ${wait / 1000}s...`);
+      await _sleep(wait);
+      continue;
+    }
+    throw new Error(`Anthropic API (${res.status}): ${errText}`);
+  }
 }
 
 function _printUsageTotal(): void {
@@ -743,13 +772,25 @@ function computeVerdict(flags: Flag[]): Verdict {
  * Valida UM relatório já persistido e decide seu destino.
  * Esta é a função plugável: chame-a passando o report.id logo após o persistReport.
  */
-export async function validatePersistedReport(reportId: string): Promise<{
+export async function validatePersistedReport(
+  reportId: string,
+  opts?: { onlyRanks?: number[] },
+): Promise<{
   verdict: Verdict; flags: Flag[]; signalCount: number;
 }> {
+  // onlyRanks: revalida SOMENTE as trends destes ranks e PRESERVA os flags
+  // existentes das demais trends e do nivel-relatorio. Usado para reprocessar
+  // trends que falharam (ex: 529 no judge) sem tocar nas que ja validaram.
+  const onlyRanks = opts?.onlyRanks && opts.onlyRanks.length ? opts.onlyRanks : null;
+
   const [report] = await dbGet<ReportRow>(`reports?id=eq.${reportId}&select=*`);
   if (!report) throw new Error(`Relatório ${reportId} não encontrado.`);
 
-  const trends = await dbGet<TrendRow>(`report_trends?report_id=eq.${reportId}&select=*&order=rank.asc`);
+  const allTrends = await dbGet<TrendRow>(`report_trends?report_id=eq.${reportId}&select=*&order=rank.asc`);
+  const trends = onlyRanks ? allTrends.filter(t => onlyRanks.includes(t.rank)) : allTrends;
+  if (onlyRanks && trends.length !== onlyRanks.length) {
+    console.warn(`  ⚠ onlyRanks=[${onlyRanks.join(',')}] mas encontrei ${trends.length} trend(s): ${trends.map(t => t.rank).join(',')}`);
+  }
 
   // Sinais do período (para grounding e para o signal_count do painel).
   const clusters = await dbGet<ClusterRow>(`signal_clusters?period=eq.${report.period}&select=id,signal_ids`);
@@ -764,8 +805,10 @@ export async function validatePersistedReport(reportId: string): Promise<{
   const allSignals = [...signalMap.values()];
   const signalCount = allSignals.length;
 
-  // NÍVEL 1 — determinístico
-  const flags: Flag[] = deterministicChecks(report, trends);
+  // NÍVEL 1 — determinístico. Com onlyRanks, descarta os flags de nível-relatorio
+  // deste run (sao preservados dos existentes) e mantem so os das trends alvo.
+  let flags: Flag[] = deterministicChecks(report, trends);
+  if (onlyRanks) flags = flags.filter(f => f.trend_rank != null && onlyRanks.includes(f.trend_rank));
 
   // NÍVEL 2+3 — grounding + temporal, uma chamada por trend (sinais ficam cacheados)
   for (const t of trends) {
@@ -834,7 +877,17 @@ export async function validatePersistedReport(reportId: string): Promise<{
     }
   }
 
-  const verdict = computeVerdict(flags);
+  // Merge: com onlyRanks, preserva os flags existentes das OUTRAS trends e do
+  // nivel-relatorio (as que ja validaram), substituindo apenas os das trends alvo.
+  let finalFlags = flags;
+  if (onlyRanks) {
+    const existing = (report as unknown as { validation_flags?: Flag[] | null }).validation_flags ?? [];
+    const kept = (Array.isArray(existing) ? existing : [])
+      .filter(f => f.trend_rank == null || !onlyRanks.includes(f.trend_rank));
+    finalFlags = [...kept, ...flags];
+  }
+
+  const verdict = computeVerdict(finalFlags);
 
   // ── Destino ──────────────────────────────────────────────────────────────────
   // pass limpo → auto-publica. Qualquer flag → pending_review (você decide).
@@ -842,7 +895,7 @@ export async function validatePersistedReport(reportId: string): Promise<{
   // sempre manual): mesmo um veredito pass deixa o relatório em pending_review.
   const patch: Record<string, unknown> = {
     validation_verdict: verdict,
-    validation_flags:   flags,
+    validation_flags:   finalFlags,
     validated_at:       new Date().toISOString(),
     signal_count:       signalCount,
   };
@@ -854,7 +907,7 @@ export async function validatePersistedReport(reportId: string): Promise<{
   }
   await dbPatch('reports', reportId, patch);
 
-  return { verdict, flags, signalCount };
+  return { verdict, flags: finalFlags, signalCount };
 }
 
 // ─── CLI: valida todos os relatórios do PERIOD ─────────────────────────────────
@@ -868,6 +921,41 @@ async function main(): Promise<void> {
   console.log('╚══════════════════════════════════╝');
   console.log(`Período:  ${PERIOD}`);
   console.log(`Boundary: ${PERIOD_END_DATE}\n`);
+
+  // ── Alvo pontual: REPORT_ID (+ ONLY_RANKS opcional) ────────────────────────
+  // Revalida SO um relatorio; com ONLY_RANKS, so as trends listadas, preservando
+  // as demais. Usado para reprocessar trends que falharam (ex: 529 no judge).
+  const TARGET_REPORT_ID = process.env.REPORT_ID?.trim();
+  const ONLY_RANKS = process.env.ONLY_RANKS
+    ? process.env.ONLY_RANKS.split(',').map(s => Number(s.trim())).filter(n => Number.isInteger(n))
+    : null;
+
+  if (TARGET_REPORT_ID) {
+    console.log(`Alvo: report_id=${TARGET_REPORT_ID}${ONLY_RANKS ? ` · ranks=${ONLY_RANKS.join(',')}` : ''}\n`);
+    const { verdict, flags, signalCount } = await validatePersistedReport(
+      TARGET_REPORT_ID,
+      ONLY_RANKS ? { onlyRanks: ONLY_RANKS } : undefined,
+    );
+    const ranks = ONLY_RANKS
+      ?? [...new Set(flags.map(f => f.trend_rank).filter((r): r is number => r != null))].sort((a, b) => a - b);
+
+    console.log(`Veredito do relatório: ${verdict.toUpperCase()} · sinais no período: ${signalCount}\n`);
+    console.log('Por trend revalidada:');
+    for (const rank of ranks) {
+      const tf = flags.filter(f => f.trend_rank === rank);
+      const blocking = tf.filter(f => f.severity === 'blocking').length;
+      const warning  = tf.filter(f => f.severity === 'warning').length;
+      const failed   = tf.filter(f => f.id === 'judge_error');
+      const status   = failed.length ? '⚠ AINDA FALHOU (judge_error)' : '✓ validou';
+      console.log(`  trend ${rank}: ${blocking} bloqueante(s), ${warning} aviso(s)  ${status}`);
+      for (const f of tf) {
+        console.log(`       · [${f.severity}] ${f.id}${f.field ? ` ${f.field}` : ''} — ${(f.detail || '').slice(0, 140)}`);
+      }
+    }
+    console.log('\n' + '═'.repeat(52) + '\n');
+    _printUsageTotal();
+    return;
+  }
 
   // Valida relatórios que ainda não foram ao ar definitivamente.
   // Pega 'generating' (acabou de sair do pipeline) e 'pending_review' (re-validação).
