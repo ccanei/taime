@@ -805,7 +805,7 @@ export async function validatePersistedReport(
   const allSignals = [...signalMap.values()];
   const signalCount = allSignals.length;
 
-  // NÍVEL 1 — determinístico. Com onlyRanks, descarta os flags de nível-relatorio
+  // NÍVEL 1 (deterministico). Com onlyRanks, descarta os flags de nível-relatorio
   // deste run (sao preservados dos existentes) e mantem so os das trends alvo.
   let flags: Flag[] = deterministicChecks(report, trends);
   if (onlyRanks) flags = flags.filter(f => f.trend_rank != null && onlyRanks.includes(f.trend_rank));
@@ -949,7 +949,7 @@ async function main(): Promise<void> {
       const status   = failed.length ? '⚠ AINDA FALHOU (judge_error)' : '✓ validou';
       console.log(`  trend ${rank}: ${blocking} bloqueante(s), ${warning} aviso(s)  ${status}`);
       for (const f of tf) {
-        console.log(`       · [${f.severity}] ${f.id}${f.field ? ` ${f.field}` : ''} — ${(f.detail || '').slice(0, 140)}`);
+        console.log(`       · [${f.severity}] ${f.id}${f.field ? ` ${f.field}` : ''}: ${(f.detail || '').slice(0, 140)}`);
       }
     }
     console.log('\n' + '═'.repeat(52) + '\n');
