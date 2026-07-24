@@ -2,10 +2,13 @@
  * TAIME — Period Utilities
  * Shared logic for determining period types, date ranges and labels.
  *
- * Frequency by era:
- *   2000–2014  → monthly   (one report per month)
- *   2015–2021  → biweekly  (two per month: days 1-15 and 16-end)
- *   2022+      → biweekly  (two per month: days 1-15 and 16-end)
+ * Frequency by era (validated by the Dec/2019 density A/B test, 2026-07):
+ *   2000 to 2019  -> monthly   (one report per month; historical density is too
+ *                               thin to sustain a healthy biweekly cadence)
+ *   2020+         -> biweekly  (two per month: days 1-15 and 16-end)
+ *
+ * Note: the cut moved from 2014 to 2019. Biweekly only from 2020 on. Reversible
+ * in this single function.
  */
 
 export type PeriodType = 'weekly' | 'biweekly' | 'monthly'
@@ -33,7 +36,7 @@ const MONTHS_EN = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getPeriodType(year: number): PeriodType {
-  if (year <= 2014) return 'monthly'
+  if (year <= 2019) return 'monthly'
   return 'biweekly'
 }
 
