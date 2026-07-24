@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createSupabaseService } from '@/lib/supabase-server'
-import { getAdvisorPeriodFloor, ADVISOR_PERMISSIVE_CEILING } from '@/lib/plan'
+import { getAdvisorPeriodFloor, ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
 import { embedQuery } from '@/lib/embeddings'
+import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 
 // ── Advisor ANONIMO (/ask): 3 perguntas sem login, mesmo modelo do produto ──
 // Caminho SEPARADO do /api/advisor/chat: sem user_id, sem memoria de sessao, sem
@@ -80,6 +81,11 @@ HUMAN HANDOFF:
 If the visitor asks to talk to a person, a human, the team, a founder, sales or support, acknowledge it naturally and directly. Be upfront that you are an AI assistant, not a person, and point them to the TAIME team at contact@taime.tech for direct contact. Do not pretend to be human, do not deflect the request, do not push to keep the conversation going. Keep it brief, a single reply. If they then continue with a normal question, carry on as usual.
 
 CONTEXT: You have no profile and no prior conversation with this visitor. Do not manufacture continuity, never say "as we discussed" or "last time". Read whatever context the visitor reveals in their message and put it to work immediately. Never ask for revenue, budget or financials. Answer with the value you can give even when context is thin.
+
+DEPTH AWARENESS (total awareness, partial access):
+You draw on a recent window of the archive. Some turns include a PRE-WINDOW THEME METADATA block: it lists themes whose archive coverage began BEFORE that window, giving you ONLY the theme name and the year tracking began, never any content.
+- ONLY when the visitor's question is about trajectory, timing, or evolution ("since when", "is it early or late", "how did this evolve", "are we behind") AND that block is present with a relevant theme, close with ONE short transparency note: state since which year the archive has tracked the theme, add one sentence on why the earlier trajectory would sharpen their decision, and that the full earlier trajectory is available to subscribers.
+- This note stays fully inside SOURCE PROTECTION: name only the generic theme and the start year, never a report, period, trend name, title, score, or any content. NEVER more than one note. NEVER on tactical questions with no temporal dimension. When the block is absent, never imply hidden depth.
 
 NEVER say "As an AI" or "I cannot". You are an advisor with context and opinions.`
 
@@ -326,9 +332,31 @@ export async function POST(req: NextRequest) {
   const deduped  = chunks.length > 0 ? dedupeChunks(chunks, lang) : []
   const selected = deduped.length > 0 ? await refineChunks(message, deduped) : []
 
+  // Teaser de profundidade: so em perguntas de trajetoria/timing, uma busca ampla
+  // (sem teto de janela) revela quais temas relevantes existem ANTES dos 60 meses.
+  // Injeta so METADADOS (nome do tema + ano de inicio), nota aponta p/ CADASTRO.
+  let depthThemes: Awaited<ReturnType<typeof preWindowThemes>> = []
+  if (emb.ok && isTrajectoryQuestion(message)) {
+    try {
+      const { data: wideData } = await service.rpc('match_trend_chunks', {
+        query_embedding: emb.vector,
+        period_floor:    ADVISOR_PERMISSIVE_FLOOR,
+        match_count:     VECTOR_MATCH_COUNT,
+        period_ceiling:  ADVISOR_PERMISSIVE_CEILING,
+      })
+      const slugs = ((wideData ?? []) as TrendChunk[])
+        .filter(c => c.period < periodFloor)
+        .map(c => c.theme_slug)
+      depthThemes = await preWindowThemes(service, slugs, periodFloor)
+    } catch { /* sem teaser neste turno */ }
+  }
+
   const system: SystemBlock[] = [
     { type: 'text', text: ANON_RULES_BLOCK,               cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildAnonContextBlock(selected) },
+    ...(depthThemes.length > 0
+      ? [{ type: 'text' as const, text: buildDepthMetadataBlock(depthThemes, 'subscribers') }]
+      : []),
     { type: 'text', text: languageInstruction(lang) },
   ]
 
@@ -387,9 +415,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Sucesso: incrementa o cookie do visitante ──────────────────────────────
+  // themes: categorias dos chunks usados nesta resposta. O cliente acumula na
+  // sessao para personalizar o bloqueio da 4a pergunta, sem nova chamada de modelo.
+  const themes = [...new Set(selected.map(c => c.category).filter((c): c is string => !!c))].slice(0, 4)
   const nowUsed = used + 1
   return NextResponse.json(
-    { reply, used: nowUsed, limit: ANON_QUESTION_LIMIT },
+    { reply, used: nowUsed, limit: ANON_QUESTION_LIMIT, themes },
     { status: 200, headers: { 'Set-Cookie': cookieHeader(nowUsed) } },
   )
 }

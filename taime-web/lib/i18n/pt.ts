@@ -107,6 +107,18 @@ export const pt = {
       ipTitle:      'Muitas perguntas em pouco tempo.',
       ipBody:       'Aguarde alguns minutos, ou crie sua conta gratuita para continuar sem espera.',
       note:         'Esta é uma amostra. O arquivo completo e as fontes são exclusivos de assinantes.',
+      chips: [
+        'Como a governança de IA agêntica evoluiu e o que muda para a minha empresa?',
+        'Minha empresa está atrasada em prontidão pós-quântica?',
+        'O que a soberania de dados muda na minha decisão de arquitetura de cloud?',
+      ],
+      limitThemesTitle: (themes: string) => `Suas perguntas tocaram ${themes}.`,
+      limitThemesBody:  'O arquivo acompanha esses temas há anos. Crie sua conta gratuita e continue com 10 perguntas.',
+      emailPrompt:      'Prefere pensar? Receba o Radar quinzenal no seu e-mail.',
+      emailPlaceholder: 'seu@email.com',
+      emailCta:         'Receber',
+      emailOk:          'Pronto. Você receberá o próximo Radar quinzenal.',
+      emailErr:         'Não conseguimos inscrever. Tente novamente.',
     },
 
     painsLabel: 'O problema que o TAIME resolve',

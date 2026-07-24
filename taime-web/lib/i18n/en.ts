@@ -108,6 +108,18 @@ export const en: Translations = {
       ipTitle:      'Too many questions in a short time.',
       ipBody:       'Wait a few minutes, or create your free account to continue without waiting.',
       note:         'This is a sample. The full archive and the sources are exclusive to subscribers.',
+      chips: [
+        'How has agentic AI governance evolved and what changes for my company?',
+        'Is my company behind on post-quantum readiness?',
+        'What does data sovereignty change in my cloud architecture decision?',
+      ],
+      limitThemesTitle: (themes: string) => `Your questions touched ${themes}.`,
+      limitThemesBody:  'The archive has tracked these themes for years. Create your free account and continue with 10 questions.',
+      emailPrompt:      'Prefer to think it over? Get the biweekly Radar in your inbox.',
+      emailPlaceholder: 'you@email.com',
+      emailCta:         'Subscribe',
+      emailOk:          "Done. You will get the next biweekly Radar.",
+      emailErr:         'We could not subscribe you. Try again.',
     },
     ctaSecondary: 'Request access →',
 

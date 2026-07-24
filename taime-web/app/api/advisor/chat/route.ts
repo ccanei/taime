@@ -11,6 +11,7 @@ import {
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
+import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -248,6 +249,12 @@ For every message, the most relevant TAIME intelligence is drawn from the archiv
 When the question targets a period or topic that has no published report, the intelligence block will be empty or will not cover it. In that case, say plainly that there is no TAIME report for that specific period or topic, and offer the nearest available period, or a related angle you do have. Keep it to a sentence or two and stay natural.
 
 FORBIDDEN: claiming you have no autonomous access to the archive; claiming you only see what the user pastes; asking the user to paste or upload report text; describing internal retrieval mechanics (how many reports load, any "selector", scores or thresholds); or telling the user to rephrase, reword or "force" anything so the system can find results. The user never needs to understand how retrieval works in order to use you. Saying any of this is a hallucination about your own architecture.
+
+DEPTH AWARENESS (total awareness, partial access):
+
+The client's plan gives you a recent context window. Some turns include a PRE-WINDOW THEME METADATA block: it lists themes whose archive coverage began BEFORE that window, giving you ONLY the theme name and the year tracking began, never any content.
+- ONLY when the client's question is about trajectory, timing, or evolution (for example "since when", "is it early or late to move", "how did this evolve", "are we behind") AND that block is present with a relevant theme, close your analysis with ONE sober transparency note. Acknowledge that the client's window covers the recent phase, state since which year the archive has tracked the theme, say in one sentence why the earlier trajectory would sharpen this specific decision, and mention that the full earlier trajectory is available on the Strategic plan.
+- NEVER add this note on tactical questions with no temporal dimension. NEVER more than one such note per reply. NEVER reveal or invent any content, conclusion, title, score, or specific period from before the window: only the theme name and the start year. Keep it to two calm, factual sentences, never a hard sell. When the block is absent, never imply hidden depth.
 
 HOW YOU USE CLIENT MEMORY:
 
@@ -1310,8 +1317,19 @@ export async function POST(req: NextRequest) {
   }
   // Passo 4: aviso de recusa construtiva quando ha analise relevante fora da
   // janela do plano (so Essential). Dinamico por turno, fora do cache.
+  //
+  // Teaser de profundidade: em perguntas de trajetoria/timing, troca o aviso
+  // generico por METADADOS de tema (nome + ano de inicio, sem periodos/titulos).
+  // So Essential/Free (windowMonths !== null); Strategic ve tudo e nunca entra aqui.
   if (outOfWindowHit && windowMonths !== null) {
-    system.push({ type: 'text', text: buildOutOfWindowBlock(outOfWindowItems, windowMonths) })
+    let depthThemes: Awaited<ReturnType<typeof preWindowThemes>> = []
+    if (isTrajectoryQuestion(userMessage)) {
+      const slugs = outOfWindowItems.map(i => i.theme_slug)
+      depthThemes = await preWindowThemes(service, slugs, periodFloor)
+    }
+    system.push(depthThemes.length > 0
+      ? { type: 'text', text: buildDepthMetadataBlock(depthThemes, 'strategic') }
+      : { type: 'text', text: buildOutOfWindowBlock(outOfWindowItems, windowMonths) })
   }
   // v4.6: periodo pedido sem conteudo (dentro da janela do plano). Aviso de
   // disponibilidade para o Advisor responder com naturalidade. Fora do cache.

@@ -14,6 +14,25 @@ interface Message {
 
 const QUESTION_LIMIT = 3
 
+// Rotulo por idioma das categorias de trend (para o bloqueio personalizado).
+// Fallback: a propria categoria. Idioma-neutras ficam iguais nos dois.
+const CAT_PT: Record<string, string> = {
+  Cybersecurity: 'Cibersegurança', Regulation: 'Regulação', Infrastructure: 'Infraestrutura',
+  Data: 'Dados', Market: 'Mercado', Automation: 'Automação', Observability: 'Observabilidade',
+  Engineering: 'Engenharia', Sustainability: 'Sustentabilidade', Quantum: 'Quântica',
+  Robotics: 'Robótica', 'AI Governance': 'Governança de IA', 'Spatial Computing': 'Computação Espacial',
+  Networks: 'Redes',
+}
+const CAT_EN: Record<string, string> = { IA: 'AI' }
+function catLabel(cat: string, isPt: boolean): string {
+  return (isPt ? CAT_PT[cat] : CAT_EN[cat]) ?? cat
+}
+function joinThemes(themes: string[], isPt: boolean): string {
+  const labels = [...new Set(themes.map(c => catLabel(c, isPt)))].slice(0, 3)
+  if (labels.length <= 1) return labels[0] ?? ''
+  return labels.slice(0, -1).join(', ') + (isPt ? ' e ' : ' and ') + labels[labels.length - 1]
+}
+
 // Tipagem minima do widget global do Turnstile.
 declare global {
   interface Window {
@@ -42,6 +61,12 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   const [blocked,  setBlocked]  = useState<null | 'limit' | 'ip'>(null)
   const [error,    setError]    = useState('')
   const [token,    setToken]    = useState<string | null>(null)
+  // PART 3: temas (categorias) acumulados na sessao para o bloqueio personalizado.
+  const [sessionThemes, setSessionThemes] = useState<string[]>([])
+  // PART 4: captura de e-mail no bloqueio (fluxo de newsletter existente).
+  const [email,       setEmail]       = useState('')
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
+  const [website,     setWebsite]     = useState('') // honeypot
 
   const captchaRef = useRef<HTMLDivElement>(null)
   const widgetRendered = useRef(false)
@@ -93,8 +118,8 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading, blocked])
 
-  async function handleSend() {
-    const text = input.trim()
+  async function handleSend(textArg?: string) {
+    const text = (textArg ?? input).trim()
     if (!text || loading || blocked) return
     if (needsCaptcha && !token) { setError(L.captchaWait); return }
 
@@ -111,7 +136,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
         body:    JSON.stringify({ message: text, token }),
       })
       const json = await res.json() as {
-        reply?: string; used?: number; limit?: number; error?: string
+        reply?: string; used?: number; limit?: number; error?: string; themes?: string[]
       }
 
       if (res.status === 503) { setBlocked(null); setError(L.unavailable); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
@@ -126,6 +151,9 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       if (!res.ok || !json.reply) { setError(L.genericError); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
 
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: json.reply! }])
+      if (Array.isArray(json.themes) && json.themes.length > 0) {
+        setSessionThemes(prev => [...new Set([...prev, ...json.themes!])])
+      }
       const nowUsed = json.used ?? used + 1
       setUsed(nowUsed)
       setToken(null)
@@ -135,6 +163,25 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       setMessages(prev => prev.filter(m => m.id !== userMsg.id))
     } finally {
       setLoading(false)
+    }
+  }
+
+  // PART 4: inscricao no Radar pelo bloqueio. Reusa /api/newsletter/subscribe
+  // (mesma validacao, honeypot e tabela newsletter_subscribers da home).
+  async function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.trim()) { setEmailStatus('error'); return }
+    setEmailStatus('loading')
+    try {
+      const res = await fetch('/api/newsletter/subscribe', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email: email.trim(), website, locale }),
+      })
+      if (!res.ok) { setEmailStatus('error'); return }
+      setEmailStatus('sent'); setEmail('')
+    } catch {
+      setEmailStatus('error')
     }
   }
 
@@ -177,6 +224,23 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
                             bg-white border border-zinc-200 text-zinc-800 shadow-sm">
               {L.subtitle}
             </div>
+          </div>
+        )}
+
+        {/* PART 5: chips de perguntas fortes. So antes da 1a pergunta; somem depois. */}
+        {messages.length === 0 && !loading && !blocked && (
+          <div className="flex flex-col items-start gap-2 pl-10">
+            {L.chips.map((chip, i) => (
+              <button
+                key={i}
+                onClick={() => handleSend(chip)}
+                disabled={loading}
+                className="text-xs font-medium text-taime-700 bg-taime-50 hover:bg-taime-100
+                           border border-taime-100 rounded-full px-3 py-1.5 text-left transition-colors
+                           disabled:opacity-50 disabled:cursor-not-allowed">
+                {chip}
+              </button>
+            ))}
           </div>
         )}
 
@@ -228,15 +292,58 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       <div className="border-t border-zinc-100 bg-white px-5 py-4">
         {blocked ? (
           <div className="rounded-xl bg-taime-50 border border-taime-100 px-4 py-4 text-center">
+            {/* PART 3: bloqueio personalizado citando os temas das perguntas (fallback generico). */}
             <p className="text-sm font-semibold text-zinc-900 mb-1">
-              {blocked === 'ip' ? L.ipTitle : L.limitTitle}
+              {blocked === 'ip'
+                ? L.ipTitle
+                : sessionThemes.length > 0
+                  ? L.limitThemesTitle(joinThemes(sessionThemes, isPt))
+                  : L.limitTitle}
             </p>
             <p className="text-sm text-zinc-600 mb-4">
-              {blocked === 'ip' ? L.ipBody : L.limitBody}
+              {blocked === 'ip'
+                ? L.ipBody
+                : sessionThemes.length > 0
+                  ? L.limitThemesBody
+                  : L.limitBody}
             </p>
             <Link href="/login" className="btn-primary px-5 py-2.5 text-sm inline-flex justify-center">
               {L.limitCta} →
             </Link>
+
+            {/* PART 4: captura de e-mail, secundaria (nao compete com o CTA de cadastro). */}
+            {blocked === 'limit' && (
+              <div className="mt-4 pt-4 border-t border-taime-100">
+                {emailStatus === 'sent' ? (
+                  <p className="text-xs font-medium text-emerald-700">{L.emailOk}</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-zinc-500 mb-2">{L.emailPrompt}</p>
+                    <form onSubmit={handleEmailSubmit} className="flex gap-2 max-w-sm mx-auto">
+                      <input
+                        type="text" name="website" value={website} tabIndex={-1} autoComplete="off"
+                        aria-hidden="true" onChange={e => setWebsite(e.target.value)}
+                        style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+                      />
+                      <input
+                        type="email" required value={email} placeholder={L.emailPlaceholder}
+                        disabled={emailStatus === 'loading'}
+                        onChange={e => setEmail(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white border border-zinc-200 text-zinc-900
+                                   placeholder:text-zinc-400 text-xs outline-none focus:ring-2 focus:ring-taime-600
+                                   disabled:opacity-60"
+                      />
+                      <button
+                        type="submit" disabled={emailStatus === 'loading'}
+                        className="btn-secondary px-3 py-2 text-xs disabled:opacity-60 shrink-0">
+                        {emailStatus === 'loading' ? '...' : L.emailCta}
+                      </button>
+                    </form>
+                    {emailStatus === 'error' && <p className="text-xs text-red-600 mt-2">{L.emailErr}</p>}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         ) : !siteKey ? (
           <p className="text-sm text-zinc-500 text-center py-2">{L.unavailable}</p>
@@ -263,7 +370,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
                            disabled:opacity-50 disabled:cursor-not-allowed leading-relaxed"
               />
               <button
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={loading || !input.trim() || (needsCaptcha && !token)}
                 className="btn-primary px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
                 {loading ? L.sending : L.send}
