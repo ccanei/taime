@@ -12,11 +12,14 @@
     "report": "npx ts-node generate-report.ts"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^20.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "dotenv": "^17.4.2"
+    "@mozilla/readability": "^0.5.0",
+    "dotenv": "^17.4.2",
+    "jsdom": "^24.1.3"
   }
 }

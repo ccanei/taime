@@ -14,6 +14,7 @@ import 'dotenv/config';
 
 import { parsePeriod, isHistorical, toSerperDate } from './period-utils';
 import { isSignalWithinPeriod } from './date-check';
+import { processSignalContent, type ContentSource } from './content-extract';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -150,8 +151,21 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
 const COLLECT_MODE = (process.env.COLLECT_MODE ?? 'full').toLowerCase();
 const COLLECT_MINIMAL = COLLECT_MODE === 'minimal';
 
+// Extrai o dominio de forma tolerante: aceita url sem esquema (ex.: "fortune.com",
+// como alguns registros novos da tabela sources) prefixando https:// antes de
+// parsear. Se ainda assim for invalida, cai no proprio valor limpo em vez de
+// crashar a coleta inteira.
+function sourceDomain(rawUrl: string): string {
+  const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  try {
+    return new URL(withScheme).hostname.replace(/^www\./, '');
+  } catch {
+    return rawUrl.replace(/^https?:\/\//i, '').replace(/^www\./, '').split('/')[0];
+  }
+}
+
 function buildQuery(source: Source): string {
-  const domain = new URL(source.url).hostname.replace(/^www\./, '');
+  const domain = sourceDomain(source.url);
   if (COLLECT_MINIMAL) return `site:${domain}`;
   const topic  = TOPIC_BY_CATEGORY[source.category] ?? 'technology AI trends innovation';
   return `site:${domain} ${topic}`;
@@ -182,23 +196,20 @@ async function searchSerper(query: string): Promise<SerperOrganic[]> {
 
 // ─── Content extraction ───────────────────────────────────────────────────────
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+// stripHtml, extração de corpo (readability), varredura de contaminação e
+// fallback de snippet vivem em content-extract.ts (puro/testável). fetchContent
+// só faz a rede e delega o processamento.
+
+interface FetchResult {
+  content:       string;
+  contentSource: ContentSource | 'empty';
+  flags:         string[];
+  futureYears:   number[];
 }
 
-async function fetchContent(url: string): Promise<string> {
+const EMPTY_FETCH: FetchResult = { content: '', contentSource: 'empty', flags: [], futureYears: [] };
+
+async function fetchContent(url: string, snippet: string | null): Promise<FetchResult> {
   try {
     const res = await fetch(url, {
       signal:  AbortSignal.timeout(cfg.fetchTimeoutMs),
@@ -208,12 +219,27 @@ async function fetchContent(url: string): Promise<string> {
         'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
       },
     });
-    if (!res.ok) return '';
-    if (!(res.headers.get('content-type') ?? '').includes('html')) return '';
-    const text = stripHtml(await res.text());
-    return text.length < 200 ? '' : text.slice(0, cfg.contentMaxChars);
+    if (!res.ok) return EMPTY_FETCH;
+    if (!(res.headers.get('content-type') ?? '').includes('html')) return EMPTY_FETCH;
+
+    const rawHtml = await res.text();
+    const r = processSignalContent({
+      rawHtml,
+      url,
+      periodEndYear: periodInfo.end.getFullYear(),
+      snippet,
+      isHistorical:  isHistorical(periodInfo),
+      maxChars:      cfg.contentMaxChars,
+      currentYear:   new Date().getFullYear(),
+    });
+
+    // Mantém o comportamento antigo (corpo curto demais → vazio), EXCETO quando
+    // caímos para o snippet do Serper: ele é curto mas period-correto e válido.
+    if (r.contentSource !== 'snippet' && r.content.length < 200) return EMPTY_FETCH;
+
+    return { content: r.content, contentSource: r.contentSource, flags: r.flags, futureYears: r.futureYears };
   } catch {
-    return '';
+    return EMPTY_FETCH;
   }
 }
 
@@ -257,14 +283,19 @@ async function collectSource(source: Source): Promise<SourceResult> {
     try {
       if (await urlExists(item.link)) { duplicates++; continue; }
 
-      const content = await fetchContent(item.link);
+      const fc = await fetchContent(item.link, item.snippet ?? null);
+
+      // Visibilidade da guarda de contaminação (não bloqueia a coleta).
+      if (fc.flags.length) {
+        console.log(`\n      ⚠ contaminação [${fc.contentSource}] ${item.link.slice(0, 70)} :: ${fc.flags.join(' ; ')}`);
+      }
 
       const row: SignalRow = {
         source_id: source.id,
         period:    STORE_KEY,
         title:     item.title,
         url:       item.link,
-        content,
+        content:   fc.content,
         summary:   null,
         metadata: {
           snippet:        item.snippet,
@@ -276,6 +307,10 @@ async function collectSource(source: Source): Promise<SourceResult> {
           period_start:   periodInfo.start.toISOString().slice(0, 10),
           period_end:     periodInfo.end.toISOString().slice(0, 10),
           is_historical:  isHistorical(periodInfo),
+          // Mitigação B: proveniência do conteúdo + flags de contaminação p/ auditoria.
+          content_source: fc.contentSource,
+          content_flags:  fc.flags,
+          future_years:   fc.futureYears,
         },
       };
 
