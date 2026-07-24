@@ -18,14 +18,14 @@ import { stripLoneSurrogates, deepStripLoneSurrogates } from './sanitize';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Cluster {
+export interface Cluster {
   id: string;
   name: string;
   description: string;
   signal_ids: string[];
 }
 
-interface Signal {
+export interface Signal {
   id: string;
   title: string;
   content: string;
@@ -33,9 +33,9 @@ interface Signal {
   sources: { name: string; category: string } | null;
 }
 
-interface ScoreDimension { score: number; label: string }
+export interface ScoreDimension { score: number; label: string }
 
-interface TrendAnalysis {
+export interface TrendAnalysis {
   title: string;
   category: string;
   theme_slug: string;
@@ -293,7 +293,7 @@ function normalizeCategory(raw: string | undefined | null): string | null {
 }
 
 /** Carrega os theme_slug distintos já existentes (relatórios recentes) para reuso. */
-async function loadExistingThemes(): Promise<string[]> {
+export async function loadExistingThemes(): Promise<string[]> {
   const rows = await dbGet<{ theme_slug: string | null }>(
     `report_trends?select=theme_slug&theme_slug=not.is.null&order=created_at.desc&limit=120`,
   );
@@ -609,7 +609,7 @@ This rule is absolute and applies to PT-BR and EN equally.`;
 
 // ─── Context formatting ───────────────────────────────────────────────────────
 
-function formatGlobalContext(clusters: Cluster[], signalMap: Map<string, Signal>): string {
+export function formatGlobalContext(clusters: Cluster[], signalMap: Map<string, Signal>): string {
   const sections = clusters.map((cluster, i) => {
     const signals = cluster.signal_ids
       .map(id => signalMap.get(id))
@@ -866,7 +866,7 @@ const TREND_SCHEMA = `{
   "limitations": "1–2 sentences: specific analytical blind spots"
 }`;
 
-async function callClaudeTrend(
+export async function callClaudeTrend(
   globalContextBlock: string,
   cluster: Cluster,
   signalMap: Map<string, Signal>,
@@ -1036,7 +1036,7 @@ function stripEmDash(s: string): string {
 // unica compartilhada por todo o pipeline). Importados no topo deste arquivo.
 
 /** Aplica stripEmDash recursivamente a todos os campos string de um TrendAnalysis. */
-function sanitizeTrend(t: TrendAnalysis): TrendAnalysis {
+export function sanitizeTrend(t: TrendAnalysis): TrendAnalysis {
   const fw = t.taime_framework;
   return {
     ...t,
