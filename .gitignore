@@ -16,6 +16,13 @@ taime-web/out/
 batch-progress.json
 batch-periods.json
 
+# Backups de progresso e logs de execucao de batch (descartaveis)
+*.bak
+batch-*.log
+gen-*.log
+teste-*.log
+nohup.out
+
 # Sistema
 .DS_Store
 *.log
