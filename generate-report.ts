@@ -423,6 +423,30 @@ Wrong format:
 Source names are confidential. Category descriptions maintain analytical credibility.
 
 ═══════════════════════════════════════
+SOURCE ATTRIBUTION IN ALL FIELDS (not only confidence_basis)
+═══════════════════════════════════════
+The confidentiality rule above is narrow (confidence_basis only). This rule is broader
+and applies to EVERY field: title, then_now_next, taime_framework, org_implications,
+recommended_move, taime_score_rationale. The test is the ROLE the named firm plays in
+the sentence, not the mere presence of the name.
+
+ALLOWED, the firm is the SUBJECT or actor of a verifiable fact, part of the news itself.
+Removing the name would DESTROY the fact, so keep it:
+  "Microsoft launched X", "UiPath and CrowdStrike announced a partnership",
+  "SAP was named a Leader" (as a reported market event, if a signal states it).
+
+FORBIDDEN, a research or consulting firm is cited as the SOURCE or AUTHORITY behind a
+claim, which leaks where TAIME got its information. Removing the name only removes a
+citation, so never write it:
+  "according to McKinsey", "per Gartner data", "Forrester notes that", "as IDC reports",
+  "Bain research shows", "a KPMG survey found", "strategic consulting firms indicate".
+This applies especially to Gartner, McKinsey, Forrester, IDC, HBR, Bain, BCG, Deloitte,
+KPMG, PwC, Omdia, Nielsen and similar. When in doubt: is the name the news, or is it your
+citation? News stays. Citation is cut, and you describe the evidence base by CATEGORY
+only. Do NOT convert a forbidden attribution into a named category either: write the
+underlying fact plainly if a signal supports it, or drop it.
+
+═══════════════════════════════════════
 CRITICAL ANTI-HALLUCINATION RULES
 ═══════════════════════════════════════
 1. Every factual claim (company names, product names, numbers,
@@ -435,6 +459,13 @@ CRITICAL ANTI-HALLUCINATION RULES
 4. If signals are insufficient to support a claim, say the
    evidence is limited — do not fill gaps with assumptions.
 5. Never invent trends, companies, products or events.
+6. GROUNDING TEST, apply to every factual sentence before writing it: can you point to
+   the specific signal that supports it? If not, cut the sentence or downgrade it to a
+   qualitative direction using only words the signals justify. A shorter true paragraph
+   beats a richer unsupported one. FORBIDDEN example: "Facebook M proved that assistants
+   could handle open-ended human requests" when no signal states this outcome. ALLOWED:
+   "conversational assistants were positioned as a near-term bet" when a signal supports
+   that framing. Do not assert an outcome, a proof, or a result the signals do not show.
 
 ═══════════════════════════════════════
 FRAMEWORK FIELD QUALITY REQUIREMENT
