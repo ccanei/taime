@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { deepStripLoneSurrogates } from './sanitize';
 
 /**
  * backfill-trend-theme.ts
@@ -117,11 +118,12 @@ async function classifyBatch(
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
+    // Rede final: remove surrogates orfaos do body antes de serializar.
+    body: JSON.stringify(deepStripLoneSurrogates({
       model: cfg.model,
       max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }],
-    }),
+    })),
   });
 
   if (!res.ok) throw new Error(`Anthropic: ${await res.text()}`);

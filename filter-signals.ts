@@ -30,6 +30,7 @@ import 'dotenv/config';
  */
 
 import { parsePeriod } from './period-utils';
+import { stripLoneSurrogates, deepStripLoneSurrogates } from './sanitize';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -160,8 +161,11 @@ function formatBatch(signals: SignalRow[], offset: number): string {
   return signals.map((s, i) => {
     const idx     = offset + i + 1;
     const source  = s.sources?.name ?? '?';
-    const snippet = (s.metadata?.snippet ?? '').slice(0, 200);
-    return `[${idx}] (${source}) ${s.title}\n     ${snippet || '(no snippet)'}`;
+    // stripLoneSurrogates apos o .slice(): a fatia pode orfanar um surrogate de
+    // emoji e quebrar o JSON enviado a API.
+    const snippet = stripLoneSurrogates((s.metadata?.snippet ?? '').slice(0, 200));
+    const title   = stripLoneSurrogates(s.title ?? '');
+    return `[${idx}] (${source}) ${title}\n     ${snippet || '(no snippet)'}`;
   }).join('\n\n');
 }
 
@@ -180,12 +184,13 @@ async function classifyBatch(signals: SignalRow[], offset: number): Promise<Verd
       'anthropic-version': '2023-06-01',
       'anthropic-beta':    'prompt-caching-2024-07-31',
     },
-    body: JSON.stringify({
+    // Rede final: deepStripLoneSurrogates no body antes de serializar.
+    body: JSON.stringify(deepStripLoneSurrogates({
       model:      cfg.model,
       max_tokens: cfg.maxTokens,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userPrompt }],
-    }),
+    })),
   });
 
   if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);

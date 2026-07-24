@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import { parsePeriod } from './period-utils';
 import { isSignalWithinPeriod } from './date-check';
+import { stripLoneSurrogates, deepStripLoneSurrogates } from './sanitize';
 /**
  * TAIME — Signal Analyzer
  * Agrupa sinais do período em 4-12 clusters temáticos via Claude Sonnet 4.6
@@ -168,11 +169,14 @@ function formatSignalsForLLM(signals: SignalWithSource[]): string {
   return signals.map((s, i) => {
     const idx     = String(i + 1).padStart(3, '0');
     const source  = s.sources?.name ?? 'Unknown Source';
-    const preview = (s.content || s.metadata?.snippet || '').slice(0, cfg.contentPreviewChars);
+    // stripLoneSurrogates apos o .slice(): a fatia por code unit pode cortar um
+    // emoji ao meio e orfanar um surrogate, que quebra o JSON enviado a API.
+    const preview = stripLoneSurrogates((s.content || s.metadata?.snippet || '').slice(0, cfg.contentPreviewChars));
+    const title   = stripLoneSurrogates(s.title ?? '');
     return (
       `[${idx}]\n` +
       `Source: ${source}\n` +
-      `Title: ${s.title}\n` +
+      `Title: ${title}\n` +
       `Context: ${preview || '(no preview available)'}`
     );
   }).join('\n\n---\n\n');
@@ -199,12 +203,14 @@ async function callClaude(signalsText: string, signalCount: number): Promise<LLM
       'anthropic-version': '2023-06-01',
       'anthropic-beta':    'prompt-caching-2024-07-31',
     },
-    body: JSON.stringify({
+    // Rede final: deepStripLoneSurrogates no body inteiro imediatamente antes de
+    // serializar, cobrindo qualquer surrogate orfao que tenha escapado da montagem.
+    body: JSON.stringify(deepStripLoneSurrogates({
       model:      cfg.model,
       max_tokens: cfg.maxTokens,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userPrompt }],
-    }),
+    })),
   });
 
   if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
@@ -217,15 +223,41 @@ async function callClaude(signalsText: string, signalCount: number): Promise<LLM
     (u.cache_read_input_tokens     ? ` / ${u.cache_read_input_tokens} cache-read`        : ''),
   );
 
-  const text      = data.content.find(b => b.type === 'text')?.text ?? '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`LLM não retornou JSON válido:\n${text.slice(0, 400)}`);
+  const text = data.content.find(b => b.type === 'text')?.text ?? '';
+  const jsonStr = extractFirstJsonObject(text);
+  if (!jsonStr) throw new Error(`LLM não retornou JSON válido:\n${text.slice(0, 400)}`);
 
   try {
-    return JSON.parse(jsonMatch[0]) as LLMResponse;
+    return JSON.parse(jsonStr) as LLMResponse;
   } catch (e) {
-    throw new Error(`Falha ao parsear JSON: ${e}\n${jsonMatch[0].slice(0, 400)}`);
+    throw new Error(`Falha ao parsear JSON: ${e}\n${jsonStr.slice(0, 400)}`);
   }
+}
+
+// Extrai o PRIMEIRO objeto JSON balanceado do texto (do primeiro '{' ate a chave
+// de fechamento correspondente), ignorando chaves dentro de strings. Robusto a
+// texto/prosa ou uma segunda chave depois do objeto (o Sonnet as vezes acrescenta
+// um comentario apos o JSON, o que quebrava o match ganancioso /\{[\s\S]*\}/).
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

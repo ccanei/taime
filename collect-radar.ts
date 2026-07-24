@@ -1,5 +1,6 @@
 #!/usr/bin/env npx ts-node
 import 'dotenv/config';
+import { deepStripLoneSurrogates } from './sanitize';
 /**
  * TAIME — Radar Collector
  * Coleta as notícias mais relevantes das últimas 24h de todas as fontes via Serper.
@@ -174,11 +175,12 @@ RULES:
         'anthropic-version': '2023-06-01',
         'Content-Type':      'application/json',
       },
-      body: JSON.stringify({
+      // Rede final: remove surrogates orfaos do body antes de serializar.
+      body: JSON.stringify(deepStripLoneSurrogates({
         model:      cfg.haiku,
         max_tokens: 512,
         messages:   [{ role: 'user', content: prompt }],
-      }),
+      })),
     });
 
     if (!res.ok) {

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { parsePeriod } from './period-utils';
 import { validatePersistedReport } from './validate-report';
+import { stripLoneSurrogates, deepStripLoneSurrogates } from './sanitize';
 /**
  * TAIME — Report Generator
  * Gera relatório executivo em pt-BR e en via Claude Sonnet 4.6
@@ -69,6 +70,9 @@ interface AnthropicUsage {
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 // PILOT 2026-06-15: Opus on generation only (revert to claude-sonnet-4-6 to undo).
+// 2026-07-01: trocado temporariamente para Sonnet so para gerar o periodo PRESENTE
+// 2026-06-16; REVERTIDO para Opus em 2026-07-02 (o batch historico depende de Opus
+// para evitar hindsight). Para gerar periodos presentes, usar Sonnet pontualmente.
 const GENERATION_MODEL = 'claude-opus-4-8';
 
 const cfg = {
@@ -582,8 +586,11 @@ function formatGlobalContext(clusters: Cluster[], signalMap: Map<string, Signal>
 
     const signalLines = signals.map((s, j) => {
       const source  = s.sources?.name ?? 'Unknown';
-      const preview = (s.content || s.metadata.snippet || '').slice(0, cfg.contentPreviewChars);
-      return `  [${j + 1}] ${source} — ${s.title}\n      ${preview || '(unavailable)'}`;
+      // stripLoneSurrogates apos o .slice(): a fatia por code unit pode cortar um
+      // emoji ao meio e orfanar o high surrogate no fim do preview.
+      const preview = stripLoneSurrogates((s.content || s.metadata.snippet || '').slice(0, cfg.contentPreviewChars));
+      const title   = stripLoneSurrogates(s.title ?? '');
+      return `  [${j + 1}] ${source} — ${title}\n      ${preview || '(unavailable)'}`;
     }).join('\n\n');
 
     return `CLUSTER ${i + 1}: "${cluster.name}"\n${cluster.description}\nSignals (${signals.length}):\n${signalLines}`;
@@ -603,10 +610,13 @@ function formatClusterContext(cluster: Cluster, signalMap: Map<string, Signal>):
 
   const signalLines = signals.map((s, j) => {
     const source  = s.sources?.name ?? 'Unknown';
-    const preview = (s.content || s.metadata.snippet || '').slice(0, cfg.contentPreviewChars);
+    // stripLoneSurrogates apos o .slice(): a fatia por code unit pode orfanar um
+    // high surrogate no fim do preview (emoji cortado ao meio).
+    const preview = stripLoneSurrogates((s.content || s.metadata.snippet || '').slice(0, cfg.contentPreviewChars));
+    const title   = stripLoneSurrogates(s.title ?? '');
     return (
       `[${j + 1}] Source: ${source}\n` +
-      `    Title: ${s.title}\n` +
+      `    Title: ${title}\n` +
       `    Context: ${preview || '(unavailable)'}`
     );
   }).join('\n\n');
@@ -651,7 +661,10 @@ async function anthropicPost(
           'anthropic-version': '2023-06-01',
           'anthropic-beta':    'prompt-caching-2024-07-31',
         },
-        body: JSON.stringify(body),
+        // Rede final antes da serializacao: remove qualquer surrogate orfao de
+        // TODO o corpo (system, messages, etc.), venha de onde vier. Sem isso, um
+        // emoji cortado ao meio quebra o JSON e a API rejeita com 400.
+        body: JSON.stringify(deepStripLoneSurrogates(body)),
       });
 
       if (!res.ok) {
@@ -987,6 +1000,9 @@ function stripEmDash(s: string): string {
     .replace(/(\d)\s*\u2014\s*(\d)/g, '$1-$2')   // faixa numérica → hífen
     .replace(/\s*\u2014\s*/g, ', ');              // qualquer outro em dash → vírgula
 }
+
+// stripLoneSurrogates e deepStripLoneSurrogates agora vivem em ./sanitize (fonte
+// unica compartilhada por todo o pipeline). Importados no topo deste arquivo.
 
 /** Aplica stripEmDash recursivamente a todos os campos string de um TrendAnalysis. */
 function sanitizeTrend(t: TrendAnalysis): TrendAnalysis {

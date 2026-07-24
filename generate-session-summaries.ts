@@ -29,6 +29,7 @@ dotenv.config(); // fallback para .env
  */
 
 import { EMBEDDING_MODEL, embed, vectorLiteral, makeRest, sleep } from './embeddings-shared';
+import { deepStripLoneSurrogates } from './sanitize';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -115,12 +116,14 @@ async function summarizeWithHaiku(transcript: string): Promise<string> {
       'x-api-key':         cfg.anthropicKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
+    // Rede final: o transcript e conteudo de usuario e pode conter surrogates
+    // orfaos; remove-os do body antes de serializar.
+    body: JSON.stringify(deepStripLoneSurrogates({
       model:      cfg.haikuModel,
       max_tokens: 1100,
       system:     SUMMARY_INSTRUCTIONS,
       messages:   [{ role: 'user', content: `TRANSCRICAO DA SESSAO:\n\n${transcript}` }],
-    }),
+    })),
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json() as { content: Array<{ type: string; text: string }> };
