@@ -251,7 +251,7 @@ DEPTH, NOT VOLUME. A sharper response is not a longer response. Analytical depth
 
 LINKING RULES:
 
-11. LINK WHAT YOU CITE, WITH A STANDARD FORMAT. Whenever you mention a report, include a markdown link to it. Whenever you draw on a specific trend, cite it using the trend's CITE_AS string from the intelligence block EXACTLY as given: the EXACT_TITLE as the link text, never paraphrased, translated, summarized or shortened, immediately followed by the PERIOD in parentheses. The standard shape is: [Exact Trend Title](/reports/ID#trend-rank) (mmm/yyyy). For example: [Agentic AI Moves to Production: Governance Gaps Are Now a Strategic Liability](/reports/abc#trend-2) (jun/2024). Always keep the period in parentheses right after the link, in the response language (jun/2024 in Portuguese, Jun 2024 in English), using the PERIOD value provided. Do NOT drop the period, do NOT use only the month or only the year as the link text, and do NOT replace the title with a paraphrase like "AI governance". Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL, and never link a trend you are not actually using. Only trends inside the client's access appear in the block, so linking what is there is always safe.
+11. LINK WHAT YOU CITE, ALWAYS. Every mention of a report or trend from the archive MUST be a clickable markdown link to the trend that grounds the claim. Copy the trend's CITE_AS string from the intelligence block EXACTLY as given: it already has the shape [mmm/yyyy](/reports/ID#trend-rank), for example [jun/2024](/reports/abc#trend-2). The link text is the SHORT time reference in the response language (jun/2024 in Portuguese, Jun 2024 in English); do not spell the full trend title into the body. SHORT LINK TEXT DOES NOT MEAN NO LINK: a period written as plain text, for example "the report from jun/2024" or "the jun/2024 analysis" with no markdown link around it, is a FORMATTING ERROR. The clickable link is the verifiable grounding of the claim and is never optional. Use ONLY the URLs provided in the intelligence block for this turn. NEVER construct, guess or invent a URL, and never link a trend you are not actually using. Only trends inside the client's access appear in the block, so linking what is there is always safe.
 
 HOW YOU ACCESS THE ARCHIVE:
 
@@ -351,7 +351,7 @@ VOICE AND FORMAT:
 - Inverted pyramid on decision answers: the single finding that most changes the client's situation lands by the SECOND paragraph. Background and context come AFTER that finding, never before it.
 - Scope disclaimers (for example "this is general knowledge, not a TAIME report") are at most ONE embedded sentence, never a whole paragraph of throat-clearing.
 - Bold sparingly: at most 2 to 3 uses per reply, for the thesis and the key facts. Never bold whole sentences decoratively.
-- Trend references: the visible text of ANY report link is ONLY the short time reference ("the Jun 2026 report", "the Nov 2025 analysis"). The trend title NEVER appears in the body of the reply. The period appears exactly ONCE, inside the link itself, never repeated in parentheses next to it.
+- Trend references: every reference to a report or trend from the archive is a clickable markdown link, and the visible text is the short time reference only ("[fev/2026](/reports/ID#trend-2)", not the full title). SHORT TEXT NEVER MEANS NO LINK: a period as plain text without its markdown link is a formatting error. The period appears exactly ONCE, inside the link itself, never repeated in parentheses next to it.
 - Archive citation as a blockquote: when you reproduce or closely paraphrase what a report documents, you may use ONE short blockquote (2 to 3 lines) with the period link at the end. At most 1 to 2 per reply; everything else stays prose.
 
 RESPONSE STRUCTURE (markdown, in moderation):
@@ -1019,16 +1019,16 @@ function buildTrendContextBlock(chunks: TrendChunk[], lang: Lang, titleById?: Ma
     const title  = titleById?.get(c.trend_id)
     const citeP  = citePeriodLabel(c.period, lang)
     const tags   = [c.theme_slug, c.category].filter(Boolean).join(' | ')
-    // Linha de citacao explicita: o modelo copia o titulo exato e o periodo tal
-    // como estao aqui. Sem titulo (falha ao buscar), cai no formato so-tags.
-    const head = title
-      ? `Trend:\n  EXACT_TITLE: ${title}\n  PERIOD: ${citeP}\n  URL: ${url}\n  CITE_AS: [${title}](${url}) (${citeP})${tags ? `\n  tags: ${tags}` : ''}`
-      : `Trend [${c.period}${tags ? ` | ${tags}` : ''}] [URL: ${url}]`
+    // Linha de citacao explicita e PRONTA: o modelo copia CITE_AS tal como esta.
+    // Texto do link = periodo curto; titulo completo vai no atributo de titulo do
+    // markdown (hover), nao no corpo. O LINK e obrigatorio (CITE_AS ja e o link).
+    const citeAs = `[${citeP}](${url}${title ? ` "${title.replace(/"/g, "'")}"` : ''})`
+    const head = `Trend:\n  PERIOD: ${citeP}\n  URL: ${url}\n  CITE_AS: ${citeAs}${title ? `\n  FULL_TITLE: ${title}` : ''}${tags ? `\n  tags: ${tags}` : ''}`
     return `${head}\n  Content: ${c.content}`
   }).join('\n\n---\n\n')
 
   return `TAIME INTELLIGENCE LOADED FOR THIS TURN (semantic match across the archive; periods: ${periods.join(', ')}):
-Use only the URLs below when linking. Do not invent URLs. When you draw on a trend, cite it using its CITE_AS string EXACTLY: the EXACT_TITLE as the link text (never paraphrased or shortened) immediately followed by the PERIOD in parentheses.
+EVERY reference to one of these trends MUST be a clickable markdown link: copy its CITE_AS string EXACTLY as given. The link text is the short period; the link itself is mandatory. A period written as plain text without its markdown link is a formatting error. Use ONLY the URLs below, never invent one.
 
 ${body}`
 }

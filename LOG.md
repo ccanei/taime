@@ -2,6 +2,35 @@
 
 ---
 
+## [2026-07-26] - Fix urgente: Advisor voltou a linkar relatorios (regressao do v5.3)
+
+- Sintoma (confirmado no banco): respostas citavam "o relatorio de fev/2026" como
+  TEXTO PURO, sem markdown de link. Os links clicaveis para as trends sao pilar do
+  grounding verificavel e sumiram.
+- Causa raiz: CONTRADICAO no prompt. A regra 11 (LINKING) e o rodape do bloco de
+  contexto mandavam usar o EXACT_TITLE como texto do link; o bullet de "referencia
+  curta" (v5.2, VOICE AND FORMAT) mandava "titulo NUNCA no corpo, so referencia
+  curta". Preso entre os dois, o modelo largou o link e escreveu texto puro.
+- Verificado que os DADOS continuam chegando ao modelo: buildTrendContextBlock
+  ainda emite URL e CITE_AS (/reports/{id}#trend-{rank}). Nao havia 2o bug de dado
+  ausente.
+- Correcao (so RULES_BLOCK do logado + o CITE_AS do bloco de contexto; comportamento
+  v5.3 intocado): reconciliadas as 3 fontes numa unica verdade: TODA mencao a
+  relatorio/trend DEVE ser link markdown clicavel; o TEXTO do link e a referencia
+  curta (mmm/aaaa); "short link text does NOT mean no link, periodo em texto puro
+  sem link e erro de formatacao".
+  - Regra 11 reescrita: link obrigatorio, texto curto, copiar CITE_AS exato.
+  - Bullet VOICE AND FORMAT: reafirma link obrigatorio, sem contradicao.
+  - CITE_AS agora ja vem PRONTO como link curto com o titulo no atributo de titulo
+    do markdown: [fev/2026](/reports/id#trend-2 "Titulo Completo"). O modelo copia,
+    o texto fica curto, o link volta e o titulo completo aparece no hover (o render
+    de chip ja le o title). Rodape do bloco: "EVERY reference MUST be a clickable
+    markdown link".
+- ANON_RULES_BLOCK do /ask intocado. Render (AdvisorMarkdown) inalterado; so o dado
+  que ele recebe. npm run build: 0 erros.
+
+---
+
 ## [2026-07-25] - Advisor v5.3: refinamentos de ENTREGA (so RULES_BLOCK do logado)
 
 - Convergencia de avaliacoes externas da experiencia real em 5 refinamentos que
