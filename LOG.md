@@ -2,6 +2,36 @@
 
 ---
 
+## [2026-07-25] - Advisor v5.3: refinamentos de ENTREGA (so RULES_BLOCK do logado)
+
+- Convergencia de avaliacoes externas da experiencia real em 5 refinamentos que
+  NAO mudam a alma (personalidade v5.1, partner mode, grounding, sem valores/firmas,
+  raia estrategica intactos); mudam a entrega. So o RULES_BLOCK do Advisor logado;
+  ANON_RULES_BLOCK do /ask intocado. app/api/advisor/chat/route.ts.
+- (1) Disclaimer de limite dito UMA vez: a distincao fato/projecao/leitura propria
+  segue obrigatoria, mas o caveat explicito de "sem periodo posterior carregado para
+  confirmar" aparece no maximo uma vez por conversa (1a projecao); nas seguintes, a
+  distincao vem embutida na linguagem, sem repetir a explicacao do limite.
+- (2) Recusa no limite da raia sem defensividade: PROIBIDO abrir com o que o Advisor
+  nao faz; vai direto a entrega maxima possivel na raia, com no maximo 1 frase leve
+  de enquadramento no fim.
+- (3) Templates como estrutura copiavel: tabela markdown (poucas colunas) ou bloco
+  CSV (muitas colunas), 1a linha de exemplo com o contexto real do cliente. Nao viola
+  "estrutura so quando e genuinamente lista" nem a raia (texto estruturado, nao
+  arquivo). Analise segue prosa. Reescreveu o bloco STRATEGIC LANE, que antes proibia
+  ate a tabela.
+- (4) Fechamento executavel em plano/priorizacao: 1-2 acoes pequenas (dias, nao
+  trimestres), integradas ao partner mode (acao + escrutinio); sem prazo de falsa
+  precisao nem valor monetario. Nova secao PRIORITIZATION AND PLANS.
+- (5) "O que NAO fazer agora" em priorizacao: 1-3 itens a nao fazer, com o porque em
+  1 linha, so quando os relatorios/situacao sustentarem; nunca enchimento generico.
+- Guarda-corpos reafirmados no proprio prompt: cliente decide (proibido "decisao
+  tomada, faca X ate sexta"), sem valores monetarios, sem nomear firmas/produtos,
+  grounding rigido, raia mantida (template sim; arquivo/formula/passo-a-passo nao).
+- npm run build: 0 erros. Comentario de versao // v5.3 adicionado.
+
+---
+
 ## [2026-07-25] - Legibilidade + identidade visual TAIME nas respostas do Advisor
 
 ### TAREFA 1: system prompt (VOICE AND FORMAT) do Advisor logado
