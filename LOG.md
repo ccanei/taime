@@ -2,6 +2,44 @@
 
 ---
 
+## [2026-07-25] - Legibilidade + identidade visual TAIME nas respostas do Advisor
+
+### TAREFA 1: system prompt (VOICE AND FORMAT) do Advisor logado
+- app/api/advisor/chat/route.ts, secao VOICE AND FORMAT do RULES_BLOCK v5.1
+  reforcada (personalidade/partner/grounding/teaser/memoria intactos): paragrafos
+  de 2 a 4 linhas com uma ideia cada; abertura com veredito em negrito na 1a frase
+  SO em perguntas de decisao (factuais/trajetoria seguem o fluxo natural, trajetoria
+  mantem narrativa cronologica); piramide invertida (achado principal ate o 2o
+  paragrafo); disclaimers de escopo em 1 frase embutida; negrito pontual (2 a 3 por
+  resposta); referencias de trend curtas no corpo do link ("o relatorio de fev/2026");
+  citacao de arquivo como UM blockquote curto com o link do periodo no fim (1 a 2 max).
+- ANON_RULES_BLOCK do /ask NAO tocado (a mudanca e so do prompt logado).
+
+### TAREFA 2: render com identidade TAIME (components/AdvisorMarkdown.tsx)
+- Cor de marca existente do design system: taime-600. Zero cor nova.
+- O texto e quebrado em blocos de topo (linha em branco). Assinatura visual, sem
+  reintroduzir andaime (sem titulos de secao, tabelas, bullets ou caixas fixas):
+  - Veredito de abertura: 1o bloco que ABRE em negrito ganha barra vertical de marca
+    (3px) + fundo levissimo (taime-600/[0.05]) + tipografia ~1px maior. So aciona
+    quando o modelo abriu com a tese em negrito (respostas de decisao); nada e forcado
+    em factuais/trajetoria.
+  - Pergunta final: ultimo bloco terminando em "?" ganha respiro superior maior +
+    italico + a mesma barrinha de marca (eco do veredito).
+  - Blockquote de citacao: barra de marca + fundo sutil; link de relatorio vira chip
+    clicavel (pastilha taime-50/100/700 com "↗", link para a ancora da trend).
+  - Links de relatorio inline = mesmo chip; demais links = sublinhado pontilhado.
+  - Respiros: espacamento entre paragrafos maior, leading 1.65, coluna max 70ch.
+- AdvisorFeedback ("Foi util? 👍👎"): padding mt-2/pt-2 -> mt-4/pt-3 (estava colado).
+- So CSS/render: aplica-se RETROATIVAMENTE a conversas antigas. AdvisorMarkdown e
+  compartilhado com o /ask, entao o /ask herda o polimento visual (sem tocar em
+  logica/gate/busca do /ask). Chips de periodo nao aparecem no /ask (ANON proibe links).
+- Notas de sistema (teaser/janela) NAO recebem estilo proprio: sao prosa inline
+  composta pelo modelo, sem marcador confiavel no render. Deixado para iteracao
+  futura em vez de deteccao fragil (conforme a propria tarefa).
+- npm run build: 0 erros.
+
+---
+
 ## [2026-07-21] - Contato contextual no Advisor logado + redirect do /ask para logados
 
 ### Parte A: pedido de contato humano dentro do Advisor (SO logado; /ask intacto)
