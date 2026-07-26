@@ -1474,7 +1474,15 @@ export async function POST(req: NextRequest) {
   const userTs      = new Date()
   const assistantTs = new Date(userTs.getTime() + 1)
 
-  await service.from('advisory_memory').insert([
+  // ── PERSISTENCIA CRITICA (mensagens + sessao) ANTES de qualquer passo opcional
+  //    e antes de responder. Regra estrutural pos-incidente 26/07: NUNCA
+  //    fail-silent mudo. Todo erro de persistencia e logado com detalhe completo
+  //    (console.error, visivel no Vercel) e sinalizado ao cliente via
+  //    history_saved. O contador (checkAndConsumeMessage) ja sinaliza problema de
+  //    infra com reason 'infra_unavailable'; dobramos isso em history_saved.
+  let historySaved = usage.reason !== 'infra_unavailable'
+
+  const { error: memErr } = await service.from('advisory_memory').insert([
     {
       user_id:          user.id,
       session_id:       sessionId,
@@ -1492,17 +1500,18 @@ export async function POST(req: NextRequest) {
       created_at:       assistantTs.toISOString(),
     },
   ])
-
-  // Captacao passiva de contexto: extrai o que o cliente revelou nesta mensagem
-  // e persiste em advisor_profiles (idempotente). Substitui o onboarding
-  // obrigatorio de entrada. Best-effort e sem bloquear a UX em caso de falha.
-  const extracted = await extractContext(userMessage)
-  await persistExtractedContext(service, user.id, profile, extracted)
+  if (memErr) {
+    historySaved = false
+    console.error('[advisor-persist] advisory_memory INSERT FAILED (message NOT saved):', {
+      code: memErr.code, message: memErr.message, details: memErr.details, hint: memErr.hint,
+      user_id: user.id, session_id: sessionId,
+    })
+  }
 
   // Sincroniza metadados em advisor_sessions: cria na primeira mensagem com
-  // título derivado da pergunta, atualiza last_activity_at e message_count nas
-  // demais. Falha silenciosa: se a migração add-advisor-session-archive.sql
-  // ainda não rodou, o chat segue funcionando sem o seletor de sessões.
+  // titulo derivado da pergunta, incrementa message_count/last_activity nas
+  // demais. Migracao ausente (42883/42P01) e tolerada; qualquer OUTRO erro e
+  // logado com detalhe, nunca silenciado.
   const isNewSession = history.length === 0
   const title        = isNewSession ? userMessage.slice(0, 80) : null
   try {
@@ -1513,13 +1522,28 @@ export async function POST(req: NextRequest) {
       p_inc:        2,
     })
     if (sessionErr && sessionErr.code !== '42883' && sessionErr.code !== '42P01') {
-      console.warn('[advisor-sessions] upsert failed:', sessionErr.message)
+      historySaved = false
+      console.error('[advisor-persist] advisor_session_upsert FAILED:', {
+        code: sessionErr.code, message: sessionErr.message, details: sessionErr.details, hint: sessionErr.hint,
+        user_id: user.id, session_id: sessionId,
+      })
     }
   } catch (e) {
-    console.warn('[advisor-sessions] upsert exception:', e)
+    historySaved = false
+    console.error('[advisor-persist] advisor_session_upsert EXCEPTION:', e)
   }
 
-  // Retorna a resposta + o estado da cota, para o contador da UI atualizar sem
-  // um roundtrip extra. Strategic vem com limit null (sem contador).
-  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan })
+  // ── Passo OPCIONAL (best-effort) DEPOIS da persistencia critica: captacao
+  //    passiva de contexto do perfil (idempotente). Totalmente isolado, nunca
+  //    quebra a resposta nem a persistencia acima, mesmo se a API/rede falhar.
+  try {
+    const extracted = await extractContext(userMessage)
+    await persistExtractedContext(service, user.id, profile, extracted)
+  } catch (e) {
+    console.error('[advisor-context] extraction/persist EXCEPTION (ignored, nao afeta persistencia):', e)
+  }
+
+  // Responde com a cota e history_saved (false = a conversa NAO pode ser gravada;
+  // a UI avisa o usuario). Strategic vem com limit null (sem contador).
+  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved })
 }

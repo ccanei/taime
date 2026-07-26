@@ -116,6 +116,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [messages,   setMessages]   = useState<Message[]>([])
   const [input,      setInput]      = useState('')
   const [loading,    setLoading]    = useState(false)
+  // Incidente 26/07: avisa (nao bloqueia) quando o backend nao pode gravar a
+  // conversa no historico (history_saved=false, problema de infra de persistencia).
+  const [historyWarn, setHistoryWarn] = useState(false)
   const [sessionId,  setSessionId]  = useState<string>('')
   const [hasHistory, setHasHistory] = useState(false)
 
@@ -314,6 +317,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
+    setHistoryWarn(false)
 
     try {
       const res  = await fetch('/api/advisor/chat', {
@@ -321,7 +325,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: text, sessionId: sid }),
       })
-      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null }
+      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean }
 
       // Cota esgotada: nada foi gerado nem consumido. Remove a mensagem otimista
       // e mostra o CTA de upgrade no lugar do input.
@@ -341,6 +345,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         created_at: new Date().toISOString(),
       }
       setMessages(prev => [...prev, assistantMsg])
+      // Persistencia: se o backend nao conseguiu gravar a conversa, avisa o usuario
+      // (nao bloqueia; a resposta ja foi entregue).
+      if (json.history_saved === false) setHistoryWarn(true)
       // Intencao de contato humano: o Advisor respondeu normalmente; alem disso,
       // oferecemos abrir o popup de contato. O Advisor segue a via principal.
       if (HANDOFF_RE.test(text)) setHandoffOffered(true)
@@ -629,6 +636,25 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                      strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Aviso de persistencia: a resposta foi entregue mas nao pode ser gravada
+            no historico (problema de infra). Nao bloqueia a conversa. */}
+        {historyWarn && (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center justify-between gap-3">
+            <p className="text-xs text-amber-800 leading-snug">
+              {isPt
+                ? 'Esta conversa nao pode ser salva no seu historico agora (problema temporario). A resposta acima esta correta; o registro pode nao aparecer nas suas sessoes.'
+                : 'This conversation could not be saved to your history right now (temporary issue). The answer above is fine; the record may not appear in your sessions.'}
+            </p>
+            <button
+              onClick={() => setHistoryWarn(false)}
+              aria-label={isPt ? 'Dispensar' : 'Dismiss'}
+              className="text-amber-500 hover:text-amber-700 p-1 shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
           </div>
         )}
 

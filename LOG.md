@@ -2,6 +2,43 @@
 
 ---
 
+## [2026-07-26] - INCIDENTE: persistencia do Advisor quebrada (causa ambiental) + fim do fail-silent
+
+- Sintoma: mensagens do Advisor pararam de salvar em advisory_memory, advisor_usage
+  nao incrementava e sessoes nao apareciam, em TODOS os planos, apesar de as
+  respostas serem geradas e exibidas. Ultima gravacao boa: 2026-07-26T03:29Z.
+- Diagnostico: os commits da noite (341557d v5.3, 63a7831 links, 9857c9e teaser,
+  5649f8f/8a31a48 visual) foram SO prompt/render; NENHUM tocou o bloco de
+  persistencia (git log -p confirmou). Teste direto contra o banco com a service
+  key: advisory_memory insert 201, advisor_consume_message e advisor_session_upsert
+  200/204, contador free (claudinei.canei@gartner.com) incrementa 0->1. Ou seja:
+  DB, schema, RLS, constraints, RPCs e codigo estao sadios; as escritas funcionam.
+  Conclusao: causa raiz AMBIENTAL, a SUPABASE_SERVICE_KEY do runtime no Vercel esta
+  invalida/rotacionada (as .env.local locais ja tem o novo formato sb_secret_...;
+  o Vercel provavelmente ainda tem a JWT legada, que foi desativada). Todas as
+  escritas service-role no Vercel falham com auth error, ENGOLIDO pelos handlers
+  fail-silent. Acao do usuario: revalidar/rotacionar a SUPABASE_SERVICE_KEY no Vercel.
+- Correcao estrutural (para o erro nunca mais ficar mudo e o proximo ser
+  diagnosticavel na hora):
+  - advisory_memory insert agora captura {error} e loga console.error com
+    code/message/details/hint/user/session (visivel no Vercel). Antes: retorno
+    ignorado (fail-silent total).
+  - advisor_session_upsert: erros (fora de 42883/42P01 = migracao ausente) sobem de
+    console.warn para console.error com detalhe.
+  - checkAndConsumeMessage (contador): fail-open mantido (disponibilidade), mas o
+    log virou console.error com detalhe completo.
+  - Ordem do fluxo: gerar -> persistir mensagens + sessao (critico, logado) ->
+    passo OPCIONAL de captacao de perfil (isolado em try/catch, nunca quebra a
+    persistencia nem a resposta) -> responder. A extracao Haiku saiu do caminho
+    critico.
+  - Resposta passa a incluir history_saved; a UI (AdvisorChat) mostra um aviso ambar
+    nao-bloqueante quando a conversa nao pode ser gravada.
+- Contador segue como GATE pre-geracao (consumo atomico antes de gerar) por
+  correcao de concorrencia; decisao registrada: nao movido para pos-geracao para
+  nao enfraquecer o gate. npm run build: 0 erros.
+
+---
+
 ## [2026-07-26] - Fix urgente: Advisor voltou a linkar relatorios (regressao do v5.3)
 
 - Sintoma (confirmado no banco): respostas citavam "o relatorio de fev/2026" como

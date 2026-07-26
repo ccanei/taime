@@ -37,7 +37,13 @@ export async function checkAndConsumeMessage(
       p_rolling: windowType === 'rolling_30d',
     })
     if (error) {
-      console.warn('[advisorUsage] rpc error, fail-open:', error.message)
+      console.error('[advisorUsage] advisor_consume_message RPC FAILED (fail-open, counter NOT incremented):', {
+        code:    (error as { code?: string }).code,
+        message: error.message,
+        details: (error as { details?: string }).details,
+        hint:    (error as { hint?: string }).hint,
+        user_id: userId, plan: effPlan,
+      })
       return { allowed: true, used: 0, limit, plan: effPlan, reason: 'infra_unavailable' }
     }
     const row = (Array.isArray(data) ? data[0] : data) as
@@ -54,7 +60,7 @@ export async function checkAndConsumeMessage(
       reason:  row.allowed ? undefined : 'limit_reached',
     }
   } catch (e) {
-    console.warn('[advisorUsage] exception, fail-open:', e)
+    console.error('[advisorUsage] advisor_consume_message EXCEPTION (fail-open, counter NOT incremented):', e)
     return { allowed: true, used: 0, limit, plan: effPlan, reason: 'infra_unavailable' }
   }
 }
