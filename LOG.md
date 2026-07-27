@@ -2,6 +2,61 @@
 
 ---
 
+## [2026-07-27] - Parsing de "desde X" (bug critico da busca) + consistencia do Advisor
+
+### TASK 0 (CRITICO): "desde 2016 ate hoje" retornava SO 2016
+- Causa: detectPeriodIntent (v4.6, dentro do route do Advisor) so conhecia range
+  FECHADO e latest. "desde YYYY" / "de YYYY ate hoje" / "YYYY ate hoje" nao casavam
+  o intervalo (a segunda ponta nao e ano), entao caiam no ramo de ANO ISOLADO e
+  viravam [YYYY-01, YYYY-12]: piso E teto no mesmo ano. A busca vetorial recebia
+  ceiling=YYYY-12 e devolvia so aquele ano.
+- Fix: extrai a logica para lib/period-intent.ts (modulo PURO, testavel) e adiciona
+  kind:'floor' (piso aberto). Ordem: latest -> intervalo FECHADO -> PISO ABERTO ->
+  mes+ano -> MM/AAAA -> ano isolado. O piso aberto corre DEPOIS do fechado (uma
+  ponta final explicita vence: "desde 2016 ate 2020" continua fechado) e ANTES do
+  ano isolado ("desde 2016" nao e mais lido como so 2016). Piso aberto gera so
+  reqFrom; reqTo=null -> ceiling permissivo (hoje). "de YYYY" nu e "from YYYY" nu
+  seguem como ano unico (ambiguos): piso exige marcador (desde/since/a partir de/
+  ate hoje/em diante).
+- Testes: lib/period-intent.test.ts, 26 casos PT+EN (roda com `node lib/period-intent.test.ts`,
+  Node 24 strip de tipos). 26/26 passam. tsconfig ganhou allowImportingTsExtensions
+  (noEmit ja era true) para o import .ts do teste passar no tsc.
+- Validacao REAL (script no scratchpad, embeda a pergunta e chama match_trend_chunks):
+  "como cloud evoluiu desde 2016 ate hoje?"
+    OLD (bug): floor=2016-01 ceiling=2016-12 -> 16 chunks, TODOS de 2016.
+    NEW: floor=2016-01 ceiling=permissivo count=40 -> chunks de 2016..2024
+    (8 anos distintos). "entre 2017 e 2025" -> range fechado [2017-01, 2025-12].
+    "em 2016" -> [2016-01, 2016-12] (sem regressao).
+
+### TASK 2: diversidade temporal na busca de trajetoria
+- isTrajectoryQuestion sobe o match_count (VECTOR_MATCH_COUNT_TRAJECTORY=40) e, apos
+  o dedupe, rebalanceByYear() distribui os candidatos por faixa de ano (round-robin
+  cronologico: rodada 0 pega o melhor de CADA ano, etc, ate TRAJECTORY_CANDIDATE_CAP=24)
+  ANTES do refinador. Sem isso o top-N por similaridade colapsava nos anos mais
+  proximos da pergunta (no teste real, 2021=13 e 2022=11 dominavam; apos rebalance
+  caem a 4 cada e 2016/2018/2019/2020/2023/2024 ganham vaga). Perguntas nao-trajetoria:
+  candidates = deduped (inalterado).
+- Nota: o embedding da query JA usa so a mensagem do turno atual (userMessage), nao o
+  historico acumulado. Entao "pesar a pergunta atual mais que o historico" ja e verdade
+  por construcao; nao havia diluicao a corrigir no embedding.
+
+### TASK 1: continuidade de framework canonico repetido (system prompt)
+- Regra 5b adicionada ao RULES_BLOCK: quando o cliente repete, na MESMA conversa, um
+  framework canonico ja entregue (then/now/next, arco de trajetoria, score breakdown),
+  o Advisor PARTE da versao anterior (visivel no historico) como espinha dorsal e
+  enriquece. PROIBIDO reconstruir do zero com arco mais pobre: se a busca do turno
+  trouxe menos periodos, mantem a espinha e SOMA o novo. Re-elaboracao exploratoria
+  (5a) segue para perguntas abertas.
+
+### TASK 3: nota de transparencia derivada do PLANO, nao do turno
+- DEPTH AWARENESS ganhou clausula: qualquer afirmacao sobre o alcance da janela / desde
+  quando o arquivo cobre um tema deriva SO do plano (getAdvisorWindowMonths) + ano de
+  inicio no bloco PRE-WINDOW METADATA. NUNCA dos periodos que a busca do turno retornou.
+  Proibido "minha janela cobre [o que veio agora]"; um turno com poucos periodos nao
+  significa janela menor.
+
+---
+
 ## [2026-07-27] - Front resiliente a fetch abortado (troca de aba durante a geracao)
 
 ### Sintoma

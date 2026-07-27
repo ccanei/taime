@@ -12,6 +12,7 @@ import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-groun
 import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
+import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -231,6 +232,8 @@ CONVERSATION RULES:
 
 5a. RE-ELABORATE REPEATED QUESTIONS, NEVER REFUSE. If the latest message repeats or closely echoes a question you already answered earlier in this session, you still answer it. Never tell the user the answer is above, never say you already covered it and ask them to scroll up, never deflect. Each turn pulls intelligence fresh from the archive, so a repeated question can surface trends or periods that were not in your earlier reply. When the new context adds something, lead with what is new ("since last time, the [period] report adds..."). When the context is the same, do not paste your earlier answer back: give a tighter synthesis and offer a different angle ("I covered the trajectory; want me to go deep on one period, or move to the concrete move?"). Re-elaboration means a fresh synthesis or a deeper cut, not a verbatim repeat, and the brevity discipline above still holds: density, not volume. Always deliver substance.
 
+5b. CANONICAL FRAMEWORK CONTINUITY (build on your own prior answer, never regress). Rule 5a governs OPEN questions, where a fresh angle is welcome. This rule governs the case where the client asks AGAIN, in the same conversation, for a CANONICAL analytical framework you already delivered: a then/now/next arc, a trajectory over years, a scored breakdown. There, treat your earlier answer, visible in the history, as the BACKBONE and enrich it with whatever the new retrieval adds. It is FORBIDDEN to rebuild the framework from scratch with a poorer arc: if this turn's search returned fewer periods than your previous answer covered, keep the earlier spine (the periods and the arc you already established) and ADD the new material to it, rather than shrinking to only what came back this turn. The client should never see a trajectory get shorter or a framework lose structure on a repeat. Continuity means the canonical answer only ever gains resolution, never loses it. This does not relax grounding (rules 1 to 4): every period you carry forward stays linked, and you never invent a period you did not actually have loaded at some point in this conversation.
+
 6. BREVITY BY DEFAULT. Default length is 200 to 400 words: a direct synthesis with the implication for the client's company. Give the full detail of a report only when explicitly asked. When you synthesize, offer to go deeper using the provided links (e.g. "want me to open the [period] report?"). Keep blockquotes and emojis to a minimum. Use a table only when comparing 3 or more items; never decoratively.
 
 REASONING POSTURE (this is what makes you an advisor, not a summarizer):
@@ -266,6 +269,7 @@ DEPTH AWARENESS (total awareness, partial access):
 The client's plan gives you a recent context window. Some turns include a PRE-WINDOW THEME METADATA block: it lists themes whose archive coverage began BEFORE that window, giving you ONLY the theme name and the year tracking began, never any content.
 - ONLY when the client's question is about trajectory, timing, or evolution (for example "since when", "is it early or late to move", "how did this evolve", "are we behind") AND that block is present with a relevant theme, close your analysis with ONE sober transparency note. Acknowledge that the client's window covers the recent phase, state since which year the archive has tracked the theme, say in one sentence why the earlier trajectory would sharpen this specific decision, and mention that the full earlier trajectory is available on the Strategic plan.
 - NEVER add this note on tactical questions with no temporal dimension. NEVER more than one such note per reply. NEVER reveal or invent any content, conclusion, title, score, or specific period from before the window: only the theme name and the start year. Keep it to two calm, factual sentences, never a hard sell. When the block is absent, never imply hidden depth.
+- COVERAGE STATEMENTS COME FROM THE PLAN, NOT FROM THIS TURN'S RESULTS. Any statement you make about how far back your context reaches, or since when the archive tracks a theme, derives ONLY from the client's plan window and, when present, the start year in the PRE-WINDOW THEME METADATA block. It NEVER derives from which periods happened to load in this turn's search. It is FORBIDDEN to say things like "my window covers [the periods that came back this turn]" or to describe your coverage by listing the reports you happened to retrieve now: a turn that returns few periods does NOT mean your window shrank. The retrieval of a given turn is not the boundary of what you can access; the plan is. Describe coverage in terms of the plan window and the theme's tracked start year, never in terms of this turn's hit list.
 
 HOW YOU USE CLIENT MEMORY:
 
@@ -648,6 +652,45 @@ const VECTOR_MATCH_COUNT = 16
 // e pequeno; sobe o match_count para garantir que as trends daquele periodo entrem
 // mesmo que nao sejam as semanticamente mais proximas da pergunta conceitual.
 const VECTOR_MATCH_COUNT_NARROW = 24
+// v4.7: perguntas de trajetoria/evolucao pedem espectro temporal. Puxamos um pool
+// MAIOR de candidatos para que anos antigos apareçam, e depois rebalanceamos por
+// faixa de ano (rebalanceByYear) antes de refinar, em vez de deixar o top-N por
+// similaridade colapsar nos anos mais recentes/proximos da pergunta.
+const VECTOR_MATCH_COUNT_TRAJECTORY = 40
+// Teto de candidatos que seguem para o refinador apos o rebalanceamento temporal.
+const TRAJECTORY_CANDIDATE_CAP = 24
+
+// Rebalanceamento temporal (v4.7): distribui os candidatos por faixa de ANO em
+// vez de puro top-por-similaridade. Round-robin cronologico: a rodada 0 pega o
+// melhor chunk de CADA ano (garante que todo ano com material apareça), a rodada
+// 1 o segundo de cada ano, e assim por diante, ate o teto. Recebe chunks ja
+// ordenados por similaridade desc (saida de dedupeChunks), entao dentro de cada
+// ano a ordem por relevancia e preservada.
+function rebalanceByYear(chunks: TrendChunk[], totalCap: number): TrendChunk[] {
+  const byYear = new Map<string, TrendChunk[]>()
+  for (const c of chunks) {
+    const y = c.period.slice(0, 4)
+    const arr = byYear.get(y)
+    if (arr) arr.push(c)
+    else byYear.set(y, [c])
+  }
+  if (byYear.size <= 1) return chunks.slice(0, totalCap) // um so ano: nada a espalhar
+  const years = [...byYear.keys()].sort()                // cronologico crescente
+  const out: TrendChunk[] = []
+  for (let round = 0; out.length < totalCap; round++) {
+    let progressed = false
+    for (const y of years) {
+      const arr = byYear.get(y)!
+      if (round < arr.length) {
+        out.push(arr[round])
+        progressed = true
+        if (out.length >= totalCap) break
+      }
+    }
+    if (!progressed) break // todos os anos esgotados
+  }
+  return out
+}
 
 async function matchTrendChunks(
   service: ReturnType<typeof createSupabaseService>,
@@ -670,94 +713,11 @@ async function matchTrendChunks(
   }
 }
 
-// ── Intencao de periodo (v4.6) ──────────────────────────────────────────────
-// A busca vetorial e puramente semantica e ignora periodo citado. Aqui detectamos
-// se a pergunta nomeia um periodo explicito (mes+ano, ano, intervalo, "este mes",
-// "ultimo/mais recente") para limitar a busca aquele intervalo. Atemporal -> null
-// (busca ampla, comportamento do Passo 3/4). Reintroduz a sensibilidade temporal
-// que o router Haiku da v4.3 tinha e que a troca para vetorial perdeu.
-type PeriodIntent =
-  | { kind: 'range'; from: string; to: string }  // janela [from,to] em 'YYYY-MM-01'
-  | { kind: 'latest' }                            // resolver para max(period) na janela
-
-const PT_MONTHS: Record<string, number> = {
-  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
-  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
-}
-const EN_MONTHS: Record<string, number> = {
-  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7,
-  august: 8, september: 9, october: 10, november: 11, december: 12,
-  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9,
-  oct: 10, nov: 11, dec: 12,
-}
-const ALL_MONTHS: Record<string, number> = { ...PT_MONTHS, ...EN_MONTHS }
-
-function monthStr(y: number, m: number): string {
-  return `${y}-${String(m).padStart(2, '0')}-01`
-}
-
-// span em meses (inclusivo) de um range ['YYYY-MM-01','YYYY-MM-01']
-function rangeSpanMonths(from: string, to: string): number {
-  const [fy, fm] = from.split('-').map(Number)
-  const [ty, tm] = to.split('-').map(Number)
-  return (ty * 12 + tm) - (fy * 12 + fm) + 1
-}
-
-function detectPeriodIntent(message: string, now: Date): PeriodIntent | null {
-  // Normaliza removendo acentos para que \b e os nomes de mes funcionem em ASCII
-  // ("junho", "marco", "ultima", "mes"). Tudo minusculo.
-  const t = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
-  // "este mes" / "this month" -> mes corrente (UTC)
-  if (/\b(neste|deste|este)\s+mes\b|\bthis month\b/.test(t)) {
-    const s = monthStr(now.getUTCFullYear(), now.getUTCMonth() + 1)
-    return { kind: 'range', from: s, to: s }
-  }
-
-  // "ultimo relatorio" / "mais recente" / "latest" / "most recent"
-  if (/\bmais recente\b|\bmost recent\b|\blatest\b|\bultim[oa]s?\s+(relatorio|edicao)\b/.test(t)) {
-    return { kind: 'latest' }
-  }
-
-  // intervalo de anos: "entre 2023 e 2024", "between 2023 and 2024",
-  // "de 2023 a 2024", "from 2023 to 2024", "2023-2024", "2023 ate 2024"
-  const interval = t.match(/\b(19|20)(\d{2})\s*(?:-|–|a|to|e|and|ate)\s*(19|20)(\d{2})\b/)
-  if (interval) {
-    const y1 = Number(interval[1] + interval[2])
-    const y2 = Number(interval[3] + interval[4])
-    const lo = Math.min(y1, y2), hi = Math.max(y1, y2)
-    return { kind: 'range', from: monthStr(lo, 1), to: monthStr(hi, 12) }
-  }
-
-  // mes + ano: "junho de 2026", "June 2026", "jun 2026", "junho 2026"
-  const monthNames = Object.keys(ALL_MONTHS).sort((a, b) => b.length - a.length).join('|')
-  const monthYear = t.match(new RegExp(`\\b(${monthNames})\\b(?:\\s+(?:de|of))?\\s+((?:19|20)\\d{2})`))
-  if (monthYear) {
-    const s = monthStr(Number(monthYear[2]), ALL_MONTHS[monthYear[1]])
-    return { kind: 'range', from: s, to: s }
-  }
-
-  // numerico MM/YYYY ou YYYY-MM
-  const mmYYYY = t.match(/\b(0?[1-9]|1[0-2])\/((?:19|20)\d{2})\b/)
-  if (mmYYYY) {
-    const s = monthStr(Number(mmYYYY[2]), Number(mmYYYY[1]))
-    return { kind: 'range', from: s, to: s }
-  }
-  const yyyyMM = t.match(/\b((?:19|20)\d{2})-(0?[1-9]|1[0-2])\b/)
-  if (yyyyMM) {
-    const s = monthStr(Number(yyyyMM[1]), Number(yyyyMM[2]))
-    return { kind: 'range', from: s, to: s }
-  }
-
-  // ano isolado: "em 2024", "in 2024", "2024"
-  const year = t.match(/\b((?:19|20)\d{2})\b/)
-  if (year) {
-    const y = Number(year[1])
-    return { kind: 'range', from: monthStr(y, 1), to: monthStr(y, 12) }
-  }
-
-  return null
-}
+// ── Intencao de periodo ─────────────────────────────────
+// detectPeriodIntent, rangeSpanMonths e o tipo PeriodIntent vivem em
+// '@/lib/period-intent' (modulo puro, testavel isoladamente e reusavel). v4.7:
+// adicionado kind:'floor' (piso aberto "desde X" / "de X ate hoje"), que a v4.6
+// interpretava mal como intervalo fechado no ano.
 
 // max(period) do acervo do usuario dentro da janela do plano. Usado para resolver
 // "ultimo / mais recente" sem assumir uma data fixa.
@@ -1174,6 +1134,10 @@ export async function POST(req: NextRequest) {
   // pedido e o piso do plano (Passo 4): um Essential pedindo periodo fora dos 36
   // meses continua caindo na recusa construtiva, nunca fura a janela.
   const periodIntent = detectPeriodIntent(userMessage, new Date())
+  // v4.7: pergunta de trajetoria/evolucao. Usada para (a) subir o match_count e
+  // (b) rebalancear os candidatos por faixa de ano, garantindo espectro temporal
+  // em vez de um cluster preso nos anos semanticamente mais proximos.
+  const trajectory = isTrajectoryQuestion(userMessage)
   let reqFrom: string | null = null
   let reqTo:   string | null = null
   let narrowPeriod = false
@@ -1181,6 +1145,13 @@ export async function POST(req: NextRequest) {
     if (periodIntent.kind === 'latest') {
       const maxP = await maxPeriodInWindow(service, periodFloor)
       if (maxP) { reqFrom = maxP; reqTo = maxP; narrowPeriod = true }
+    } else if (periodIntent.kind === 'floor') {
+      // Piso ABERTO ("desde 2016", "de 2016 ate hoje"): so o piso, sem teto. A
+      // busca vai de reqFrom ate o teto permissivo (hoje). Nunca e "narrow": e
+      // justamente o caso amplo multi-ano que o bug v4.6 espremia num so ano.
+      reqFrom = periodIntent.from
+      reqTo   = null
+      narrowPeriod = false
     } else {
       reqFrom = periodIntent.from
       reqTo   = periodIntent.to
@@ -1189,7 +1160,11 @@ export async function POST(req: NextRequest) {
   }
   const effectiveFloor   = reqFrom && reqFrom > periodFloor ? reqFrom : periodFloor
   const effectiveCeiling = reqTo ?? ADVISOR_PERMISSIVE_CEILING
-  const matchCount       = narrowPeriod ? VECTOR_MATCH_COUNT_NARROW : VECTOR_MATCH_COUNT
+  // Trajetoria amplia o pool de candidatos (mais anos representados antes do
+  // rebalanceamento). Periodo estreito continua com o count estreito.
+  const matchCount       = narrowPeriod ? VECTOR_MATCH_COUNT_NARROW
+                         : trajectory   ? VECTOR_MATCH_COUNT_TRAJECTORY
+                         : VECTOR_MATCH_COUNT
   let periodEmptyNotice: { from: string; to: string; nearest: string | null } | null = null
 
   // Embedding gerado UMA vez e reusado nas duas buscas (dentro e fora da janela).
@@ -1231,12 +1206,19 @@ export async function POST(req: NextRequest) {
   }
 
   const deduped = chunks.length > 0 ? dedupeChunks(chunks, preferLang) : []
+  // v4.7: em trajetoria, rebalanceia por faixa de ano ANTES de refinar, para que o
+  // refinador enxergue candidatos de todos os anos (nao so o cluster mais proximo)
+  // e consiga montar o arco then/now/next. Fora de trajetoria: candidatos = deduped
+  // (comportamento inalterado).
+  const candidates = trajectory && deduped.length > 0
+    ? rebalanceByYear(deduped, TRAJECTORY_CANDIDATE_CAP)
+    : deduped
 
-  if (deduped.length > 0) {
+  if (candidates.length > 0) {
     // ── Caminho vetorial ──────────────────────────────────────────────────
-    const refined  = await refineChunks(userMessage, deduped)
+    const refined  = await refineChunks(userMessage, candidates)
     routerUsage    = refined.usage
-    const selected = refined.selected.length > 0 ? refined.selected : deduped.slice(0, 8)
+    const selected = refined.selected.length > 0 ? refined.selected : candidates.slice(0, 8)
 
     selectionSource = 'vector'
     lang            = refined.language ?? preferLang
@@ -1349,7 +1331,7 @@ export async function POST(req: NextRequest) {
   // So Essential/Free (windowMonths !== null); Strategic ve tudo e nunca entra aqui.
   if (outOfWindowHit && windowMonths !== null) {
     let depthThemes: Awaited<ReturnType<typeof preWindowThemes>> = []
-    if (isTrajectoryQuestion(userMessage)) {
+    if (trajectory) {
       const slugs = outOfWindowItems.map(i => i.theme_slug)
       depthThemes = await preWindowThemes(service, slugs, periodFloor)
     }
