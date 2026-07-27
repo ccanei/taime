@@ -4,6 +4,7 @@ import { createSupabaseService } from '@/lib/supabase-server'
 import { getAdvisorPeriodFloor, ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
 import { embedQuery } from '@/lib/embeddings'
 import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
+import { selectTrajectoryChunks, yearDistribution } from '@/lib/trajectory-select'
 
 // ── Advisor ANONIMO (/ask): 3 perguntas sem login, mesmo modelo do produto ──
 // Caminho SEPARADO do /api/advisor/chat: sem user_id, sem memoria de sessao, sem
@@ -27,6 +28,9 @@ const IP_MONTHLY_CAP       = 12      // por ip_hash, janela de 30 dias (teto acu
                                      // poe muitos usuarios legitimos atras do mesmo IP.
 const COOKIE_NAME          = 'taime_ask'
 const VECTOR_MATCH_COUNT   = 16
+// v4.8: trajetoria puxa um pool maior antes da selecao temporal (mesma logica do
+// Advisor logado).
+const VECTOR_MATCH_COUNT_TRAJECTORY = 40
 
 type Lang = 'pt' | 'en'
 type SystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
@@ -76,6 +80,14 @@ VOICE AND FORMAT:
 
 MARKET MOVEMENTS (how players are moving):
 When the question touches the impact on the visitor's business or sector, and the intelligence provided this turn supports it, weave in how market players are moving on the theme: companies as ACTORS of documented facts ("X launched", "Y went to production"). Inviolable limits, no exception: (a) never invent a movement not supported by the intelligence this turn; (b) a company may appear only as the SUBJECT of a market fact, never as a SOURCE or authority ("according to X" stays forbidden); (c) keep SOURCE PROTECTION intact, present the movement as a market fact in your own voice, never as "the report from [period] says", never revealing a report, period or trend name; (d) you do NOT know the visitor's specific competitors and never claim to. If they ask about "my competitors", clarify you bring documented market movements, not intelligence about their specific company, then give what you have.
+
+COMPLETENESS AND CLARIFICATION (answer direct, never reframe):
+- When the visitor asks a completeness or follow-up question ("and from 2023 to today?", "isn't there anything on X?", "what about Y?"), treat it as a request to FILL IN what is missing and answer it DIRECTLY. It is FORBIDDEN to reframe their question into a different one, and FORBIDDEN to open with what you do not do ("my job is not to [what they asked]", "I do not list periods"). Go straight to the substance you can give on exactly what they asked.
+- If you genuinely cannot cover their ask (no material), say so in one honest sentence and pivot to the closest value you do have, without lecturing about how you work.
+
+DATA HONESTY (date the datum, protect the source):
+- When you cite a quantitative datum drawn from the archive (a share, a rate, a count, an adoption level), state the YEAR the datum belongs to, in your own voice ("back in 2021 the picture was roughly X; by 2024 it had shifted to Y"). A stale figure presented as today's is an error: anchor it in time.
+- The YEAR is the ONLY temporal detail you may give, and only as plain prose. Still NEVER a month or exact period, a report, a title, a trend name, a score, a link, or any hint that a specific document exists. Source protection stays fully intact; you are dating your own knowledge, not citing a report.
 
 HUMAN HANDOFF:
 If the visitor asks to talk to a person, a human, the team, a founder, sales or support, acknowledge it naturally and directly. Be upfront that you are an AI assistant, not a person, and point them to the TAIME team at contact@taime.tech for direct contact. Do not pretend to be human, do not deflect the request, do not push to keep the conversation going. Keep it brief, a single reply. If they then continue with a normal question, carry on as usual.
@@ -315,6 +327,11 @@ export async function POST(req: NextRequest) {
   const lang = detectLanguage(message)
   const periodFloor = getAdvisorPeriodFloor('free') // janela de 60 meses (5 anos)
 
+  // v4.8: trajetoria tambem no /ask. Reusa a mesma matematica de selecao do
+  // Advisor logado (lib/trajectory-select): pool maior + reserva de recencia +
+  // rebalanceamento por ano, para que NOW/NEXT do visitante nao fiquem presos nos
+  // anos densos do indice. (O bloco de contexto anonimo continua sem links/periodos.)
+  const isTraj = isTrajectoryQuestion(message)
   let chunks: TrendChunk[] = []
   const emb = await embedQuery(message)
   if (emb.ok) {
@@ -322,21 +339,32 @@ export async function POST(req: NextRequest) {
       const { data } = await service.rpc('match_trend_chunks', {
         query_embedding: emb.vector,
         period_floor:    periodFloor,
-        match_count:     VECTOR_MATCH_COUNT,
+        match_count:     isTraj ? VECTOR_MATCH_COUNT_TRAJECTORY : VECTOR_MATCH_COUNT,
         period_ceiling:  ADVISOR_PERMISSIVE_CEILING,
       })
       chunks = (data ?? []) as TrendChunk[]
     } catch { /* sem chunks: cai no fallback de principios gerais */ }
   }
 
-  const deduped  = chunks.length > 0 ? dedupeChunks(chunks, lang) : []
-  const selected = deduped.length > 0 ? await refineChunks(message, deduped) : []
+  const deduped   = chunks.length > 0 ? dedupeChunks(chunks, lang) : []
+  const candidates = isTraj && deduped.length > 0
+    ? selectTrajectoryChunks(deduped, { now: new Date(), totalCap: 12, recentMonths: 18, reservePct: 0.28 })
+    : deduped
+  const selected = candidates.length > 0 ? await refineChunks(message, candidates) : []
+
+  // Task 5 (observabilidade): trajetoria entregando um so ano = sintoma de bug.
+  if (isTraj && selected.length > 0) {
+    const dist = yearDistribution(selected)
+    if (Object.keys(dist).length <= 1) {
+      console.warn(`[ask-thermometer] TRAJETORIA anon com ${Object.keys(dist).length} ano(s) distinto(s). pergunta="${message.slice(0, 160)}" dist=${JSON.stringify(dist)}`)
+    }
+  }
 
   // Teaser de profundidade: so em perguntas de trajetoria/timing, uma busca ampla
   // (sem teto de janela) revela quais temas relevantes existem ANTES dos 60 meses.
   // Injeta so METADADOS (nome do tema + ano de inicio), nota aponta p/ CADASTRO.
   let depthThemes: Awaited<ReturnType<typeof preWindowThemes>> = []
-  if (emb.ok && isTrajectoryQuestion(message)) {
+  if (emb.ok && isTraj) {
     try {
       const { data: wideData } = await service.rpc('match_trend_chunks', {
         query_embedding: emb.vector,

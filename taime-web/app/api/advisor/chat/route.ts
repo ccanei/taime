@@ -13,6 +13,7 @@ import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
+import { selectTrajectoryChunks, yearDistribution } from '@/lib/trajectory-select'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -49,6 +50,15 @@ interface ReportTrendRow {
   taime_score:        number
   taime_framework_en: { type: string; act: string; impact: string; move: string; exit: string } | null
   then_now_next_en:   { then: string; now: string; next: string } | null
+}
+
+// v4.8: linha usada para reinjetar NOW/NEXT integrais no bloco de contexto (Task 2).
+interface TrendDetailRow {
+  id:                 string
+  title_en:           string | null
+  title_pt_br:        string | null
+  then_now_next_en:    { then?: string; now?: string; next?: string } | null
+  then_now_next_pt_br: { then?: string; now?: string; next?: string } | null
 }
 
 interface ReportRow {
@@ -222,6 +232,8 @@ GROUNDING RULES (non-negotiable):
 
 2. NO INVENTED HISTORICAL PATTERNS. Do not assert what "companies did in [period]" or cite data from periods whose reports are NOT loaded in this turn. The archive spans the history of technology, but only the periods provided this turn are in front of you. If the question needs history you do not have loaded, say you can pull it from the archive and ask the client to reframe specifying the period of interest. Never fabricate a trajectory to sound authoritative.
 
+2a. COVERAGE COMES FROM THE ARCHIVE COVERAGE MAP, NEVER FROM THIS TURN'S RESULTS. When an ARCHIVE COVERAGE block is present, it is the ONLY source of truth about which periods the archive holds. It is FORBIDDEN to tell the client "I have no report for [year/period]" based on what this turn's retrieval returned. A year that appears in the coverage map with a count EXISTS, even if no chunk from it surfaced this turn: in that case the honest phrasing is "in this analysis the strongest signals come from [years present]", never a claim of absence. You may state a true absence ONLY for a year the coverage map marks as "none", or a period outside the window. This rule overrides any instinct to infer missing history from a thin turn.
+
 3. SOURCES, TOOLS AND VENDORS BY CATEGORY. This rule has no exception. Never attribute any data or conclusion to a named research firm, consultancy, outlet or vendor ("according to X", "X documented", "a study by X"). When recommending or discussing tools, infrastructure components, platforms or vendors, refer to them by CATEGORY and by the selection criteria that matter for the client (e.g. "a managed vector database with strong SDK ergonomics", "an open-source workflow orchestrator with self-host option", "a commercial observability platform with tracing"). Name a specific product ONLY when one of the TAIME reports loaded this turn cites it as a market fact, and in that case link to the trend that mentions it. Never volunteer a product name from your own background knowledge, even as an example.
 
 4. NO PRICES, NO TIMELINES WITHOUT BACKING. Do not state monthly costs, subscription tiers, license prices, free-tier availability or implementation timelines unless they appear in the loaded reports (and then with the link). Without backing, speak qualitatively ("a moderate operational cost", "weeks rather than months") and offer to dig into a specific report on request. The same applies to percentages and monetary figures.
@@ -244,7 +256,9 @@ REASONING POSTURE (this is what makes you an advisor, not a summarizer):
 
 9. CHALLENGE PREMISES. When the signals in the current context contradict an assumption embedded in the user's question, say so with respect, grounded in those signals, rather than validating by default. End the challenge by inviting disagreement ("if you see this differently, tell me why"). Default agreement is not advisory work.
 
-10. CONNECT TEMPORAL TRAJECTORY. When the current context includes trends from different periods on the same theme, trace the evolution as a single arc (then, now, next), not as separate snapshots. If the arc has gaps in the periods available to you this turn, name the gap; do not paper over missing periods with invention.
+10. CONNECT TEMPORAL TRAJECTORY. When the current context includes trends from different periods on the same theme, trace the evolution as a single arc (then, now, next), not as separate snapshots. Do NOT declare a gap based on what this turn's context happens to contain: coverage is governed exclusively by the ARCHIVE COVERAGE map (see the coverage rule below). Never paper over the arc with invention: reason only from the periods actually in front of you, but describe absences in the language of "the strongest signals this turn come from [years]", not "I have nothing for [year]", unless the coverage map marks that year as a real gap.
+
+10a. NOW ANCHOR AND NEXT IN LAYERS (for then/now/next and any trajectory answer). NOW must anchor in the MOST RECENT material available in the context this turn: if the context carries a recent period, your NOW reflects it, never an older snapshot dressed as the present. NEXT is built in TWO explicit layers: (a) the DOCUMENTED projections, the NEXT fields of the most recent reports in the context (marked "NEXT (documented projection)" in the intelligence block), used as citable raw material with their links; and (b) YOUR prospective stitching on top, projecting two to three years past today's date, reading where the documented NEXTs of different themes converge or pull against each other, clearly framed as your own advisor read ("my read forward is..."), with partner conviction. FORMAT ERRORS to avoid: a NEXT that ends anchored on an old report when a more recent one exists in the context; a NEXT that is only the present restated (NOW wearing a NEXT label); a NEXT with no projection ahead of today's date. The projection disclaimer rule still applies: flag once that a forward read is a projection, then carry the distinction in the language itself.
 
 REASONING VS FACTS BOUNDARY. The analysis above (tensions, unasked questions, challenges, trajectory) is yours to make. The underlying facts are not. You may infer relations between facts that are documented in the current context. You may not invent facts to support an inference. When a tension or trajectory you want to draw lacks enough signal in the current context, say the signal is partial and stop there; do not fill the gap with supposition. Every rule from 1 to 4 still applies without exception, including period-of-origin citation, sources by category only, no invented prices or timelines, and no em dash.
 
@@ -657,40 +671,15 @@ const VECTOR_MATCH_COUNT_NARROW = 24
 // faixa de ano (rebalanceByYear) antes de refinar, em vez de deixar o top-N por
 // similaridade colapsar nos anos mais recentes/proximos da pergunta.
 const VECTOR_MATCH_COUNT_TRAJECTORY = 40
-// Teto de candidatos que seguem para o refinador apos o rebalanceamento temporal.
+// Teto de candidatos que seguem para o refinador apos a selecao de trajetoria.
 const TRAJECTORY_CANDIDATE_CAP = 24
-
-// Rebalanceamento temporal (v4.7): distribui os candidatos por faixa de ANO em
-// vez de puro top-por-similaridade. Round-robin cronologico: a rodada 0 pega o
-// melhor chunk de CADA ano (garante que todo ano com material apareça), a rodada
-// 1 o segundo de cada ano, e assim por diante, ate o teto. Recebe chunks ja
-// ordenados por similaridade desc (saida de dedupeChunks), entao dentro de cada
-// ano a ordem por relevancia e preservada.
-function rebalanceByYear(chunks: TrendChunk[], totalCap: number): TrendChunk[] {
-  const byYear = new Map<string, TrendChunk[]>()
-  for (const c of chunks) {
-    const y = c.period.slice(0, 4)
-    const arr = byYear.get(y)
-    if (arr) arr.push(c)
-    else byYear.set(y, [c])
-  }
-  if (byYear.size <= 1) return chunks.slice(0, totalCap) // um so ano: nada a espalhar
-  const years = [...byYear.keys()].sort()                // cronologico crescente
-  const out: TrendChunk[] = []
-  for (let round = 0; out.length < totalCap; round++) {
-    let progressed = false
-    for (const y of years) {
-      const arr = byYear.get(y)!
-      if (round < arr.length) {
-        out.push(arr[round])
-        progressed = true
-        if (out.length >= totalCap) break
-      }
-    }
-    if (!progressed) break // todos os anos esgotados
-  }
-  return out
-}
+// v4.8 (Task 1): reserva de recencia. ~28% das vagas de trajetoria vao para os
+// top chunks (por similaridade) dos ultimos RECENT_MONTHS meses, garantindo NOW
+// ancorado no material recente mesmo quando anos densos dominam a similaridade.
+const TRAJECTORY_RESERVE_PCT = 0.28
+const TRAJECTORY_RECENT_MONTHS = 18
+// rebalanceByYear e selectTrajectoryChunks vivem em '@/lib/trajectory-select'
+// (modulo puro, testavel, compartilhado com o /ask).
 
 async function matchTrendChunks(
   service: ReturnType<typeof createSupabaseService>,
@@ -760,6 +749,60 @@ async function nearestAvailablePeriod(
     return Math.abs((py * 12 + pm) - (ry * 12 + rm))
   }
   return dist(below, reqFrom) <= dist(above, reqTo) ? below : above
+}
+
+// ── Mapa do arquivo (Task 3, v4.8) ──────────────────────────────────────────
+// Contagem de reports published por ANO dentro da janela do plano. E a UNICA
+// fonte de verdade sobre cobertura: com este mapa no contexto, o modelo nunca
+// declara "nao tenho relatorio de [periodo]" com base no que a busca do turno
+// retornou. Cache em memoria com TTL curto (o arquivo muda ~mensalmente; nao
+// precisa ser real-time ao segundo). Chave por period_floor (difere por plano).
+interface CoverageCacheEntry { at: number; text: string }
+const coverageCache = new Map<string, CoverageCacheEntry>()
+const COVERAGE_TTL_MS = 10 * 60_000
+
+async function buildArchiveCoverageBlock(
+  service: ReturnType<typeof createSupabaseService>,
+  periodFloor: string,
+  now: Date,
+): Promise<string | null> {
+  const cached = coverageCache.get(periodFloor)
+  if (cached && now.getTime() - cached.at < COVERAGE_TTL_MS) return cached.text
+
+  const { data, error } = await service
+    .from('reports')
+    .select('period')
+    .eq('status', 'published')
+    .gte('period', periodFloor)
+    .order('period', { ascending: true })
+    .limit(2000)
+  if (error || !data) return cached?.text ?? null
+
+  const byYear = new Map<string, number>()
+  for (const r of data as Array<{ period: string | null }>) {
+    if (!r.period) continue
+    const y = r.period.slice(0, 4)
+    byYear.set(y, (byYear.get(y) ?? 0) + 1)
+  }
+  if (byYear.size === 0) return cached?.text ?? null
+
+  const years     = [...byYear.keys()].sort()
+  const firstYear = Number(years[0])
+  const lastYear  = now.getUTCFullYear()
+  const parts: string[] = []
+  const gaps:  string[] = []
+  for (let y = firstYear; y <= lastYear; y++) {
+    const n = byYear.get(String(y)) ?? 0
+    if (n > 0) parts.push(`${y}:${n}`)
+    else { parts.push(`${y}:none`); gaps.push(String(y)) }
+  }
+  const text = `ARCHIVE COVERAGE (published TAIME reports per year WITHIN this client's plan window). This is the ONLY source of truth about what the archive covers:
+${parts.join(', ')}
+${gaps.length ? `Real gaps, no report exists for these years: ${gaps.join(', ')}.` : 'No gaps inside the window.'}
+Reason about coverage from THIS map, never from what this turn's search happened to return. A year shown with a count EXISTS in the archive even if it did not surface in this turn's retrieval. It is FORBIDDEN to tell the client you have no report for a year that appears here with a count. For such a year, say the strongest signals this turn come from other years, never that the year is missing. Only a year marked "none" is a true absence you may state as fact.`
+
+  coverageCache.set(periodFloor, { at: now.getTime(), text })
+  return text
 }
 
 // Bloco dinamico (Tarefa 4): o periodo pedido nao tem relatorio no acervo do
@@ -969,7 +1012,12 @@ function citePeriodLabel(period: string, lang: Lang): string {
 // TITULO EXATO, o PERIODO de citacao (mmm/aaaa no idioma da resposta) e a URL da
 // ancora (/reports/{report_id}#trend-{rank}), de forma inequivoca, para o Advisor
 // citar sem parafrasear nem encurtar. Grounding (periodo de origem) preservado.
-function buildTrendContextBlock(chunks: TrendChunk[], lang: Lang, titleById?: Map<string, string>): string {
+function buildTrendContextBlock(
+  chunks: TrendChunk[],
+  lang: Lang,
+  titleById?: Map<string, string>,
+  tnnById?: Map<string, { now: string | null; next: string | null }>,
+): string {
   if (chunks.length === 0) {
     return 'TAIME INTELLIGENCE LOADED FOR THIS TURN: none.'
   }
@@ -984,7 +1032,13 @@ function buildTrendContextBlock(chunks: TrendChunk[], lang: Lang, titleById?: Ma
     // markdown (hover), nao no corpo. O LINK e obrigatorio (CITE_AS ja e o link).
     const citeAs = `[${citeP}](${url}${title ? ` "${title.replace(/"/g, "'")}"` : ''})`
     const head = `Trend:\n  PERIOD: ${citeP}\n  URL: ${url}\n  CITE_AS: ${citeAs}${title ? `\n  FULL_TITLE: ${title}` : ''}${tags ? `\n  tags: ${tags}` : ''}`
-    return `${head}\n  Content: ${c.content}`
+    // v4.8 (Task 2): NOW e NEXT documentados, integrais e MARCADOS. O NEXT e a
+    // materia-prima prospectiva citavel (projecao que o relatorio daquele periodo
+    // fez). Vem explicito para nao se perder na sopa do chunk embeddado.
+    const tnn  = tnnById?.get(c.trend_id)
+    const nowLine  = tnn?.now  ? `\n  NOW (documented state @ ${citeP}): ${tnn.now}`        : ''
+    const nextLine = tnn?.next ? `\n  NEXT (documented projection @ ${citeP}): ${tnn.next}` : ''
+    return `${head}\n  Content: ${c.content}${nowLine}${nextLine}`
   }).join('\n\n---\n\n')
 
   return `TAIME INTELLIGENCE LOADED FOR THIS TURN (semantic match across the archive; periods: ${periods.join(', ')}):
@@ -1121,6 +1175,10 @@ export async function POST(req: NextRequest) {
   let similarities:          number[]     = []
   let vectorError:           string | null = null
   let routerSelection:       'router' | 'fallback' | null = null
+  // v4.8 (Task 5): termometro da busca. Total de chunks recuperados (pre-selecao)
+  // e distribuicao de anos dos chunks ENTREGUES ao modelo. Custo ~zero.
+  let retrievedTotal:        number                 = 0
+  let deliveredYearDist:     Record<string, number> = {}
 
   // Passo 4: janela de contexto por plano. Strategic -> piso permissivo (ve
   // tudo); Essential -> hoje menos 36 meses. Ponto unico de verdade em lib/plan.
@@ -1206,12 +1264,18 @@ export async function POST(req: NextRequest) {
   }
 
   const deduped = chunks.length > 0 ? dedupeChunks(chunks, preferLang) : []
-  // v4.7: em trajetoria, rebalanceia por faixa de ano ANTES de refinar, para que o
-  // refinador enxergue candidatos de todos os anos (nao so o cluster mais proximo)
-  // e consiga montar o arco then/now/next. Fora de trajetoria: candidatos = deduped
-  // (comportamento inalterado).
+  // v4.8: em trajetoria, selectTrajectoryChunks reserva ~28% das vagas para os top
+  // chunks dos ultimos 18 meses (recencia garantida, Task 1) e rebalanceia o resto
+  // por faixa de ano ANTES de refinar. Assim o refinador enxerga tanto o material
+  // recente (NOW/NEXT ancorados no presente) quanto o arco antigo. Fora de
+  // trajetoria: candidatos = deduped (comportamento inalterado).
   const candidates = trajectory && deduped.length > 0
-    ? rebalanceByYear(deduped, TRAJECTORY_CANDIDATE_CAP)
+    ? selectTrajectoryChunks(deduped, {
+        now:          new Date(),
+        totalCap:     TRAJECTORY_CANDIDATE_CAP,
+        recentMonths: TRAJECTORY_RECENT_MONTHS,
+        reservePct:   TRAJECTORY_RESERVE_PCT,
+      })
     : deduped
 
   if (candidates.length > 0) {
@@ -1226,21 +1290,41 @@ export async function POST(req: NextRequest) {
     trendIdsUsed    = selected.map(c => c.trend_id)
     similarities    = selected.map(c => Number(c.similarity.toFixed(4)))
 
+    // Task 5: termometro. retrievedTotal = candidatos deduplicados; distribuicao
+    // por ano dos chunks realmente entregues ao modelo.
+    retrievedTotal    = deduped.length
+    deliveredYearDist = yearDistribution(selected)
+    // Sintoma da classe de bug que ja nos mordeu: trajetoria entregando um so ano.
+    const distinctYears = Object.keys(deliveredYearDist).length
+    if (trajectory && distinctYears <= 1) {
+      console.warn(`[advisor-thermometer] TRAJETORIA com ${distinctYears} ano(s) distinto(s) nos chunks entregues. pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)} periodo=${reqFrom ?? 'null'}..${reqTo ?? 'hoje'}`)
+    }
+
     // Part 4: titulos das trends selecionadas para o Advisor citar pelo nome e
     // linkar ao report. Idioma da resposta. Falha silenciosa: sem titulos, o
     // bloco cai no formato antigo (so tags + URL).
+    // v4.8 (Task 2): tambem buscamos then_now_next INTEGRAL via join. No chunk
+    // embeddado o NEXT vira uma sopa concatenada e sem rotulo (buildTrendContent
+    // junta then/now/next com \n, misturado a framework/org). Aqui reinjetamos NOW
+    // e NEXT explicitos e marcados no bloco de contexto, sem reindexar embeddings:
+    // e o caminho de menor custo e o dado completo esta a um join de distancia.
     const titleById = new Map<string, string>()
+    const tnnById   = new Map<string, { now: string | null; next: string | null }>()
     try {
       const { data: titleRows } = await service
         .from('report_trends')
-        .select('id, title_en, title_pt_br')
+        .select('id, title_en, title_pt_br, then_now_next_en, then_now_next_pt_br')
         .in('id', trendIdsUsed)
-      for (const t of (titleRows ?? []) as Array<{ id: string; title_en: string; title_pt_br: string }>) {
+      for (const t of (titleRows ?? []) as Array<TrendDetailRow>) {
         const title = lang === 'pt' ? (t.title_pt_br ?? t.title_en) : (t.title_en ?? t.title_pt_br)
         if (title) titleById.set(t.id, title)
+        const tnn = lang === 'pt' ? (t.then_now_next_pt_br ?? t.then_now_next_en) : (t.then_now_next_en ?? t.then_now_next_pt_br)
+        const now  = typeof tnn?.now  === 'string' && tnn.now.trim()  ? tnn.now.trim()  : null
+        const next = typeof tnn?.next === 'string' && tnn.next.trim() ? tnn.next.trim() : null
+        if (now || next) tnnById.set(t.id, { now, next })
       }
-    } catch { /* segue sem titulos */ }
-    contextBlock = buildTrendContextBlock(selected, lang, titleById)
+    } catch { /* segue sem titulos/tnn */ }
+    contextBlock = buildTrendContextBlock(selected, lang, titleById, tnnById)
   } else if (periodIntent && emb.ok) {
     // ── Periodo explicito sem conteudo (v4.6) ─────────────────────────────
     // O usuario citou um periodo, a busca vetorial naquele intervalo voltou
@@ -1312,9 +1396,13 @@ export async function POST(req: NextRequest) {
 
   // ── System em blocos: regras + perfil + contexto (cacheáveis) e idioma ─────
   // contextBlock e reusado na rede de segurança de grounding (mesmo texto).
+  // Task 3: mapa do arquivo (cobertura por ano na janela do plano). Estavel entre
+  // turnos (cache por period_floor), entra como bloco cacheado antes do contexto.
+  const coverageBlock = await buildArchiveCoverageBlock(service, periodFloor, new Date())
   const system: SystemBlock[] = [
     { type: 'text', text: RULES_BLOCK,                cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
+    ...(coverageBlock ? [{ type: 'text' as const, text: coverageBlock, cache_control: { type: 'ephemeral' as const } }] : []),
     { type: 'text', text: contextBlock,               cache_control: { type: 'ephemeral' } },
   ]
   // Fase 2: memoria de conversas anteriores. Contexto, NAO cache estavel
@@ -1435,8 +1523,12 @@ export async function POST(req: NextRequest) {
     vector_error:         vectorError,
     plan:                 plan ?? 'free',
     period_floor:         periodFloor,
-    requested_period:     reqFrom && reqTo ? { from: reqFrom, to: reqTo } : null,
+    requested_period:     reqFrom ? { from: reqFrom, to: reqTo } : null,
     period_ceiling:       effectiveCeiling,
+    // Task 5: termometro da busca (observabilidade).
+    is_trajectory:        trajectory,
+    retrieved_chunks_total: retrievedTotal,
+    delivered_year_distribution: deliveredYearDist,
     period_empty_hit:     periodEmptyNotice !== null,
     out_of_window_hit:    outOfWindowHit,
     memory_summaries_used: memorySummaries.map(s => s.session_id),

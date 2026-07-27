@@ -2,6 +2,74 @@
 
 ---
 
+## [2026-07-27] - Advisor: recencia garantida, NEXT prospectivo em camadas, mapa do arquivo, termometro
+
+Contexto: teste real de trajetoria mostrou NOW/NEXT ancorados em material antigo
+(NEXT citando ago/2025 com jul/2026 disponivel) e lacunas FALSAS ("nao tenho
+2020-2021" com o indice cheio desses anos). Causa: indice desigual (2021-2022 com
+~800 chunks cada dominam a similaridade; o ano corrente compete em desvantagem em
+perguntas com cheiro semantico de passado).
+
+### TASK 1: reserva de recencia (lib/trajectory-select.ts, novo, puro/testavel)
+- selectTrajectoryChunks reserva ~28% das vagas (TRAJECTORY_RESERVE_PCT) para os
+  top chunks por similaridade dos ultimos 18 meses (TRAJECTORY_RECENT_MONTHS),
+  INDEPENDENTE do ranking global; o resto segue rebalanceByYear sobre os anos
+  anteriores. Degrada com graca (sem material recente -> rebalance puro).
+- rebalanceByYear movido do route para o modulo (round-robin cronologico).
+- Compartilhado entre Advisor logado E /ask. 8 testes unitarios (trajectory-select.test.ts).
+
+### TASK 2: NEXT integro no contexto (achado + fix de MENOR custo)
+- ACHADO: generate-trend-embeddings.buildTrendContent concatena then/now/next com
+  \n, misturado a framework/org, SEM rotulo. No chunk embeddado o NEXT vira sopa.
+- FIX (sem reindexar): no route, o fetch de titulos ja existente passa a trazer
+  then_now_next_en/pt via join; buildTrendContextBlock reinjeta "NOW (documented
+  state @ periodo)" e "NEXT (documented projection @ periodo)" explicitos e
+  marcados por trend. Validado: 8/8 trends entregues com NEXT nao-vazio (309-836ch).
+
+### TASK 3: mapa do arquivo (ARCHIVE COVERAGE) - proibido inventar lacunas
+- buildArchiveCoverageBlock: contagem de reports published por ANO dentro da janela
+  do plano (cache em memoria por period_floor, TTL 10min). Bloco cacheado no system.
+- Regra 2a no RULES_BLOCK: cobertura vem SO do mapa, nunca do que a busca do turno
+  retornou. Ano com contagem EXISTE mesmo sem chunk no turno -> "os sinais mais
+  fortes vem de [anos]", nunca "nao tenho [ano]". So ano marcado "none" e lacuna
+  real. Regra 10 ajustada (nao declarar gap pelo conteudo do turno).
+- Validado: coverage real 2020:26, 2021:71, ..., 2017 ausente (lacuna real).
+
+### TASK 4: NEXT em camadas (retrovisor proibido)
+- Regra 10a no RULES_BLOCK: NOW ancora obrigatoriamente no material mais recente
+  (garantido pela Task 1). NEXT em 2 camadas: (a) NEXTs documentados dos relatorios
+  recentes (materia-prima citavel, com links); (b) costura prospectiva do Advisor
+  projetando 2-3 anos a frente da data atual, rotulada como leitura do Advisor.
+  Erros de formato enumerados (NEXT ancorado em relatorio antigo; NOW vestido de
+  NEXT; NEXT sem projecao a frente de hoje).
+
+### TASK 5: termometro da busca (observabilidade, custo ~zero)
+- context_metadata ganha is_trajectory, retrieved_chunks_total,
+  delivered_year_distribution; requested_period agora grava tambem piso aberto
+  (to:null). Se trajetoria entrega <=1 ano distinto: console.warn no Vercel com a
+  pergunta e a distribuicao (sintoma da classe de bug que ja mordeu). Idem no /ask.
+
+### TASK 6: calibracao do /ask (ANON_RULES_BLOCK) + o que e compartilhado
+- Tasks 1 e 5 valem no /ask via lib/trajectory-select (mesmo pool 40 + reserva de
+  recencia + rebalance + warn). Os ROUTES NAO compartilham codigo de selecao (cada
+  um tem seu dedupe/refine/context-block, o anon esconde links/periodos); o que foi
+  extraido e compartilhado e a MATEMATICA de selecao (trajectory-select) e o
+  period-intent. Reportado.
+- ANON_RULES_BLOCK: (a) COMPLETENESS - pergunta de completude/follow-up ("e de 2023
+  ate hoje?", "nao tem nada de X?") = responder DIRETO, proibido reenquadrar ou
+  abrir com "meu trabalho nao e [o que pediu]". (b) DATA HONESTY - ao citar dado
+  quantitativo, datar o ANO ("em 2021 era ~X"); ano e o UNICO detalhe temporal, sem
+  mes/periodo/report/titulo/link/score (anti-scraping intacto).
+- Task 2 (NEXT com link) e Task 3 (coverage por ano) NAO se aplicam ao anon por
+  design anti-scraping; a DATA HONESTY (datar por ano) e o analogo apropriado.
+
+### Notas
+- O embedding da query ja usa so o turno atual (sem diluicao de historico) - nada a
+  mudar ali. Sem SQL novo (reports.period/status e report_trends.then_now_next_* ja
+  existem). Build 0 erros, tsc 0 erros. Testes: period-intent 26/26, trajectory-select 8/8.
+
+---
+
 ## [2026-07-27] - Parsing de "desde X" (bug critico da busca) + consistencia do Advisor
 
 ### TASK 0 (CRITICO): "desde 2016 ate hoje" retornava SO 2016
