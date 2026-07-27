@@ -127,6 +127,7 @@ function LoginPageInner() {
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
         shouldCreateUser: false,
+        captchaToken: token ?? undefined,
       },
     })
 
@@ -203,6 +204,10 @@ function LoginPageInner() {
       email: normalizedEmail,
       options: {
         shouldCreateUser: true,
+        // Gate no nivel da CONTA (a porta real dos bots): o Turnstile vai para o
+        // proprio Supabase Auth. So e enforced se "Enable Captcha protection"
+        // estiver ligado no dashboard do Supabase (Auth settings). Ignorado se off.
+        captchaToken: token ?? undefined,
         // Passa pelo /auth/callback (e não direto ao /dashboard) para que o
         // code seja trocado por sessão, o perfil seja enriquecido e o email de
         // boas-vindas do free seja disparado na primeira sessão. O callback
@@ -657,9 +662,11 @@ function LoginPageInner() {
                     <p className="text-sm text-red-600">{errorMsg}</p>
                   ) : null}
 
+                  <TurnstileWidget siteKey={siteKey} onToken={setToken} />
+
                   <button
                     type="submit"
-                    disabled={status === 'loading' || !mlEmail}
+                    disabled={status === 'loading' || !mlEmail || (!!siteKey && !token)}
                     className="w-full btn-primary justify-center py-3 disabled:opacity-60"
                   >
                     {status === 'loading' ? t.login.sending : t.login.sendLink}

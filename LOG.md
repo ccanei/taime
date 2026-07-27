@@ -2,6 +2,54 @@
 
 ---
 
+## [2026-07-27] - Controle total de usuarios no admin + fecha a porta dos bots (signup direto)
+
+### TASK 1: mapa das portas de entrada e a porta aberta dos 89
+- Descoberta: 89 de 115 public.users NAO tem registro na waitlist (grande parte bots
+  Gmail dot-trick, ex: gia.n.n.in.am.a.rin@gmail.com, que completaram o magic link e
+  viraram free ativo). Portas de criacao de conta:
+  1. /login free-signup (handleFreeSignup): POST /api/admin/waitlist PRIMEIRO (Turnstile
+     desde ontem) e depois signInWithOtp(shouldCreateUser:true). Cria waitlist + conta.
+  2. /login waitlist strategic (handleWaitlist): so grava waitlist, sem conta.
+  3. /login magic-link (handleMagicLink): shouldCreateUser=FALSE, so loga existentes.
+  4. **Supabase Auth OTP direto (/auth/v1/otp)**: PORTA ABERTA. Um bot chama o proprio
+     endpoint de auth do Supabase (SDK ou REST) com shouldCreateUser:true e
+     data.signup_plan=free, clica o link, o trigger cria public.users e o callback cria
+     a subscription free. NUNCA passa pela nossa waitlist nem pelo nosso Turnstile.
+  => O Turnstile de ontem (cbb81c7) so cobre /api/admin/waitlist; a porta 4 (a que os 89
+     usaram) continuava 100% aberta.
+- Fix: mover o gate para o NIVEL DA CONTA. signInWithOtp (free-signup e magic-link) agora
+  manda captchaToken (o mesmo token do Turnstile) para o Supabase Auth. Widget adicionado
+  tambem no form de magic-link. /api/admin/waitlist passa a verificar Turnstile SO no
+  strategic (free/essential gastam o token no captchaToken da conta; token e single-use,
+  nao pode ser verificado 2x). Honeypot + rate limit seguem para todos.
+- ACAO PENDENTE (dashboard, so o usuario faz): ligar "Enable Captcha protection"
+  (Turnstile) em Supabase > Auth > settings. Sem isso o Supabase IGNORA o captchaToken e
+  a porta 4 segue aberta. O codigo ja manda o token; e no-op ate ligar, e enforced depois.
+
+### TASK 2: /admin/users vira centro de controle
+- Coluna Origem: waitlist (link p/ /admin/waitlist) ou "signup direto" (os 89).
+- Coluna Suspeita (SINALIZACAO, nunca acao): motivos no hover. Regras: gmail_dottrick
+  (3+ pontos no local-part de gmail), gibberish_name (looksRandom de lib/anti-abuse),
+  no_waitlist_free_unused (direto + free + zero uso). Validado: 90 suspeitas; 78 tem nome
+  literalmente aleatorio (ZmQcGzozxwkSRwQsq), zero falso-positivo em nomes reais.
+- Acoes manuais (confirmacao): Suspender (Admin API ban_duration ~10 anos, BLOQUEIA login,
+  + subscription -> canceled) e Reativar (ban_duration=none + subscription -> active).
+  Endpoint /api/admin/user-action, admin-only. Round-trip testado num bot. Sem delecao.
+- Filtros novos: Suspeitas e Sem waitlist. Contadores incluem suspeitas, sem waitlist,
+  por plano e atividade. Coluna banned (selo "suspenso").
+
+### TASK 3: sincronizar a visao (decisao)
+- Escolhida a alternativa de NAO poluir a waitlist com 89 entradas retroativas de bot.
+  Em vez disso, /admin/users cobre 100% das contas (todas as 115, com origem, flags e os
+  mesmos controles manuais). Requisito atendido: NENHUMA conta invisivel para analise
+  manual. Backfill na waitlist encheria a fila de lixo e misturaria lead com conta; a
+  visao unica em /admin/users e mais limpa e ja da suspender/reativar caso a caso.
+- Ponto de partida para a limpeza manual: 90 suspeitas (89 signup direto; 28 dot-trick;
+  78 nome aleatorio). npm run build: 0 erros.
+
+---
+
 ## [2026-07-27] - Admin: waitlist com aba Rejeitados + reverter/rejeitar; nova visao Usuarios
 
 ### PARTE A: waitlist completa

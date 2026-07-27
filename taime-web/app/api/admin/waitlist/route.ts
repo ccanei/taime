@@ -157,18 +157,25 @@ export async function POST(req: Request) {
   }
 
   const ip = clientIp(req)
+  const reqPlan = ['free', 'essential', 'strategic'].includes(body.requested_plan ?? '')
+    ? body.requested_plan as string
+    : 'free'
 
-  // ── Camada 2: Turnstile (Cloudflare), verificação server-side OBRIGATÓRIA
-  //    quando o segredo está configurado. Se o segredo faltar (misconfig), NÃO
-  //    derrubamos todo o cadastro: fail-open com log claro (mesma licao do
-  //    incidente de persistencia: nao criar uma nova pane por env ausente).
-  if (process.env.TURNSTILE_SECRET_KEY) {
-    const token = (body.token ?? '').trim()
-    if (!token || !(await verifyTurnstile(token, ip))) {
-      return NextResponse.json({ error: 'captcha_failed' }, { status: 403 })
+  // ── Camada 2: Turnstile (Cloudflare), verificação server-side. So no fluxo
+  //    STRATEGIC (waitlist pura, sem criacao de conta). Para free/essential a
+  //    conta e criada por signInWithOtp, cujo Turnstile vai DIRETO ao Supabase
+  //    Auth (captchaToken) e nao pode ser consumido duas vezes (token single-use);
+  //    honeypot + rate limit (abaixo) seguem protegendo esse lead. Se o segredo
+  //    faltar (misconfig), fail-open com log em vez de derrubar o strategic.
+  if (reqPlan === 'strategic') {
+    if (process.env.TURNSTILE_SECRET_KEY) {
+      const token = (body.token ?? '').trim()
+      if (!token || !(await verifyTurnstile(token, ip))) {
+        return NextResponse.json({ error: 'captcha_failed' }, { status: 403 })
+      }
+    } else {
+      console.error('admin/waitlist: TURNSTILE_SECRET_KEY ausente; strategic sem captcha. Configurar no Vercel.')
     }
-  } else {
-    console.error('admin/waitlist: TURNSTILE_SECRET_KEY ausente; cadastro sem captcha. Configurar no Vercel.')
   }
 
   // ── Camada 3: rate limit por IP (reusa a RPC anon_advisor_consume do /ask com
@@ -190,10 +197,7 @@ export async function POST(req: Request) {
   } catch { /* fail-open: o Turnstile e o honeypot seguem protegendo */ }
 
   const { name = '', email = '', company = null, role = null, interest = '' } = body
-  // Normaliza plano (apenas 'free' | 'essential' | 'strategic'; fallback 'free')
-  const requested_plan = ['free', 'essential', 'strategic'].includes(body.requested_plan ?? '')
-    ? body.requested_plan as string
-    : 'free'
+  const requested_plan = reqPlan
 
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
     .replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
