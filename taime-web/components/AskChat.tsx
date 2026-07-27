@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useLocale } from '@/lib/useLocale'
+import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
 
@@ -158,9 +159,19 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       setUsed(nowUsed)
       setToken(null)
       if (nowUsed >= (json.limit ?? QUESTION_LIMIT)) setBlocked('limit')
-    } catch {
-      setError(L.genericError)
+    } catch (err) {
       setMessages(prev => prev.filter(m => m.id !== userMsg.id))
+      if (isNetworkInterruption(err)) {
+        // Interrupcao (troca de aba/rede durante a geracao). O /ask nao tem
+        // historico por design, entao nao ha o que recuperar: mensagem honesta.
+        // A pergunta NAO e queimada: o contador de 3 (cookie) so avanca quando o
+        // cliente recebe a resposta, e aqui nem mexemos em `used`. Reseta o token
+        // (single-use) para liberar um novo desafio no reenvio.
+        setError(L.interrupted)
+        setToken(null); widgetRendered.current = false
+      } else {
+        setError(L.genericError)
+      }
     } finally {
       setLoading(false)
     }

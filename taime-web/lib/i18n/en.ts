@@ -102,6 +102,7 @@ export const en: Translations = {
       captchaFail:  'We could not validate that. Reload the page and try again.',
       unavailable:  'The demo Advisor is temporarily unavailable. Check back soon.',
       genericError: 'There was an error generating the answer. Please try again.',
+      interrupted:  'The connection was interrupted. Your question was not used up: please ask again.',
       limitTitle:   'You have used your 3 demo questions.',
       limitBody:    'Create your free account to continue: 10 more questions on Free, 100 on Essential.',
       limitCta:     'Create free account',

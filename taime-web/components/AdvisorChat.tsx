@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useLocale } from '@/lib/useLocale'
+import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
@@ -116,6 +117,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [messages,   setMessages]   = useState<Message[]>([])
   const [input,      setInput]      = useState('')
   const [loading,    setLoading]    = useState(false)
+  // Recuperacao pos-interrupcao: quando o fetch morre (troca de aba durante a
+  // geracao), a resposta ja foi persistida no server (commit 3744604); aqui
+  // recarregamos a conversa em vez de mostrar erro criptico.
+  const [recovering, setRecovering] = useState(false)
   // Incidente 26/07: avisa (nao bloqueia) quando o backend nao pode gravar a
   // conversa no historico (history_saved=false, problema de infra de persistencia).
   const [historyWarn, setHistoryWarn] = useState(false)
@@ -141,6 +146,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const inputRef         = useRef<HTMLTextAreaElement>(null)
   const openingFetchedRef = useRef(false)
   const idleTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Sessao com envio em voo: setada no send, limpa no finally. Se continuar setada
+  // quando a aba volta a ficar visivel, o fetch morreu -> recupera do server.
+  const pendingSidRef     = useRef<string | null>(null)
+  const recoveringRef     = useRef(false)
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -151,10 +160,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setSessions(json.sessions ?? [])
   }, [])
 
-  // Carrega mensagens de um session_id específico. Reusado pelo mount e pelo
-  // clique numa sessão lateral. Mantém o desempate (created_at desc, id desc) +
-  // reverse para não reintroduzir o bug da última resposta sumida.
-  const loadHistoryFor = useCallback(async (sid: string) => {
+  // Busca as mensagens de uma sessão do servidor (fonte de verdade), em ordem
+  // cronológica. Reusado pelo carregamento normal E pela recuperação pós-interrupção.
+  const fetchHistory = useCallback(async (sid: string): Promise<Message[]> => {
     const supabase = createSupabaseBrowser()
     const { data: msgs } = await supabase
       .from('advisory_memory')
@@ -164,15 +172,16 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
       .order('created_at', { ascending: false })
       .order('id',         { ascending: false })
       .limit(50)
-
-    if (msgs && msgs.length > 0) {
-      setMessages([...(msgs as Message[])].reverse())
-      setHasHistory(true)
-    } else {
-      setMessages([])
-      setHasHistory(false)
-    }
+    return msgs && msgs.length > 0 ? [...(msgs as Message[])].reverse() : []
   }, [userId])
+
+  // Carrega mensagens de um session_id específico. Reusado pelo mount e pelo
+  // clique numa sessão lateral.
+  const loadHistoryFor = useCallback(async (sid: string) => {
+    const msgs = await fetchHistory(sid)
+    if (msgs.length > 0) { setMessages(msgs); setHasHistory(true) }
+    else                 { setMessages([]);   setHasHistory(false) }
+  }, [fetchHistory])
 
   // ── Mount: descobre a sessão mais recente e carrega ─────────────────────────
 
@@ -296,6 +305,46 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     await loadHistoryFor(sid)
   }
 
+  // Recupera a resposta persistida quando o fetch morre (troca de aba durante a
+  // geracao). Faz polling curto: o server pode ainda estar terminando de gerar +
+  // gravar quando a aba volta. Retorna true se a resposta do assistant apareceu.
+  const recover = useCallback(async (sid: string): Promise<boolean> => {
+    if (recoveringRef.current) return false
+    recoveringRef.current = true
+    setRecovering(true)
+    try {
+      for (let i = 0; i < 6; i++) {
+        const msgs = await fetchHistory(sid)
+        const last = msgs[msgs.length - 1]
+        if (last && last.role === 'assistant') {
+          setMessages(msgs)
+          setHasHistory(true)
+          loadSessions(viewArchived)
+          return true
+        }
+        await new Promise(r => setTimeout(r, 1500))
+      }
+      return false
+    } finally {
+      recoveringRef.current = false
+      setRecovering(false)
+    }
+  }, [fetchHistory, loadSessions, viewArchived])
+
+  // Backstop: ao voltar o foco com um envio ainda "em voo" (pendingSidRef setado),
+  // o fetch pode ter morrido silenciosamente. Recupera do server.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return
+      const sid = pendingSidRef.current
+      if (sid && !recoveringRef.current) {
+        recover(sid).then(ok => { if (ok) { pendingSidRef.current = null; setLoading(false) } })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [recover])
+
   async function handleSend(textArg?: string) {
     const text = (textArg ?? input).trim()
     if (!text || loading || blocked) return
@@ -318,6 +367,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setInput('')
     setLoading(true)
     setHistoryWarn(false)
+    pendingSidRef.current = sid
 
     try {
       const res  = await fetch('/api/advisor/chat', {
@@ -361,13 +411,32 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
       // ativas, com title definido (se foi a primeira mensagem) e count atualizado.
       loadSessions(viewArchived)
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id:         crypto.randomUUID(),
-        role:       'assistant',
-        content:    `Desculpe, houve um erro. Tente novamente. (${err})`,
-        created_at: new Date().toISOString(),
-      }])
+      if (isNetworkInterruption(err)) {
+        // Interrupcao (troca de aba/rede durante a geracao): a resposta ja foi
+        // gerada e PERSISTIDA no server (commit 3744604). Recupera do banco em vez
+        // de mostrar erro criptico. Nunca exibe "Load failed"/"did not match".
+        setLoading(false)
+        const ok = await recover(sid)
+        if (!ok) {
+          setMessages(prev => [...prev, {
+            id:         crypto.randomUUID(),
+            role:       'assistant',
+            content:    isPt
+              ? 'A conexão caiu enquanto eu respondia. A resposta pode ter sido salva: recarregue a conversa ou pergunte de novo.'
+              : 'The connection dropped while I was answering. The reply may have been saved: reload the conversation or ask again.',
+            created_at: new Date().toISOString(),
+          }])
+        }
+      } else {
+        setMessages(prev => [...prev, {
+          id:         crypto.randomUUID(),
+          role:       'assistant',
+          content:    isPt ? 'Desculpe, houve um erro. Tente novamente.' : 'Sorry, something went wrong. Please try again.',
+          created_at: new Date().toISOString(),
+        }])
+      }
     } finally {
+      pendingSidRef.current = null
       setLoading(false)
       inputRef.current?.focus()
     }
@@ -598,17 +667,21 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
             </div>
           ))}
 
-          {loading && (
+          {(loading || recovering) && (
             <div className="flex gap-3">
               <div className="w-7 h-7 rounded-full bg-taime-600 flex items-center justify-center
                              text-xs font-bold text-white shrink-0">T</div>
               <div className="bg-white border border-zinc-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                <div className="flex gap-1 items-center h-4">
-                  {[0, 1, 2].map(i => (
-                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce"
-                      style={{ animationDelay: `${i * 0.15}s` }} />
-                  ))}
-                </div>
+                {recovering ? (
+                  <p className="text-sm text-zinc-500">{isPt ? 'Recuperando a resposta...' : 'Recovering the answer...'}</p>
+                ) : (
+                  <div className="flex gap-1 items-center h-4">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

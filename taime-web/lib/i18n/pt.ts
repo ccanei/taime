@@ -101,6 +101,7 @@ export const pt = {
       captchaFail:  'Não foi possível validar. Recarregue a página e tente de novo.',
       unavailable:  'O Advisor de demonstração está temporariamente indisponível. Volte em breve.',
       genericError: 'Houve um erro ao gerar a resposta. Tente novamente.',
+      interrupted:  'A conexão foi interrompida. Sua pergunta não foi consumida: pergunte novamente.',
       limitTitle:   'Você usou suas 3 perguntas de demonstração.',
       limitBody:    'Crie sua conta gratuita para continuar: mais 10 perguntas no Free, 100 no Essential.',
       limitCta:     'Criar conta gratuita',

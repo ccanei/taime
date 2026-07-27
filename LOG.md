@@ -2,6 +2,49 @@
 
 ---
 
+## [2026-07-27] - Front resiliente a fetch abortado (troca de aba durante a geracao)
+
+### Sintoma
+- Advisor logado E /ask: enviar pergunta, trocar de app/aba ~10s durante a geracao, voltar
+  => no lugar da resposta aparecia "TypeError: Load failed" (WebKit) ou "SyntaxError: The
+  string did not match the expected pattern" (res.json() sobre body truncado). Se ficava na
+  tela, sem erro. Assinatura de fetch interrompido por suspensao de aba no Safari/WebKit.
+
+### Diagnostico
+- O servidor ja estava correto: commit 3744604 reordenou /api/advisor/chat para
+  gerar -> persistir -> responder, entao a resposta JA FICA salva em advisory_memory mesmo
+  quando o cliente aborta. Ambas as rotas (/api/advisor/chat e /api/ask) retornam JSON unico
+  (NextResponse.json), nao streaming, entao o ponto de falha e o await res.json() no front.
+- Faltava o FRONT se recuperar em vez de quebrar.
+
+### Fix (so front)
+- lib/net.ts (novo): isNetworkInterruption(err) distingue interrupcao de rede/abort
+  (TypeError "Load failed"/"Failed to fetch", AbortError, SyntaxError de body truncado,
+  networkerror/connection) de erro real do servidor. Testado contra 9 assinaturas: 5
+  interrupcoes => true, 4 erros reais (AI service error, message_limit_reached, etc) => false.
+- AdvisorChat.tsx (recuperacao automatica):
+  - fetchHistory(sid) extraido de loadHistoryFor (le advisory_memory via supabase-browser).
+  - recover(sid): faz polling (6x, 1.5s) buscando a ultima msg assistant; se aparece,
+    recarrega a conversa e some o erro. Estado suave "Recuperando a resposta...".
+  - Listener visibilitychange: ao voltar o foco (visible) com requisicao pendente morta
+    (pendingSidRef), dispara recover automaticamente.
+  - catch: interrupcao => recover; se recover falha, mensagem honesta ("A conexao caiu
+    enquanto eu respondia. A resposta pode ter sido salva: recarregue ou pergunte de novo").
+    Erro real => mensagem generica. NUNCA o erro criptico.
+- AskChat.tsx (sem historico persistido por design):
+  - catch: interrupcao => L.interrupted ("A conexao foi interrompida. Sua pergunta nao foi
+    consumida: pergunte novamente") + reseta o token Turnstile (single-use). NAO queima
+    pergunta: o limite de 3 e por cookie (Set-Cookie so no 200 recebido) e o estado `used`
+    so avanca em json.used no sucesso, que a interrupcao nunca alcanca.
+  - i18n: chave `interrupted` adicionada em home.ask (pt.ts/en.ts).
+
+### Validacao
+- Build 0 erros (Compiled successfully). Detector testado (9/9). Persistencia server ja
+  garantida por 3744604. Sem regressao quando o usuario permanece na tela (catch so dispara
+  em erro/abort real).
+
+---
+
 ## [2026-07-27] - Controle total de usuarios no admin + fecha a porta dos bots (signup direto)
 
 ### TASK 1: mapa das portas de entrada e a porta aberta dos 89
