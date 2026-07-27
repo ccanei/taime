@@ -18,11 +18,19 @@ export interface WaitlistRecord {
   requested_plan: 'free' | 'essential' | 'strategic' | null
   created_at: string
   contacted: boolean
+  status: 'pending' | 'approved' | 'rejected' | null
 }
 
 type PlanChoice = 'free' | 'essential' | 'strategic'
 
-type Filter = 'all' | 'pending' | 'approved'
+type WStatus = 'pending' | 'approved' | 'rejected'
+type Filter = 'all' | WStatus
+
+// Fonte de verdade do status: a coluna `status`. Fallback para rows legadas sem
+// status (deriva de `contacted`).
+function statusOf(r: WaitlistRecord): WStatus {
+  return r.status ?? (r.contacted ? 'approved' : 'pending')
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', {
@@ -59,14 +67,14 @@ export default function WaitlistAdmin({
 
   const counts = useMemo(() => ({
     all:      records.length,
-    pending:  records.filter(r => !r.contacted).length,
-    approved: records.filter(r =>  r.contacted).length,
+    pending:  records.filter(r => statusOf(r) === 'pending').length,
+    approved: records.filter(r => statusOf(r) === 'approved').length,
+    rejected: records.filter(r => statusOf(r) === 'rejected').length,
   }), [records])
 
   const filtered = useMemo(() => {
-    if (filter === 'pending')  return records.filter(r => !r.contacted)
-    if (filter === 'approved') return records.filter(r =>  r.contacted)
-    return records
+    if (filter === 'all') return records
+    return records.filter(r => statusOf(r) === filter)
   }, [records, filter])
 
   async function approve(record: WaitlistRecord) {
@@ -90,7 +98,7 @@ export default function WaitlistAdmin({
       }
 
       // Atualiza registro localmente
-      setRecords(prev => prev.map(r => r.id === record.id ? { ...r, contacted: true } : r))
+      setRecords(prev => prev.map(r => r.id === record.id ? { ...r, contacted: true, status: 'approved' } : r))
 
       // Flash de confirmação
       setFlash({ id: record.id, name: record.name ?? record.email })
@@ -141,28 +149,25 @@ export default function WaitlistAdmin({
     }
   }
 
-  async function reject(record: WaitlistRecord) {
-    if (!window.confirm(`Rejeitar a solicitação de ${record.name ?? record.email}?`)) return
+  // Muda o status de um registro (pending/rejected) via /api/admin/waitlist-status.
+  // Reverter rejeicao (rejected -> pending) e rejeitar (pending/approved -> rejected)
+  // sao apenas trocas de status: nao mexem em conta nem subscription.
+  async function setStatus(record: WaitlistRecord, next: WStatus, confirmMsg: string) {
+    if (!window.confirm(confirmMsg)) return
     setRejecting(record.id)
     setRowErrors(prev => { const m = new Map(prev); m.delete(record.id); return m })
-
     try {
-      const res = await fetch('/api/admin/waitlist-reject', {
+      const res = await fetch('/api/admin/waitlist-status', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ id: record.id }),
+        body:    JSON.stringify({ id: record.id, status: next }),
       })
-
       const json = await res.json() as { success?: boolean; error?: string }
-
       if (!res.ok || !json.success) {
         setRowErrors(prev => new Map(prev).set(record.id, json.error ?? 'Erro desconhecido'))
         return
       }
-
-      // Soft-delete: remove da listagem (a página filtra `status != 'rejected'` no SSR;
-      // localmente também removemos para refletir imediatamente sem reload).
-      setRecords(prev => prev.filter(r => r.id !== record.id))
+      setRecords(prev => prev.map(r => r.id === record.id ? { ...r, status: next } : r))
     } catch (err) {
       setRowErrors(prev => new Map(prev).set(record.id, String(err)))
     } finally {
@@ -170,10 +175,20 @@ export default function WaitlistAdmin({
     }
   }
 
+  const reject = (r: WaitlistRecord) =>
+    setStatus(r, 'rejected', isPt
+      ? `Rejeitar a solicitação de ${r.name ?? r.email}?`
+      : `Reject ${r.name ?? r.email}'s request?`)
+  const revertToPending = (r: WaitlistRecord) =>
+    setStatus(r, 'pending', isPt
+      ? `Reverter ${r.name ?? r.email} para pendente (revisão)?`
+      : `Revert ${r.name ?? r.email} back to pending review?`)
+
   const TABS: { key: Filter; label: string }[] = [
-    { key: 'all',      label: `Todos (${counts.all})`          },
-    { key: 'pending',  label: `Pendentes (${counts.pending})`  },
-    { key: 'approved', label: `Aprovados (${counts.approved})` },
+    { key: 'all',      label: `${isPt ? 'Todos' : 'All'} (${counts.all})`              },
+    { key: 'pending',  label: `${isPt ? 'Pendentes' : 'Pending'} (${counts.pending})`  },
+    { key: 'approved', label: `${isPt ? 'Aprovados' : 'Approved'} (${counts.approved})` },
+    { key: 'rejected', label: `${isPt ? 'Rejeitados' : 'Rejected'} (${counts.rejected})` },
   ]
 
   return (
@@ -235,10 +250,11 @@ export default function WaitlistAdmin({
                   const isUpdating  = updatingPlan === record.id
                   const busy = isApproving || isRejecting || isUpdating
                             || !!approving || !!rejecting || !!updatingPlan
+                  const st = statusOf(record)
 
                   return (
                     <tr key={record.id} className={`bg-white hover:bg-zinc-50 transition-colors
-                      ${record.contacted ? 'opacity-60' : ''}`}>
+                      ${st === 'rejected' ? 'opacity-50' : st === 'approved' ? 'opacity-60' : ''}`}>
                       <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">
                         {record.name ?? <span className="text-zinc-400 italic">—</span>}
                       </td>
@@ -263,21 +279,26 @@ export default function WaitlistAdmin({
                         {formatDate(record.created_at)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {record.contacted ? (
+                        {st === 'approved' ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full
                                            text-[11px] font-semibold bg-emerald-50 text-emerald-700">
-                            ✓ Aprovado
+                            ✓ {isPt ? 'Aprovado' : 'Approved'}
+                          </span>
+                        ) : st === 'rejected' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full
+                                           text-[11px] font-semibold bg-red-50 text-red-700">
+                            {isPt ? 'Rejeitado' : 'Rejected'}
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full
                                            text-[11px] font-semibold bg-amber-50 text-amber-700">
-                            Pendente
+                            {isPt ? 'Pendente' : 'Pending'}
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex flex-col gap-1 items-start">
-                          {!record.contacted ? (
+                          {st === 'pending' ? (
                             <>
                               <select
                                 value={planChoice.get(record.id) ?? (record.requested_plan ?? 'free')}
@@ -315,7 +336,7 @@ export default function WaitlistAdmin({
                                 </button>
                               </div>
                             </>
-                          ) : (
+                          ) : st === 'approved' ? (
                             (() => {
                               const effectivePlan: PlanChoice =
                                 planOverrides.get(record.email)
@@ -355,6 +376,17 @@ export default function WaitlistAdmin({
                                         : (isPt ? 'Atualizar' : 'Update')}
                                     </button>
                                   </div>
+                                  {/* Rejeitar um aprovado (ex.: os bots aprovados). So muda o status. */}
+                                  <button
+                                    onClick={() => reject(record)}
+                                    disabled={busy}
+                                    className="px-2.5 py-1 rounded-lg text-xs font-medium
+                                               text-red-600 hover:text-red-700 hover:bg-red-50
+                                               disabled:opacity-50 disabled:cursor-not-allowed
+                                               transition-colors"
+                                  >
+                                    {isRejecting ? (isPt ? 'Rejeitando...' : 'Rejecting...') : (isPt ? 'Rejeitar' : 'Reject')}
+                                  </button>
                                   {flashed && (
                                     <span className="text-[11px] text-emerald-600 font-medium">
                                       {isPt ? '✓ Plano atualizado' : '✓ Plan updated'}
@@ -363,6 +395,18 @@ export default function WaitlistAdmin({
                                 </div>
                               )
                             })()
+                          ) : (
+                            /* rejected: reverter para pendente (rejeicao errada) */
+                            <button
+                              onClick={() => revertToPending(record)}
+                              disabled={busy}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold
+                                         bg-amber-100 text-amber-800 hover:bg-amber-200
+                                         disabled:opacity-50 disabled:cursor-not-allowed
+                                         transition-colors"
+                            >
+                              {isRejecting ? (isPt ? 'Revertendo...' : 'Reverting...') : (isPt ? 'Reverter para pendente' : 'Revert to pending')}
+                            </button>
                           )}
                           {rowErr && (
                             <p className="text-xs text-red-600 max-w-[180px]">{rowErr}</p>

@@ -2,6 +2,40 @@
 
 ---
 
+## [2026-07-27] - Admin: waitlist com aba Rejeitados + reverter/rejeitar; nova visao Usuarios
+
+### PARTE A: waitlist completa
+- A pagina admin filtrava .neq('status','rejected'), escondendo os rejeitados (16 no
+  banco). Agora getWaitlist traz TODOS os status (inclui a coluna status no select).
+- UI (WaitlistAdmin): 4 abas com contadores (Todos/Pendentes/Aprovados/Rejeitados),
+  filtro pela coluna status (statusOf com fallback contacted p/ rows legadas). Coluna
+  Status com 3 estados. Reject agora MARCA status=rejected (nao some da lista).
+- Acoes de reverter: registro rejeitado -> "Reverter para pendente"; registro aprovado
+  -> botao "Rejeitar" (ex.: os 2 bots aprovados). Ambas com confirmacao. Novo endpoint
+  /api/admin/waitlist-status {id, status: pending|rejected} (so muda status, nao mexe em
+  conta/subscription; aprovar de verdade segue no /api/admin/approve). Admin-only.
+
+### PARTE B: nova visao /admin/users (todas as contas, somente leitura)
+- Nova pagina admin (app/admin/users) + link 'Users' no AdminNav, mesma protecao
+  (isAdmin) e padrao visual das outras.
+- Lista TODAS as public.users (115): email, nome, criado, plano (join subscriptions
+  ativas; 'sem plano' se nenhuma), interest (da waitlist por email), ultimo login
+  (auth.users.last_sign_in_at via Admin API, pois PostgREST nao junta auth), ultima
+  atividade (max entre login e ultima msg no Advisor) e Msgs (perguntas no Advisor,
+  advisory_memory role=user).
+- Filtros: plano (free/essential/strategic/sem plano) e atividade (ativos 30d/dormentes/
+  nunca acessaram). Contadores no topo: total, por plano, ativos 30d, dormentes.
+- Decisao documentada: 'atividade' = ultima atividade da conta (login OU Advisor), que
+  particiona as 115 contas de forma limpa (active30=90, dormant=12, nunca acessou=13).
+  A coluna Msgs mostra a parte o uso do Advisor. O painel de Engagement conta atividade
+  mais estrita (so uso de produto: ~8-11), entao aparece menos ativo que esta lista; o
+  '~25' esperado era uma superestimativa (o real de engagement e ~8-11).
+- Validado: total 115 (= public.users); cc@gartner.com com plano free; por plano free 99,
+  essential 14, strategic 1, sem plano 1; buckets somam 115. Somente leitura (subscription
+  continua no fluxo existente). npm run build: 0 erros.
+
+---
+
 ## [2026-07-27] - Fix sync auth->public.users + backfill; protecao anti-bot do cadastro/waitlist
 
 ### PARTE A: sync de usuarios (bug + backfill + robustez)

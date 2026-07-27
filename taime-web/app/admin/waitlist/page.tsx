@@ -8,10 +8,11 @@ import type { WaitlistRecord } from './WaitlistAdmin'
 
 async function getWaitlist(): Promise<WaitlistRecord[]> {
   const supabase = createSupabaseService()
+  // Traz TODOS os status (inclui rejected, antes invisiveis). O filtro por status
+  // agora e feito na UI, com aba/contador dedicado para rejeitados.
   const { data } = await supabase
     .from('waitlist')
-    .select('id, email, name, company, role, interest, requested_plan, created_at, contacted')
-    .neq('status', 'rejected')
+    .select('id, email, name, company, role, interest, requested_plan, created_at, contacted, status')
     .order('created_at', { ascending: false })
   return (data as WaitlistRecord[]) ?? []
 }

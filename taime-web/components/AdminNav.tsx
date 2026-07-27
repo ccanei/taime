@@ -14,6 +14,7 @@ interface AdminLink {
 
 const ADMIN_LINKS: AdminLink[] = [
   { href: '/admin/waitlist',   label: 'Waitlist'   },
+  { href: '/admin/users',      label: 'Users'      },
   { href: '/admin/reports',    label: 'Reports'    },
   { href: '/admin/feedback',   label: 'Feedback'   },
   { href: '/admin/newsletter', label: 'Newsletter' },
