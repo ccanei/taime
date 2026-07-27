@@ -4,7 +4,7 @@ import { createSupabaseService } from '@/lib/supabase-server'
 import { getAdvisorPeriodFloor, ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
 import { embedQuery } from '@/lib/embeddings'
 import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
-import { selectTrajectoryChunks, yearDistribution } from '@/lib/trajectory-select'
+import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
 
 // ── Advisor ANONIMO (/ask): 3 perguntas sem login, mesmo modelo do produto ──
 // Caminho SEPARADO do /api/advisor/chat: sem user_id, sem memoria de sessao, sem
@@ -45,6 +45,7 @@ interface TrendChunk {
   category:   string | null
   content:    string
   similarity: number
+  score?:     number | null   // v4.9: TAIME Score p/ desempate na fronteira
 }
 
 // ── System prompt ANONIMO ────────────────────────────────────────────────────
@@ -346,10 +347,25 @@ export async function POST(req: NextRequest) {
     } catch { /* sem chunks: cai no fallback de principios gerais */ }
   }
 
-  const deduped   = chunks.length > 0 ? dedupeChunks(chunks, lang) : []
-  const candidates = isTraj && deduped.length > 0
-    ? selectTrajectoryChunks(deduped, { now: new Date(), totalCap: 12, recentMonths: 18, reservePct: 0.28 })
-    : deduped
+  const deduped = chunks.length > 0 ? dedupeChunks(chunks, lang) : []
+
+  // v4.9 (Part B): anexa TAIME Score aos candidatos p/ desempate na fronteira.
+  // Interno (nunca exposto ao visitante). Fail-safe: sem score, cai p/ similaridade.
+  if (deduped.length > 0) {
+    try {
+      const ids = [...new Set(deduped.map(c => c.trend_id))]
+      const { data } = await service.from('report_trends').select('id, taime_score').in('id', ids)
+      const m = new Map<string, number>()
+      for (const r of (data ?? []) as Array<{ id: string; taime_score: number | null }>) {
+        if (typeof r.taime_score === 'number') m.set(r.id, r.taime_score)
+      }
+      for (const c of deduped) c.score = m.get(c.trend_id) ?? null
+    } catch { /* segue sem score */ }
+  }
+
+  const candidates: TrendChunk[] = isTraj && deduped.length > 0
+    ? selectTrajectoryChunks(deduped, { now: new Date(), totalCap: 12, recentMonths: 18, reservePct: 0.28 }).selected
+    : (deduped.length > 0 ? scoreTieBreakSort(deduped, 0.04) : deduped)
   const selected = candidates.length > 0 ? await refineChunks(message, candidates) : []
 
   // Task 5 (observabilidade): trajetoria entregando um so ano = sintoma de bug.

@@ -2,6 +2,62 @@
 
 ---
 
+## [2026-07-27] - Blindagem da rota (regressao e17f1a8) + selecao estrategica (score + espinha)
+
+### PARTE A: regressao - /api/advisor/chat respondeu TEXTO em producao
+- Sintoma: trajetoria -> front recebeu "An error o..." -> "SyntaxError: Unexpected
+  token 'A'... is not valid JSON". Usuario NA TELA. A resposta foi gerada e
+  persistida (chegou via recuperacao de historico), mas a entrega original morreu.
+- Causa raiz: a rota NAO tinha catch de ultima instancia; e o e17f1a8 somou custo
+  no caminho de trajetoria. Medicao real do retrieval: embed 1.3s + rpc(40) 3.9s +
+  scores 0.3s + join 0.3s + coverage 0.2s ~= 6s. Some a isso a geracao Sonnet 5
+  (thinking) E, no pior caso, a SEGUNDA geracao da retentativa corretiva do
+  grounding. Com maxDuration=60 a funcao morria no meio -> a plataforma Vercel
+  devolve TEXTO puro (nao o JSON da rota) -> res.json() quebra. (Persistencia
+  "depois" = a funcao seguiu rodando em background apos o timeout do cliente.)
+- Fix estrutural:
+  1. maxDuration 60 -> 120 (Vercel permite ate 300). Folga p/ retrieval + 2 geracoes.
+  2. POST vira wrapper try/catch sobre handleChat: QUALQUER excecao nao tratada vira
+     JSON valido ({error:'internal_error', code:'advisor_unhandled'}, 500). A rota
+     nunca mais responde texto puro (timeout da plataforma segue texto, por isso o
+     maxDuration subiu).
+  3. Enriquecimentos OPCIONAIS em fail-safe com timeout proprio (withTimeout):
+     coverage (4s), join then_now_next (4s), fetch de scores (3s). Se falharem ou
+     travarem, a resposta sai SEM aquele enriquecimento + console.error; nunca
+     derruba a rota.
+- Repro em producao: apos deploy (push abaixo), rodar a pergunta de aceitacao e
+  confirmar entrega completa. Local: o caminho de retrieval+selecao roda limpo.
+
+### PARTE B: selecao estrategica (lib/trajectory-select, estendido)
+- FORMATO DO TAIME SCORE (reportado): existe COLUNA dedicada report_trends.taime_score
+  (inteiro 0-100). E o valor agregado utilizavel; taime_framework tem score_dimensions,
+  mas a coluna e o caminho limpo. Usada como criterio de desempate.
+- Desempate por score na fronteira: scoreTieBreakSort agrupa candidatos em faixas de
+  similaridade (largura TRAJECTORY_TIE_BREAK_DELTA=0.04, via Math.floor); DENTRO da
+  mesma faixa (empate pratico) o de MAIOR taime_score vem primeiro. Similaridade
+  continua primaria (faixas diferentes nunca invertem). Aplicado em trajetoria E no
+  caminho normal.
+- Continuidade de theme_slug: dominantThemeSlugs acha o(s) tema(s) dominante(s) no
+  topo; themeSpine monta o backbone cronologico (um chunk por ano por tema). A
+  espinha entra primeiro (ate ~metade das vagas), depois recencia, depois rebalance.
+  Efeito: MESMA espinha canonica entre execucoes (validado 3x identicas). Degrada com
+  graca (sem tema dominante -> espinha vazia -> rebalance puro).
+- Scores anexados aos candidatos apos o dedupe (query indexada sobre report_trends,
+  fail-safe). Termometro: context_metadata ganha spine_theme_slugs.
+- /ask herda score + espinha (via lib compartilhada); scores buscados internamente,
+  nunca expostos.
+- Testes: lib/trajectory-select.test estendido para 14 casos (desempate por score na
+  fronteira; similaridade primaria; espinha presente/cronologica; degradacao;
+  consistencia entre execucoes). period-intent 26/26 inalterado.
+
+### Validacao real (cybersecurity desde 2016, 3 execucoes)
+- Espinha IDENTICA nas 3: ["ia-ciberseguranca-corrida-armamentista",
+  "arquitetura-zero-trust-seguranca"]. Distribuicao 2016..2026 (10 anos). NOW em
+  2026-02. Score tie-break ativo (sims 0.545-0.580 na mesma faixa, scores 79-84
+  desempatam). Build 0 erros, tsc 0 erros.
+
+---
+
 ## [2026-07-27] - Advisor: recencia garantida, NEXT prospectivo em camadas, mapa do arquivo, termometro
 
 Contexto: teste real de trajetoria mostrou NOW/NEXT ancorados em material antigo

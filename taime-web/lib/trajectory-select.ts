@@ -1,9 +1,10 @@
-// ── Selecao de chunks para perguntas de trajetoria (v4.8) ───────────────────
+// ── Selecao de chunks para perguntas de trajetoria (v4.9) ───────────────────
 // Modulo PURO (zero dependencias), testavel e compartilhado entre o Advisor
 // logado (app/api/advisor/chat) e o /ask anonimo. A busca vetorial e semantica e
 // o indice e desigual (anos com muito mais chunks dominam a similaridade). Para
 // perguntas de trajetoria/evolucao isso enviesa o contexto para os anos densos e
-// afoga o ano corrente. Estas funcoes garantem espectro temporal E recencia.
+// afoga o ano corrente. Estas funcoes garantem espectro temporal, recencia,
+// desempate por TAIME Score na fronteira e continuidade (espinha) do tema.
 
 export interface Periodized {
   period:     string   // 'YYYY-MM-01'
@@ -18,8 +19,7 @@ export function firstOfMonthUTC(now: Date, monthsBack: number): string {
   return `${y}-${m}-01`
 }
 
-// Distribuicao ano -> contagem (ordenada por ano). Usada pelo termometro (Task 5)
-// e pelos testes. Aceita qualquer objeto com `period`.
+// Distribuicao ano -> contagem (ordenada por ano). Usada pelo termometro e testes.
 export function yearDistribution<T extends { period: string }>(chunks: T[]): Record<string, number> {
   const m: Record<string, number> = {}
   for (const c of chunks) {
@@ -29,11 +29,68 @@ export function yearDistribution<T extends { period: string }>(chunks: T[]): Rec
   return Object.fromEntries(Object.entries(m).sort(([a], [b]) => a.localeCompare(b)))
 }
 
-// Rebalanceamento temporal: distribui os candidatos por faixa de ANO em vez de
-// puro top-por-similaridade. Round-robin cronologico: a rodada 0 pega o melhor
-// chunk de CADA ano (garante que todo ano com material apareca), a rodada 1 o
-// segundo de cada ano, e assim por diante, ate `totalCap`. Recebe chunks ja
-// ordenados por similaridade desc (dentro de cada ano a ordem por relevancia e
+// Desempate por TAIME Score na FRONTEIRA (Part B, v4.9). Similaridade continua
+// primaria: chunks sao agrupados em faixas de largura `delta`; DENTRO da mesma
+// faixa (similaridade praticamente empatada) o de maior TAIME Score vem primeiro.
+// Comparador transitivo (bucket, score, similaridade), seguro para sort.
+export function scoreTieBreakSort<T extends { similarity: number; score?: number | null }>(
+  chunks: T[], delta: number,
+): T[] {
+  const d = delta > 0 ? delta : 0.04
+  return [...chunks].sort((a, b) => {
+    // Indice de faixa por floor: [k*d, (k+1)*d) e uma faixa. Duas similaridades na
+    // mesma faixa (praticamente empatadas) sao desempatadas pelo score.
+    const ba = Math.floor(a.similarity / d), bb = Math.floor(b.similarity / d)
+    if (ba !== bb) return bb - ba                     // faixa de maior similaridade primeiro
+    const sa = a.score ?? -1, sb = b.score ?? -1
+    if (sa !== sb) return sb - sa                      // desempate: maior TAIME Score
+    return b.similarity - a.similarity                 // ultimo criterio: similaridade exata
+  })
+}
+
+// theme_slug(s) dominante(s) entre os topK candidatos por similaridade. Retorna
+// ate `maxThemes` slugs com pelo menos `minCount` ocorrencias, mais frequentes
+// primeiro. Vazio quando nenhum tema se repete (arco disperso).
+export function dominantThemeSlugs<T extends { theme_slug?: string | null; similarity: number }>(
+  chunks: T[], opts?: { topK?: number; maxThemes?: number; minCount?: number },
+): string[] {
+  const topK      = opts?.topK ?? 12
+  const maxThemes = opts?.maxThemes ?? 2
+  const minCount  = opts?.minCount ?? 2
+  const top = [...chunks].sort((a, b) => b.similarity - a.similarity).slice(0, topK)
+  const counts = new Map<string, number>()
+  for (const c of top) {
+    if (!c.theme_slug) continue
+    counts.set(c.theme_slug, (counts.get(c.theme_slug) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .filter(([, n]) => n >= minCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxThemes)
+    .map(([s]) => s)
+}
+
+// Espinha temporal do(s) tema(s) dominante(s): um chunk por ANO (o de maior
+// similaridade naquele ano) para cada slug, ordenado cronologicamente. E o
+// backbone do arco then/now/next, deterministico entre execucoes.
+function themeSpine<T extends { period: string; theme_slug?: string | null; similarity: number }>(
+  chunks: T[], slugs: string[],
+): T[] {
+  if (slugs.length === 0) return []
+  const set = new Set(slugs)
+  const bestByYearSlug = new Map<string, T>()
+  for (const c of chunks) {
+    if (!c.theme_slug || !set.has(c.theme_slug)) continue
+    const key = `${c.theme_slug}:${c.period.slice(0, 4)}`
+    const cur = bestByYearSlug.get(key)
+    if (!cur || c.similarity > cur.similarity) bestByYearSlug.set(key, c)
+  }
+  return [...bestByYearSlug.values()].sort((a, b) => a.period.localeCompare(b.period))
+}
+
+// Rebalanceamento temporal: distribui os candidatos por faixa de ANO (round-robin
+// cronologico). A rodada 0 pega o melhor chunk de CADA ano; a rodada 1 o segundo;
+// etc, ate `totalCap`. Recebe chunks ja ordenados (dentro de cada ano a ordem e
 // preservada).
 export function rebalanceByYear<T extends { period: string }>(chunks: T[], totalCap: number): T[] {
   if (totalCap <= 0) return []
@@ -62,39 +119,51 @@ export function rebalanceByYear<T extends { period: string }>(chunks: T[], total
   return out
 }
 
-// Selecao final de trajetoria (Task 1: reserva de recencia). Reserva ~reservePct
-// das vagas para os TOP chunks (por similaridade) dos ultimos `recentMonths`
-// meses, INDEPENDENTE do ranking global, garantindo que o NOW/NEXT tenham material
-// recente. O restante das vagas segue o rebalanceByYear sobre os anos anteriores.
-// Degrada com graca: se nao ha material recente, a reserva fica vazia e tudo cai
-// no rebalanceamento (comportamento anterior). Entrada esperada: chunks ja
-// deduplicados e ordenados por similaridade desc.
-export function selectTrajectoryChunks<T extends Periodized>(
+// Selecao final de trajetoria (v4.9). Ordem de garantias:
+//   1. desempate por TAIME Score na fronteira (scoreTieBreakSort);
+//   2. ESPINHA cronologica do(s) tema(s) dominante(s) (continuidade estrutural,
+//      a MESMA entre execucoes repetidas), limitada a ~metade das vagas;
+//   3. RESERVA de recencia (top por similaridade nos ultimos recentMonths meses),
+//      garantindo NOW/NEXT ancorados no presente;
+//   4. rebalanceByYear sobre o restante.
+// Degrada com graca: sem tema dominante a espinha fica vazia; sem material recente
+// a reserva fica vazia; ambos caem no rebalanceamento. Devolve os chunks
+// selecionados e os slugs da espinha (para o termometro auditar consistencia).
+export function selectTrajectoryChunks<
+  T extends Periodized & { theme_slug?: string | null; score?: number | null },
+>(
   chunks: T[],
-  opts: { now: Date; totalCap: number; recentMonths: number; reservePct: number },
-): T[] {
+  opts: { now: Date; totalCap: number; recentMonths: number; reservePct: number; tieBreakDelta?: number },
+): { selected: T[]; spineSlugs: string[] } {
   const { now, totalCap, recentMonths, reservePct } = opts
-  if (chunks.length === 0 || totalCap <= 0) return []
-  if (chunks.length <= totalCap) {
-    // Cabe tudo: nada a descartar. Ainda assim reordena para levar os recentes na
-    // frente, mantendo o resto por ano, para o refinador ver recencia primeiro.
+  const delta = opts.tieBreakDelta ?? 0.04
+  if (chunks.length === 0 || totalCap <= 0) return { selected: [], spineSlugs: [] }
+
+  const ranked     = scoreTieBreakSort(chunks, delta)
+  const spineSlugs = dominantThemeSlugs(ranked)
+  const spine      = themeSpine(ranked, spineSlugs)
+
+  const chosen = new Set<T>()
+  const out: T[] = []
+  const push = (c: T) => { if (!chosen.has(c) && out.length < totalCap) { chosen.add(c); out.push(c) } }
+
+  // 2. espinha do tema dominante primeiro, ate ~metade das vagas (nao afoga o resto).
+  const spineCap = Math.max(1, Math.floor(totalCap * 0.5))
+  for (const c of spine) {
+    if (out.length >= spineCap) break
+    push(c)
   }
 
+  // 3. reserva de recencia.
   const cutoff       = firstOfMonthUTC(now, recentMonths)
   const reserveSlots = Math.min(totalCap, Math.max(1, Math.round(totalCap * reservePct)))
+  const recent = ranked.filter(c => c.period >= cutoff && !chosen.has(c)).slice(0, reserveSlots)
+  for (const c of recent) push(c)
 
-  // Reserva: top por similaridade entre os que caem na janela recente.
-  const recentPool = chunks
-    .filter(c => c.period >= cutoff)
-    .sort((a, b) => b.similarity - a.similarity)
-  const recent = recentPool.slice(0, reserveSlots)
-  const chosen = new Set<T>(recent)
+  // 4. rebalanceamento por ano com as vagas restantes.
+  const rest      = ranked.filter(c => !chosen.has(c))
+  const remaining = totalCap - out.length
+  for (const c of rebalanceByYear(rest, remaining)) push(c)
 
-  // Resto: tudo que nao entrou na reserva (inclui recentes excedentes, que ainda
-  // competem no rebalanceamento pelo bucket do ano corrente).
-  const rest      = chunks.filter(c => !chosen.has(c))
-  const remaining = totalCap - recent.length
-  const rebalanced = rebalanceByYear(rest, remaining)
-
-  return [...recent, ...rebalanced]
+  return { selected: out, spineSlugs }
 }

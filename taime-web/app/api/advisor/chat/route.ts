@@ -13,13 +13,17 @@ import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
-import { selectTrajectoryChunks, yearDistribution } from '@/lib/trajectory-select'
+import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
-// da funcao. Mesmo padrao dos crons (60s). max_tokens e teto, nao alvo: respostas
-// curtas seguem rapidas.
-export const maxDuration = 60
+// da funcao. v4.9 (regressao e17f1a8): uma pergunta de trajetoria soma retrieval
+// (~6s: embed + rpc de 40 chunks + coverage + joins) e, no pior caso, DUAS geracoes
+// (a retentativa corretiva do grounding). Com 60s isso estourava e a funcao morria
+// no meio da entrega -> a plataforma devolvia texto puro ("An error...") e o front
+// quebrava no res.json(). Subimos para 120s (Vercel permite ate 300s). max_tokens
+// e teto, nao alvo: respostas curtas seguem rapidas.
+export const maxDuration = 120
 
 interface AdvisorProfile {
   company_name:           string | null
@@ -103,6 +107,10 @@ interface TrendChunk {
   category:   string | null
   content:    string
   similarity: number
+  // v4.9 (Part B): TAIME Score da trend (coluna report_trends.taime_score, 0-100),
+  // anexado apos o dedupe para desempate na fronteira. Opcional: a selecao degrada
+  // para similaridade pura se a busca de scores falhar.
+  score?:     number | null
 }
 
 // 'vector' = contexto montado pela busca semantica no arquivo inteiro.
@@ -678,6 +686,10 @@ const TRAJECTORY_CANDIDATE_CAP = 24
 // ancorado no material recente mesmo quando anos densos dominam a similaridade.
 const TRAJECTORY_RESERVE_PCT = 0.28
 const TRAJECTORY_RECENT_MONTHS = 18
+// v4.9 (Part B): largura da faixa de similaridade para o desempate por TAIME Score.
+// Candidatos na mesma faixa (diferenca de similaridade < delta) sao ordenados pelo
+// score. Calibrado dentro da banda pedida (0.03-0.05).
+const TRAJECTORY_TIE_BREAK_DELTA = 0.04
 // rebalanceByYear e selectTrajectoryChunks vivem em '@/lib/trajectory-select'
 // (modulo puro, testavel, compartilhado com o /ask).
 
@@ -749,6 +761,35 @@ async function nearestAvailablePeriod(
     return Math.abs((py * 12 + pm) - (ry * 12 + rm))
   }
   return dist(below, reqFrom) <= dist(above, reqTo) ? below : above
+}
+
+// v4.9: guarda de duracao para enriquecimentos OPCIONAIS. Resolve o fallback se a
+// promise nao completar em `ms`. Nunca rejeita (a promise real e blindada com
+// .catch), entao um enriquecimento lento OU quebrado degrada sem derrubar a rota.
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  const guarded = p.catch(() => fallback) // nunca rejeita
+  const timeout = new Promise<T>(resolve => { setTimeout(() => resolve(fallback), ms) })
+  return Promise.race([guarded, timeout])
+}
+
+// v4.9 (Part B): TAIME Score por trend_id (coluna dedicada report_trends.taime_score,
+// inteiro 0-100). Uma query indexada sobre os candidatos deduplicados. Fail-safe:
+// devolve mapa vazio em qualquer falha (a selecao cai para similaridade pura).
+async function fetchTrendScores(
+  service: ReturnType<typeof createSupabaseService>,
+  ids: string[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  if (ids.length === 0) return map
+  try {
+    const { data } = await service.from('report_trends').select('id, taime_score').in('id', ids)
+    for (const r of (data ?? []) as Array<{ id: string; taime_score: number | null }>) {
+      if (typeof r.taime_score === 'number') map.set(r.id, r.taime_score)
+    }
+  } catch (e) {
+    console.error('[advisor-scores] fetch falhou (desempate por score desativado neste turno):', e instanceof Error ? e.message : e)
+  }
+  return map
 }
 
 // ── Mapa do arquivo (Task 3, v4.8) ──────────────────────────────────────────
@@ -1082,7 +1123,21 @@ async function callMain(
   return { ok: true, reply, stopReason: data.stop_reason ?? null, usage: normalizeUsage(data.usage) }
 }
 
-export async function POST(req: NextRequest) {
+// v4.9: catch de ULTIMA INSTANCIA. A rota NUNCA mais responde texto puro. Qualquer
+// excecao nao tratada em handleChat vira JSON valido ({error, code}, status 500),
+// para o front sempre conseguir res.json(). Timeout da plataforma continua sendo
+// texto (a funcao morre antes daqui), por isso o maxDuration foi para 120s.
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await handleChat(req)
+  } catch (e) {
+    console.error('[advisor-chat] UNHANDLED EXCEPTION (rota blindada, respondendo JSON):',
+      e instanceof Error ? (e.stack ?? e.message) : e)
+    return NextResponse.json({ error: 'internal_error', code: 'advisor_unhandled' }, { status: 500 })
+  }
+}
+
+async function handleChat(req: NextRequest): Promise<NextResponse> {
   // Auth
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
@@ -1179,6 +1234,7 @@ export async function POST(req: NextRequest) {
   // e distribuicao de anos dos chunks ENTREGUES ao modelo. Custo ~zero.
   let retrievedTotal:        number                 = 0
   let deliveredYearDist:     Record<string, number> = {}
+  let spineSlugs:            string[]               = []
 
   // Passo 4: janela de contexto por plano. Strategic -> piso permissivo (ve
   // tudo); Essential -> hoje menos 36 meses. Ponto unico de verdade em lib/plan.
@@ -1264,19 +1320,36 @@ export async function POST(req: NextRequest) {
   }
 
   const deduped = chunks.length > 0 ? dedupeChunks(chunks, preferLang) : []
-  // v4.8: em trajetoria, selectTrajectoryChunks reserva ~28% das vagas para os top
-  // chunks dos ultimos 18 meses (recencia garantida, Task 1) e rebalanceia o resto
-  // por faixa de ano ANTES de refinar. Assim o refinador enxerga tanto o material
-  // recente (NOW/NEXT ancorados no presente) quanto o arco antigo. Fora de
-  // trajetoria: candidatos = deduped (comportamento inalterado).
-  const candidates = trajectory && deduped.length > 0
-    ? selectTrajectoryChunks(deduped, {
-        now:          new Date(),
-        totalCap:     TRAJECTORY_CANDIDATE_CAP,
-        recentMonths: TRAJECTORY_RECENT_MONTHS,
-        reservePct:   TRAJECTORY_RESERVE_PCT,
-      })
-    : deduped
+
+  // v4.9 (Part B): anexa o TAIME Score a cada candidato para desempate na fronteira
+  // (similaridade continua primaria; o score decide quando os candidatos empatam).
+  // Fail-safe: se a busca de scores falhar, a selecao cai para similaridade pura.
+  if (deduped.length > 0) {
+    const scoreMap = await withTimeout(
+      fetchTrendScores(service, [...new Set(deduped.map(c => c.trend_id))]),
+      3000, new Map<string, number>(),
+    )
+    for (const c of deduped) c.score = scoreMap.get(c.trend_id) ?? null
+  }
+
+  // v4.9: em trajetoria, selectTrajectoryChunks garante (1) espinha cronologica do
+  // tema dominante, (2) reserva de recencia, (3) rebalance por ano, com desempate
+  // por score na fronteira. Fora de trajetoria: scoreTieBreakSort desempata os
+  // candidatos por score antes do refinador (similaridade primaria, inalterada na
+  // ordem geral). deduped vazio -> candidates vazio (cai no proximo ramo).
+  let candidates: TrendChunk[]
+  if (trajectory && deduped.length > 0) {
+    const sel = selectTrajectoryChunks(deduped, {
+      now:          new Date(),
+      totalCap:     TRAJECTORY_CANDIDATE_CAP,
+      recentMonths: TRAJECTORY_RECENT_MONTHS,
+      reservePct:   TRAJECTORY_RESERVE_PCT,
+    })
+    candidates = sel.selected
+    spineSlugs = sel.spineSlugs
+  } else {
+    candidates = deduped.length > 0 ? scoreTieBreakSort(deduped, TRAJECTORY_TIE_BREAK_DELTA) : deduped
+  }
 
   if (candidates.length > 0) {
     // ── Caminho vetorial ──────────────────────────────────────────────────
@@ -1311,10 +1384,17 @@ export async function POST(req: NextRequest) {
     const titleById = new Map<string, string>()
     const tnnById   = new Map<string, { now: string | null; next: string | null }>()
     try {
-      const { data: titleRows } = await service
-        .from('report_trends')
-        .select('id, title_en, title_pt_br, then_now_next_en, then_now_next_pt_br')
-        .in('id', trendIdsUsed)
+      // v4.9: timeout proprio (4s). Se o join travar, a resposta sai sem NOW/NEXT
+      // marcados (o content embeddado ainda cobre o basico) em vez de estourar o budget.
+      const titleRows = await withTimeout(
+        Promise.resolve(
+          service
+            .from('report_trends')
+            .select('id, title_en, title_pt_br, then_now_next_en, then_now_next_pt_br')
+            .in('id', trendIdsUsed),
+        ).then(r => r.data),
+        4000, null,
+      )
       for (const t of (titleRows ?? []) as Array<TrendDetailRow>) {
         const title = lang === 'pt' ? (t.title_pt_br ?? t.title_en) : (t.title_en ?? t.title_pt_br)
         if (title) titleById.set(t.id, title)
@@ -1398,7 +1478,15 @@ export async function POST(req: NextRequest) {
   // contextBlock e reusado na rede de segurança de grounding (mesmo texto).
   // Task 3: mapa do arquivo (cobertura por ano na janela do plano). Estavel entre
   // turnos (cache por period_floor), entra como bloco cacheado antes do contexto.
-  const coverageBlock = await buildArchiveCoverageBlock(service, periodFloor, new Date())
+  // v4.9: fail-safe com timeout. Se a query travar ou explodir, a resposta sai SEM
+  // o mapa (degrada) em vez de derrubar a rota; nunca gasta mais que 4s aqui.
+  const coverageBlock = await withTimeout(
+    buildArchiveCoverageBlock(service, periodFloor, new Date()).catch(e => {
+      console.error('[advisor-coverage] falhou (degradando sem o mapa):', e instanceof Error ? e.message : e)
+      return null
+    }),
+    4000, null,
+  )
   const system: SystemBlock[] = [
     { type: 'text', text: RULES_BLOCK,                cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
@@ -1529,6 +1617,7 @@ export async function POST(req: NextRequest) {
     is_trajectory:        trajectory,
     retrieved_chunks_total: retrievedTotal,
     delivered_year_distribution: deliveredYearDist,
+    spine_theme_slugs:    spineSlugs,
     period_empty_hit:     periodEmptyNotice !== null,
     out_of_window_hit:    outOfWindowHit,
     memory_summaries_used: memorySummaries.map(s => s.session_id),
