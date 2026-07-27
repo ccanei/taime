@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { createSupabaseService } from '@/lib/supabase-server'
+import { clientIp, hashIp, verifyTurnstile, looksRandom } from '@/lib/anti-abuse'
 
 export const dynamic = 'force-dynamic'
 
@@ -145,14 +147,47 @@ export async function POST(req: Request) {
   const body = await req.json() as {
     name?: string; email?: string; company?: string | null;
     role?: string | null; interest?: string; requested_plan?: string;
-    website?: string
+    website?: string; token?: string
   }
 
-  // ── Honeypot: campo "website" só é preenchido por bots (oculto para humanos).
-  //    Retorna sucesso falso para não despertar tentativa de retry; NÃO grava.
+  // ── Camada 1: Honeypot. O campo "website" só é preenchido por bots (oculto
+  //    para humanos). Retorna sucesso falso (não desperta retry); NÃO grava.
   if (body.website && body.website.trim().length > 0) {
     return NextResponse.json({ success: true })
   }
+
+  const ip = clientIp(req)
+
+  // ── Camada 2: Turnstile (Cloudflare), verificação server-side OBRIGATÓRIA
+  //    quando o segredo está configurado. Se o segredo faltar (misconfig), NÃO
+  //    derrubamos todo o cadastro: fail-open com log claro (mesma licao do
+  //    incidente de persistencia: nao criar uma nova pane por env ausente).
+  if (process.env.TURNSTILE_SECRET_KEY) {
+    const token = (body.token ?? '').trim()
+    if (!token || !(await verifyTurnstile(token, ip))) {
+      return NextResponse.json({ error: 'captcha_failed' }, { status: 403 })
+    }
+  } else {
+    console.error('admin/waitlist: TURNSTILE_SECRET_KEY ausente; cadastro sem captcha. Configurar no Vercel.')
+  }
+
+  // ── Camada 3: rate limit por IP (reusa a RPC anon_advisor_consume do /ask com
+  //    hash namespacado 'waitlist:'). Caps generosos por causa de CGNAT movel.
+  //    Fail-open se a RPC nao existir (migration ausente).
+  try {
+    const svc = createSupabaseService()
+    const { data, error } = await svc.rpc('anon_advisor_consume', {
+      p_ip_hash:     hashIp(ip, 'waitlist:'),
+      p_hourly_cap:  4,
+      p_monthly_cap: 20,
+    })
+    if (!error) {
+      const row = (Array.isArray(data) ? data[0] : data) as { allowed?: boolean } | undefined
+      if (row && row.allowed === false) {
+        return NextResponse.json({ error: 'rate_limited' }, { status: 429 })
+      }
+    }
+  } catch { /* fail-open: o Turnstile e o honeypot seguem protegendo */ }
 
   const { name = '', email = '', company = null, role = null, interest = '' } = body
   // Normaliza plano (apenas 'free' | 'essential' | 'strategic'; fallback 'free')
@@ -174,7 +209,16 @@ export async function POST(req: Request) {
   // waitlist já aprovado e contatado, para não poluir a fila de pendentes
   // (consistente com o /api/admin/approve). Só o Strategic segue o fluxo manual:
   // nasce em 'pending' e contacted=false, e o admin aprova em /admin/waitlist.
-  const isInstant = requested_plan === 'free' || requested_plan === 'essential'
+  // ── Camada 4: heuristica de sanidade antes da AUTO-aprovacao. Se name/company/
+  //    role parecem string aleatoria (gibberish de bot), NAO auto-aprova: cai em
+  //    'pending' para revisao humana. Conservador: na duvida aprova; nunca rejeita
+  //    sozinho (o registro fica gravado, so nao vira 'approved' automatico).
+  const suspicious = looksRandom(name) || looksRandom(company) || looksRandom(role)
+  const wantsInstant = requested_plan === 'free' || requested_plan === 'essential'
+  if (suspicious && wantsInstant) {
+    console.warn('[admin/waitlist] cadastro suspeito (name/company/role aleatorio) -> pending_review (nao auto-aprovado):', { email, name, company, role })
+  }
+  const isInstant = wantsInstant && !suspicious
   const status    = isInstant ? 'approved' : 'pending'
   const contacted = isInstant
 

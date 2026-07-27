@@ -1502,10 +1502,18 @@ export async function POST(req: NextRequest) {
   ])
   if (memErr) {
     historySaved = false
-    console.error('[advisor-persist] advisory_memory INSERT FAILED (message NOT saved):', {
-      code: memErr.code, message: memErr.message, details: memErr.details, hint: memErr.hint,
-      user_id: user.id, session_id: sessionId,
-    })
+    // 23503 = foreign_key_violation: quase sempre significa que o usuario nao tem
+    // linha em public.users (bug de sync auth->users). Mensagem clara, nao criptica.
+    const syncGap = memErr.code === '23503'
+    console.error(
+      syncGap
+        ? '[advisor-persist] advisory_memory INSERT FAILED: usuario SEM linha em public.users (sync auth->users). Rodar backfill-orphan-users.sql.'
+        : '[advisor-persist] advisory_memory INSERT FAILED (message NOT saved):',
+      {
+        code: memErr.code, message: memErr.message, details: memErr.details, hint: memErr.hint,
+        user_id: user.id, session_id: sessionId,
+      },
+    )
   }
 
   // Sincroniza metadados em advisor_sessions: cria na primeira mensagem com

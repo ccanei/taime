@@ -2,6 +2,50 @@
 
 ---
 
+## [2026-07-27] - Fix sync auth->public.users + backfill; protecao anti-bot do cadastro/waitlist
+
+### PARTE A: sync de usuarios (bug + backfill + robustez)
+- Bug: cc@gartner.com existia em auth.users (04a474ff, criado 2026-05-26) mas nao em
+  public.users -> invisivel no engagement, gate de plano quebrado, contador/persistencia
+  do Advisor falhando por FK. Confirmado 1 unico orfao (via admin API auth vs public.users).
+- Causa: public.users e criada pelo trigger handle_new_user no insert de auth.users; o
+  /auth/callback so ENRIQUECE (lookup+PATCH) e cria a subscription (FK -> users). Se o
+  trigger nao criou a linha (caso do cc), o callback nao achava nada e a subscription
+  falhava por FK -> usuario orfao. Nenhum caminho recriava a linha.
+- Correcao (self-heal): app/auth/callback/route.ts agora faz UPSERT idempotente de
+  public.users (on_conflict=id, ignore-duplicates: nunca sobrescreve) ANTES do enrich e
+  da subscription. Espelha o /api/admin/approve. Fecha o buraco em todo signup que passa
+  pelo callback. Erro do upsert e logado com detalhe.
+- Robustez: no Advisor, o insert de advisory_memory que falha por FK (23503) agora loga
+  mensagem CLARA ("usuario sem linha em public.users, rodar backfill"), nao criptica.
+- Backfill: taime-web/backfill-orphan-users.sql (idempotente: cria public.users para
+  orfaos + subscription free so para os recem-criados). Aplicado o caso do cc via REST
+  (public.users + subscription free active). Query de orfaos: 0 apos o backfill.
+
+### PARTE B: protecao anti-bot do funil de cadastro/waitlist
+- Contexto: waitlist recebeu ~16 bots; apos a aprovacao Free virar automatica, 2 sairam
+  approved+contacted. Fluxo: form (login/page.tsx) -> POST /api/admin/waitlist -> free/
+  essential auto-aprova (status approved, contacted true) + email admin (Resend); a conta
+  real vem do magic link -> callback. Unica protecao existente: honeypot 'website'.
+- Camadas adicionadas (lib/anti-abuse.ts compartilhado, sem tocar no /ask):
+  1. Honeypot (ja existia): campo 'website' preenchido -> sucesso falso, nao grava.
+  2. Turnstile (Cloudflare, mesma infra/env do /ask): verificacao server-side OBRIGATORIA
+     no /api/admin/waitlist quando TURNSTILE_SECRET_KEY existe; sem token/invalido -> 403.
+     Se o segredo faltar (misconfig), fail-open com log (nao derruba o cadastro inteiro).
+     Widget TurnstileWidget.tsx reutilizavel nas duas formas do login (free-signup e waitlist),
+     submit travado ate o token. i18n errCaptcha/errRate (PT/EN).
+  3. Rate limit por IP: reusa a RPC anon_advisor_consume do /ask com hash namespacado
+     'waitlist:' (4/h, 20/30d; fail-open se a RPC nao existir).
+  4. Heuristica de sanidade: se name/company/role parecem gibberish (looksRandom: sem
+     espaco, length alto + poucas vogais, cluster consoante, ou digitos alternando), NAO
+     auto-aprova -> status pending para revisao humana. Conservador: na duvida aprova,
+     nunca rejeita sozinho. Testada: 0 falsos-positivos em nomes reais, pega gibberish.
+- NAO mexi nos registros existentes da waitlist (os 2 approved-bots o usuario trata a mao).
+- Nota: TURNSTILE envs ausentes no .env.local local (dev), presentes no Vercel (o /ask ja
+  usa) -> gate ativo em producao, fail-open em dev. npm run build: 0 erros.
+
+---
+
 ## [2026-07-26] - INCIDENTE: persistencia do Advisor quebrada (causa ambiental) + fim do fail-silent
 
 - Sintoma: mensagens do Advisor pararam de salvar em advisory_memory, advisor_usage

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useLocale } from '@/lib/useLocale'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 // `useLocale` retorna 'pt' | 'en'. O banco (public.users.preferred_language)
 // aceita só 'pt-BR' | 'en' (CHECK). Mapeamos no signup para alimentar o
@@ -52,6 +53,11 @@ function LoginPageInner() {
   const [requestedPlan, setRequestedPlan] = useState<Plan>(initialPlan)
   // Honeypot anti-bot, escondido para humanos, atrai preenchimento automático de bots.
   const [website, setWebsite] = useState('')
+  // Cloudflare Turnstile (mesma infra do /ask): token exigido no server antes de
+  // gravar na waitlist. Sem site key configurada, o widget nao renderiza e o
+  // submit nao e travado (o server faz fail-open com log).
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null
+  const [token, setToken] = useState<string | null>(null)
 
   // Magic link / free-signup field (separate email so it doesn't collide with waitlist)
   const [mlEmail, setMlEmail] = useState('')
@@ -85,11 +91,16 @@ function LoginPageInner() {
           interest,
           requested_plan: requestedPlan,
           website,
+          token,
         }),
       })
 
       if (!res.ok) {
-        const msg = res.status === 409 ? t.login.errDuplicate : t.login.errGeneric
+        setToken(null) // Turnstile e single-use; libera novo desafio no resubmit
+        const msg = res.status === 409 ? t.login.errDuplicate
+                  : res.status === 403 ? t.login.errCaptcha
+                  : res.status === 429 ? t.login.errRate
+                  : t.login.errGeneric
         setErrorMsg(msg)
         setStatus('error')
         return
@@ -169,10 +180,14 @@ function LoginPageInner() {
           interest,
           requested_plan: signupPlan,
           website,
+          token,
         }),
       })
       if (!wl.ok && wl.status !== 409) {
-        setErrorMsg(t.login.errGeneric)
+        setToken(null) // Turnstile e single-use; libera novo desafio no resubmit
+        setErrorMsg(wl.status === 403 ? t.login.errCaptcha
+                  : wl.status === 429 ? t.login.errRate
+                  : t.login.errGeneric)
         setStatus('error')
         return
       }
@@ -406,9 +421,11 @@ function LoginPageInner() {
                     <p className="text-sm text-red-600">{errorMsg}</p>
                   )}
 
+                  <TurnstileWidget siteKey={siteKey} onToken={setToken} />
+
                   <button
                     type="submit"
-                    disabled={status === 'loading' || !name || !email || !interest}
+                    disabled={status === 'loading' || !name || !email || !interest || (!!siteKey && !token)}
                     className="w-full btn-primary justify-center py-3 disabled:opacity-60 mt-2"
                   >
                     {status === 'loading'
@@ -572,9 +589,11 @@ function LoginPageInner() {
                     <p className="text-sm text-red-600">{errorMsg}</p>
                   )}
 
+                  <TurnstileWidget siteKey={siteKey} onToken={setToken} />
+
                   <button
                     type="submit"
-                    disabled={status === 'loading' || !name || !email || !interest}
+                    disabled={status === 'loading' || !name || !email || !interest || (!!siteKey && !token)}
                     className="w-full btn-primary justify-center py-3 disabled:opacity-60 mt-2"
                   >
                     {status === 'loading' ? t.login.submittingWaitlist : t.login.submitWaitlist}

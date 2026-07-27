@@ -323,6 +323,8 @@ export const pt = {
     switchToWaitlist: '← Solicitar acesso',
     errDuplicate:  'Este email já está na lista de espera.',
     errGeneric:    'Erro ao registrar. Tente novamente.',
+    errCaptcha:    'Não foi possível validar que você não é um robô. Recarregue a página e tente de novo.',
+    errRate:       'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente de novo.',
     // Self-signup gratuito (plano free): fluxo de magic link com criação automática de conta.
     freeTitle:     'Criar conta gratuita',
     freeBody:      'Acesso imediato ao preview público. Informe seu email e enviaremos um link de acesso.',

@@ -325,6 +325,8 @@ export const en: Translations = {
     switchToWaitlist: '← Request access',
     errDuplicate:  'This email is already on the waitlist.',
     errGeneric:    'Registration error. Please try again.',
+    errCaptcha:    'We could not verify you are not a robot. Reload the page and try again.',
+    errRate:       'Too many attempts in a short time. Wait a few minutes and try again.',
     // Free self-signup (free plan): magic link flow with automatic account creation.
     freeTitle:     'Create free account',
     freeBody:      'Instant access to the public preview. Enter your email and we will send you an access link.',

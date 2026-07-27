@@ -212,6 +212,37 @@ export async function GET(request: NextRequest) {
               Authorization: `Bearer ${serviceKey}`,
               'Content-Type': 'application/json',
             }
+
+            // ── SELF-HEAL da linha public.users (bug de sync auth->users) ──────
+            //    O trigger handle_new_user normalmente cria a linha em public.users
+            //    no insert de auth.users. Se por qualquer motivo ele nao rodou (o
+            //    caso do cc@gartner.com: auth existe, public.users nao), o callback
+            //    ficava dependente dela: o enrich nao achava a linha e a subscription
+            //    falhava por FK, deixando o usuario orfao e o Advisor quebrado.
+            //    Garantimos a existencia com upsert idempotente (on_conflict=id,
+            //    ignore-duplicates: NUNCA sobrescreve uma linha ja existente, so cria
+            //    quando falta). Espelha o que /api/admin/approve ja faz.
+            const metaFullName = pickStr(meta.full_name)
+            const ensureRes = await fetch(
+              `${supabaseUrl}/rest/v1/users?on_conflict=id`,
+              {
+                method:  'POST',
+                headers: { ...headers, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+                body: JSON.stringify({
+                  id:                 user.id,
+                  email:              user.email,
+                  full_name:          metaFullName ?? '',
+                  company:            metaCompany,
+                  job_title:          metaJobTitle,
+                  preferred_language: metaLang ?? sessionLocale,
+                }),
+              },
+            )
+            if (!ensureRes.ok) {
+              console.error('[auth-callback] ensure public.users FAILED (user pode ficar orfao):',
+                ensureRes.status, await ensureRes.text().catch(() => ''), 'user_id:', user.id, 'email:', user.email)
+            }
+
             let profilePreferredLang: string | null = null
             const lookupRes = await fetch(
               `${supabaseUrl}/rest/v1/users?id=eq.${user.id}&select=company,job_title,preferred_language,language_set_by_user&limit=1`,
