@@ -2,6 +2,42 @@
 
 ---
 
+## [2026-07-28] - Ajuste fino pos-6dc9272: classificador UNICO (NEXT/investimento ativa recencia)
+
+### Defeito
+- Termometro (00:44): "com base no framework THEN NOW NEXT, qual seria o NEXT que eu
+  deveria seguir e onde focar meu investimento?" -> spine [], anos 2016-2024, nenhum
+  chunk de 2025/2026. O pickMaxTokens JA reconhecia framework/veredito/investimento
+  (nao truncou), mas isTrajectoryQuestion NAO -> a selecao rodou SEM reserva de
+  recencia nem espinha. Duas classificacoes dessincronizadas.
+
+### Fix: classificador unico compartilhado (lib/question-intent, novo, puro)
+- isTrajectoryQuestion (passado/evolucao; usada tb no teaser de profundidade),
+  isProspectiveQuestion (futuro/NEXT/investimento/prioridade/framework then-now-next),
+  isStrategicQuestion = trajetoria OU prospectiva. Movido isTrajectoryQuestion do
+  depth-teaser para ca (depth-teaser re-exporta, imports intactos).
+- PONTO UNICO: pickMaxTokens (teto) E a selecao (reserva de recencia + espinha +
+  match_count ampliado) agora usam isStrategicQuestion. Nunca mais dessincroniza.
+  pickMaxTokens interno ficou so com gatilhos de RESPOSTA LONGA (plano/roadmap/detalhe).
+- Prospectiva PURA (NEXT/investimento sem pedido de historico): reservePct sobe para
+  0.6 (maioria das vagas nos ultimos 12-18 meses) -> o NEXT se constroi do presente
+  para frente. Trajetoria historica mantem 0.28.
+- Aplicado no Advisor logado E no /ask. Termometro ganha is_prospective/is_strategic.
+
+### Validacao
+- Teste novo (question-intent.test, 18 casos): a frase EXATA da evidencia ->
+  prospectiva+estrategica; prospectivas PT+EN; trajetorias; factuais nao-estrategicas.
+- Real (a frase exata, 3x): trajectory=false prospective=true strategic=true
+  reservePct=0.6; 2025 presente nas tres (antes: nada recente), spine estavel
+  ["computacao-espacial-metaverso","blockchain-web3-investimento-institucional"].
+  Nota: pergunta generica sem topico -> retrieval generico (o embedding usa so o
+  turno atual); a reserva surge o mais novo do pool (2025-06 aqui). Nomear o tema
+  afia; e limite de retrieval, nao bug de selecao, e melhor que antes.
+- Build 0 erros, tsc 0 erros. Testes: period-intent 26/26, trajectory-select 15/15,
+  question-intent 18/18.
+
+---
+
 ## [2026-07-27] - HOTFIX pos-e13b104: recencia antes da espinha + truncamento do teto
 
 Dois defeitos que o e13b104 introduziu (commit NOVO, nao reescrita do e13b104).

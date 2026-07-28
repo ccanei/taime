@@ -11,7 +11,8 @@ import {
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
-import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
+import { preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
+import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
 
@@ -171,23 +172,16 @@ function detectLanguage(text: string): Lang {
 // inaceitavel). O teto e limite, nao alvo: respostas curtas seguem curtas.
 const HEAVY_MAX_TOKENS = 12288
 const LIGHT_MAX_TOKENS = 5120
-function pickMaxTokens(message: string, isTrajectory = false): number {
-  if (isTrajectory) return HEAVY_MAX_TOKENS
+// v5.1: `isStrategic` (trajetoria/prospectiva/framework/investimento) vem do
+// classificador UNICO compartilhado (lib/question-intent), o MESMO que gate a
+// selecao com reserva de recencia. Aqui so acrescentamos os gatilhos de RESPOSTA
+// LONGA (plano/roadmap/detalhe/deep dive) que nao sao "estrategicos" mas tambem
+// pedem folga. Ponto unico de verdade: nunca mais dessincroniza da selecao.
+function pickMaxTokens(message: string, isStrategic = false): number {
+  if (isStrategic) return HEAVY_MAX_TOKENS
   const m = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  const heavy = new RegExp([
-    'plano', 'plan\\b', 'roadmap', 'detalh', 'detail', 'completo', 'complete',
-    'aprofund', 'deep dive', 'passo a passo', 'step by step', 'estrategia detalhada',
-    'breakdown',
-    // framework then/now/next e suas variacoes
-    'then\\s*now\\s*next', 'then/now/next', 'thennownext', 'now\\s*next',
-    // veredito / decisao / investimento / prioridade / foco
-    'veredito', 'verdict', 'investiment', 'investment', 'onde focar', 'onde investir',
-    'where to (?:focus|invest)', 'prioriz', 'priorit', 'prioridade', 'trade-?off',
-    // trajetoria / evolucao / historico
-    'trajetoria', 'trajectory', 'evolu', 'historic', 'history', 'ao longo do tempo',
-    'over time', 'then and now',
-  ].join('|')).test(m)
-  return heavy ? HEAVY_MAX_TOKENS : LIGHT_MAX_TOKENS
+  const verbose = /(plano|plan\b|roadmap|detalh|detail|completo|complete|aprofund|deep dive|passo a passo|step by step|estrategia detalhada|breakdown|trade-?off)/.test(m)
+  return verbose ? HEAVY_MAX_TOKENS : LIGHT_MAX_TOKENS
 }
 
 function languageInstruction(lang: Lang): string {
@@ -703,6 +697,9 @@ const TRAJECTORY_CANDIDATE_CAP = 24
 // top chunks (por similaridade) dos ultimos RECENT_MONTHS meses, garantindo NOW
 // ancorado no material recente mesmo quando anos densos dominam a similaridade.
 const TRAJECTORY_RESERVE_PCT = 0.28
+// v5.1: pergunta PROSPECTIVA pura (NEXT/investimento sem pedido de historico) pesa a
+// MAIORIA das vagas no recente. O NEXT se constroi do presente para frente.
+const TRAJECTORY_RESERVE_PCT_PROSPECTIVE = 0.6
 const TRAJECTORY_RECENT_MONTHS = 18
 // v4.9 (Part B): largura da faixa de similaridade para o desempate por TAIME Score.
 // Candidatos na mesma faixa (diferenca de similaridade < delta) sao ordenados pelo
@@ -1266,10 +1263,16 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   // pedido e o piso do plano (Passo 4): um Essential pedindo periodo fora dos 36
   // meses continua caindo na recusa construtiva, nunca fura a janela.
   const periodIntent = detectPeriodIntent(userMessage, new Date())
-  // v4.7: pergunta de trajetoria/evolucao. Usada para (a) subir o match_count e
-  // (b) rebalancear os candidatos por faixa de ano, garantindo espectro temporal
-  // em vez de um cluster preso nos anos semanticamente mais proximos.
-  const trajectory = isTrajectoryQuestion(userMessage)
+  // v5.1: classificacao UNICA (lib/question-intent), a mesma do teto de tokens.
+  // - trajectory: passado/evolucao (usada tambem pelo teaser de profundidade).
+  // - prospective: futuro/NEXT/investimento/prioridade/framework.
+  // - strategic = trajectory OU prospective: gate da selecao com reserva de recencia
+  //   + espinha e do match_count ampliado. Antes so trajectory ativava a selecao,
+  //   entao uma pergunta de NEXT/investimento rodava SEM reserva de recencia e
+  //   ignorava 2025/2026 (defeito 2026-07-28).
+  const trajectory  = isTrajectoryQuestion(userMessage)
+  const prospective = isProspectiveQuestion(userMessage)
+  const strategic   = trajectory || prospective
   let reqFrom: string | null = null
   let reqTo:   string | null = null
   let narrowPeriod = false
@@ -1292,10 +1295,10 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   }
   const effectiveFloor   = reqFrom && reqFrom > periodFloor ? reqFrom : periodFloor
   const effectiveCeiling = reqTo ?? ADVISOR_PERMISSIVE_CEILING
-  // Trajetoria amplia o pool de candidatos (mais anos representados antes do
-  // rebalanceamento). Periodo estreito continua com o count estreito.
+  // Pergunta estrategica (trajetoria OU prospectiva) amplia o pool de candidatos
+  // (mais anos representados antes da selecao). Periodo estreito continua estreito.
   const matchCount       = narrowPeriod ? VECTOR_MATCH_COUNT_NARROW
-                         : trajectory   ? VECTOR_MATCH_COUNT_TRAJECTORY
+                         : strategic    ? VECTOR_MATCH_COUNT_TRAJECTORY
                          : VECTOR_MATCH_COUNT
   let periodEmptyNotice: { from: string; to: string; nearest: string | null } | null = null
 
@@ -1350,18 +1353,21 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     for (const c of deduped) c.score = scoreMap.get(c.trend_id) ?? null
   }
 
-  // v4.9: em trajetoria, selectTrajectoryChunks garante (1) espinha cronologica do
-  // tema dominante, (2) reserva de recencia, (3) rebalance por ano, com desempate
-  // por score na fronteira. Fora de trajetoria: scoreTieBreakSort desempata os
-  // candidatos por score antes do refinador (similaridade primaria, inalterada na
-  // ordem geral). deduped vazio -> candidates vazio (cai no proximo ramo).
+  // v5.1: em pergunta ESTRATEGICA (trajetoria OU prospectiva), selectTrajectoryChunks
+  // garante (1) reserva de recencia primeiro, (2) espinha cronologica do tema
+  // dominante, (3) rebalance por ano, com desempate por score na fronteira. Para
+  // pergunta PROSPECTIVA PURA (NEXT/investimento sem pedido de historico) a maioria
+  // das vagas vai para os ultimos 12-18 meses: o NEXT se constroi do presente para
+  // frente. Fora de estrategica: scoreTieBreakSort (similaridade primaria) antes do
+  // refinador. deduped vazio -> candidates vazio (cai no proximo ramo).
+  const reservePct = (prospective && !trajectory) ? TRAJECTORY_RESERVE_PCT_PROSPECTIVE : TRAJECTORY_RESERVE_PCT
   let candidates: TrendChunk[]
-  if (trajectory && deduped.length > 0) {
+  if (strategic && deduped.length > 0) {
     const sel = selectTrajectoryChunks(deduped, {
       now:          new Date(),
       totalCap:     TRAJECTORY_CANDIDATE_CAP,
       recentMonths: TRAJECTORY_RECENT_MONTHS,
-      reservePct:   TRAJECTORY_RESERVE_PCT,
+      reservePct,
     })
     candidates = sel.selected
     spineSlugs = sel.spineSlugs
@@ -1376,9 +1382,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     let selected   = refined.selected.length > 0 ? refined.selected : candidates.slice(0, 8)
 
     // v5.0 (defeito A): recencia INEGOCIAVEL end-to-end. O refinador (Haiku) pode
-    // descartar o unico chunk do ano mais novo. Em trajetoria, se o mais recente do
-    // pool nao entrou no selecionado, injeta na frente (ancora o NOW no presente).
-    if (trajectory) {
+    // descartar o unico chunk do ano mais novo. Em pergunta estrategica, se o mais
+    // recente do pool nao entrou no selecionado, injeta na frente (NOW no presente).
+    if (strategic) {
       const newest = candidates.reduce((a, b) => (b.period > a.period ? b : a))
       if (!selected.some(c => c.trend_id === newest.trend_id)) {
         selected = [newest, ...selected].slice(0, 8)
@@ -1395,20 +1401,20 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     // por ano dos chunks realmente entregues ao modelo.
     retrievedTotal    = deduped.length
     deliveredYearDist = yearDistribution(selected)
-    // Sintoma da classe de bug que ja nos mordeu: trajetoria entregando um so ano.
+    // Sintoma da classe de bug que ja nos mordeu: estrategica entregando um so ano.
     const distinctYears = Object.keys(deliveredYearDist).length
-    if (trajectory && distinctYears <= 1) {
-      console.warn(`[advisor-thermometer] TRAJETORIA com ${distinctYears} ano(s) distinto(s) nos chunks entregues. pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)} periodo=${reqFrom ?? 'null'}..${reqTo ?? 'hoje'}`)
+    if (strategic && distinctYears <= 1) {
+      console.warn(`[advisor-thermometer] ESTRATEGICA com ${distinctYears} ano(s) distinto(s) nos chunks entregues. pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)} periodo=${reqFrom ?? 'null'}..${reqTo ?? 'hoje'}`)
     }
-    // Guarda do defeito A (v5.0): trajetoria que NAO entregou nenhum chunk dos
-    // ultimos 12 meses embora exista material recente no pool. Sintoma da espinha
-    // canibalizando a recencia. deduped e o pool (o que a busca trouxe na janela).
-    if (trajectory) {
+    // Guarda dos defeitos A/2026-07-28: estrategica que NAO entregou nenhum chunk
+    // dos ultimos 12 meses embora exista material recente no pool. Sintoma da
+    // espinha/selecao ignorando a recencia. deduped e o pool (busca na janela).
+    if (strategic) {
       const recentCutoff = firstOfMonthUTC(new Date(), 12)
       const deliveredHasRecent = selected.some(c => c.period >= recentCutoff)
       const poolHasRecent      = deduped.some(c => c.period >= recentCutoff)
       if (!deliveredHasRecent && poolHasRecent) {
-        console.warn(`[advisor-thermometer] TRAJETORIA sem chunk dos ultimos 12 meses embora o pool tenha material recente (espinha canibalizando recencia?). pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)}`)
+        console.warn(`[advisor-thermometer] ESTRATEGICA sem chunk dos ultimos 12 meses embora o pool tenha material recente (recencia ignorada?). pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)}`)
       }
     }
 
@@ -1569,7 +1575,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     { role: 'user' as const, content: userMessage },
   ]
 
-  const maxTokens = pickMaxTokens(userMessage, trajectory)
+  const maxTokens = pickMaxTokens(userMessage, strategic)
 
   // ── Chamada principal ──────────────────────────────────────────────────────
   const first = await callMain(system, conversationMessages, maxTokens)
@@ -1672,6 +1678,8 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     period_ceiling:       effectiveCeiling,
     // Task 5: termometro da busca (observabilidade).
     is_trajectory:        trajectory,
+    is_prospective:       prospective,
+    is_strategic:         strategic,
     retrieved_chunks_total: retrievedTotal,
     delivered_year_distribution: deliveredYearDist,
     spine_theme_slugs:    spineSlugs,

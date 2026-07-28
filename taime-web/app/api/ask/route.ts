@@ -3,7 +3,8 @@ import crypto from 'crypto'
 import { createSupabaseService } from '@/lib/supabase-server'
 import { getAdvisorPeriodFloor, ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
 import { embedQuery } from '@/lib/embeddings'
-import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
+import { preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
+import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
 
 // ── Advisor ANONIMO (/ask): 3 perguntas sem login, mesmo modelo do produto ──
@@ -120,24 +121,15 @@ function detectLanguage(text: string): Lang {
   return ptHits > enHits ? 'pt' : 'en'
 }
 
-// v5.0: mesma calibracao do Advisor logado. Perguntas de framework (then/now/next),
-// veredito, investimento, prioridade e trajetoria caem no teto pesado (12288) para
-// o thinking do Sonnet 5 nao cortar o texto visivel. O teto e limite, nao alvo.
+// v5.1: `isStrategic` vem do classificador UNICO (lib/question-intent), o mesmo que
+// gate a selecao com reserva de recencia. Aqui so os gatilhos de RESPOSTA LONGA.
 const HEAVY_MAX_TOKENS = 12288
 const LIGHT_MAX_TOKENS = 5120
-function pickMaxTokens(message: string, isTrajectory = false): number {
-  if (isTrajectory) return HEAVY_MAX_TOKENS
+function pickMaxTokens(message: string, isStrategic = false): number {
+  if (isStrategic) return HEAVY_MAX_TOKENS
   const m = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  const heavy = new RegExp([
-    'plano', 'plan\\b', 'roadmap', 'detalh', 'detail', 'completo', 'complete',
-    'aprofund', 'deep dive', 'passo a passo', 'step by step', 'estrategia detalhada',
-    'breakdown', 'then\\s*now\\s*next', 'then/now/next', 'thennownext', 'now\\s*next',
-    'veredito', 'verdict', 'investiment', 'investment', 'onde focar', 'onde investir',
-    'where to (?:focus|invest)', 'prioriz', 'priorit', 'prioridade', 'trade-?off',
-    'trajetoria', 'trajectory', 'evolu', 'historic', 'history', 'ao longo do tempo',
-    'over time', 'then and now',
-  ].join('|')).test(m)
-  return heavy ? HEAVY_MAX_TOKENS : LIGHT_MAX_TOKENS
+  const verbose = /(plano|plan\b|roadmap|detalh|detail|completo|complete|aprofund|deep dive|passo a passo|step by step|estrategia detalhada|breakdown|trade-?off)/.test(m)
+  return verbose ? HEAVY_MAX_TOKENS : LIGHT_MAX_TOKENS
 }
 
 function languageInstruction(lang: Lang): string {
@@ -346,7 +338,10 @@ export async function POST(req: NextRequest) {
   // Advisor logado (lib/trajectory-select): pool maior + reserva de recencia +
   // rebalanceamento por ano, para que NOW/NEXT do visitante nao fiquem presos nos
   // anos densos do indice. (O bloco de contexto anonimo continua sem links/periodos.)
-  const isTraj = isTrajectoryQuestion(message)
+  // v5.1: classificacao UNICA (lib/question-intent), a mesma do teto de tokens.
+  const isTraj      = isTrajectoryQuestion(message)   // passado (usada tb no teaser)
+  const prospective = isProspectiveQuestion(message)  // futuro/NEXT/investimento
+  const strategic   = isStrategicQuestion(message)    // gate da selecao/recencia
   let chunks: TrendChunk[] = []
   const emb = await embedQuery(message)
   if (emb.ok) {
@@ -354,7 +349,7 @@ export async function POST(req: NextRequest) {
       const { data } = await service.rpc('match_trend_chunks', {
         query_embedding: emb.vector,
         period_floor:    periodFloor,
-        match_count:     isTraj ? VECTOR_MATCH_COUNT_TRAJECTORY : VECTOR_MATCH_COUNT,
+        match_count:     strategic ? VECTOR_MATCH_COUNT_TRAJECTORY : VECTOR_MATCH_COUNT,
         period_ceiling:  ADVISOR_PERMISSIVE_CEILING,
       })
       chunks = (data ?? []) as TrendChunk[]
@@ -377,25 +372,28 @@ export async function POST(req: NextRequest) {
     } catch { /* segue sem score */ }
   }
 
-  const candidates: TrendChunk[] = isTraj && deduped.length > 0
-    ? selectTrajectoryChunks(deduped, { now: new Date(), totalCap: 12, recentMonths: 18, reservePct: 0.28 }).selected
+  // v5.1: pergunta estrategica (trajetoria OU prospectiva) ativa a selecao com
+  // reserva de recencia. Prospectiva pura pesa a maioria das vagas no recente.
+  const reservePct = (prospective && !isTraj) ? 0.6 : 0.28
+  const candidates: TrendChunk[] = strategic && deduped.length > 0
+    ? selectTrajectoryChunks(deduped, { now: new Date(), totalCap: 12, recentMonths: 18, reservePct }).selected
     : (deduped.length > 0 ? scoreTieBreakSort(deduped, 0.04) : deduped)
   let selected = candidates.length > 0 ? await refineChunks(message, candidates) : []
 
   // v5.0 (defeito A): recencia inegociavel end-to-end tambem no anon. Se o refinador
-  // descartar o chunk mais recente numa trajetoria, injeta na frente (NOW no presente).
-  if (isTraj && candidates.length > 0 && selected.length > 0) {
+  // descartar o chunk mais recente numa estrategica, injeta na frente (NOW no presente).
+  if (strategic && candidates.length > 0 && selected.length > 0) {
     const newest = candidates.reduce((a, b) => (b.period > a.period ? b : a))
     if (!selected.some(c => c.trend_id === newest.trend_id)) {
       selected = [newest, ...selected].slice(0, 8)
     }
   }
 
-  // Task 5 (observabilidade): trajetoria entregando um so ano = sintoma de bug.
-  if (isTraj && selected.length > 0) {
+  // Task 5 (observabilidade): estrategica entregando um so ano = sintoma de bug.
+  if (strategic && selected.length > 0) {
     const dist = yearDistribution(selected)
     if (Object.keys(dist).length <= 1) {
-      console.warn(`[ask-thermometer] TRAJETORIA anon com ${Object.keys(dist).length} ano(s) distinto(s). pergunta="${message.slice(0, 160)}" dist=${JSON.stringify(dist)}`)
+      console.warn(`[ask-thermometer] ESTRATEGICA anon com ${Object.keys(dist).length} ano(s) distinto(s). pergunta="${message.slice(0, 160)}" dist=${JSON.stringify(dist)}`)
     }
   }
 
@@ -441,7 +439,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model:      ADVISOR_MODEL,
-        max_tokens: pickMaxTokens(message, isTraj),
+        max_tokens: pickMaxTokens(message, strategic),
         system,
         messages:   [{ role: 'user', content: message }],
       }),

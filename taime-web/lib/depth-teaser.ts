@@ -13,13 +13,9 @@ export interface PreWindowTheme {
   firstYear:  number
 }
 
-// Deteccao de intencao de trajetoria/timing/evolucao (PT + EN, sem acentos).
-const TRAJECTORY_RE = /(desde quando|ha quanto tempo|quando (?:comec|surg|deve|devo|entr)|e cedo|e tarde|cedo demais|tarde demais|(?:estou|estamos|esta|estao) atrasad|atrasad[oa]s? em|como (?:evolu|mudou|chegou|surgiu|se desenvolv)|evolu(?:iu|cao|ir|indo)|trajetoria|historico|ao longo (?:do tempo|dos anos)|nos ultimos anos|linha do tempo|amadurec|timing|since when|how long|too early|too late|is it (?:too )?(?:early|late)|behind on|are we behind|how (?:did|has|have)\b.{0,40}(?:evolv|chang|develop|matur)|evolv(?:ed|ing|e)\b|evolution|trajectory|over time|history of|in recent years|timeline|when (?:did|should)|maturity of|catch(?:ing)? up)/i
-
-export function isTrajectoryQuestion(message: string): boolean {
-  const m = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  return TRAJECTORY_RE.test(m)
-}
+// A classificacao de intencao vive em '@/lib/question-intent' (modulo puro, ponto
+// unico de verdade). Re-exportado aqui para nao quebrar imports existentes.
+export { isTrajectoryQuestion } from '@/lib/question-intent'
 
 // Para os theme_slugs dados, retorna os que tem PRIMEIRA aparicao no arquivo
 // ANTES do piso da janela, com o ANO de inicio. Uma query MIN(period) por slug
