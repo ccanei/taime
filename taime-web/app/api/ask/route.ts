@@ -52,8 +52,8 @@ interface TrendChunk {
 // Deriva do DNA v5.1 (postura de partner, disciplina editorial, grounding) MAS:
 // - sem regras de linking e sem citar periodo/titulo de report;
 // - proibicao explicita de expor o arquivo (o anonimo recebe conselho, nao fonte).
-// max_tokens cobre thinking + texto no Sonnet 5, entao mantemos os mesmos valores
-// do Advisor logado (5120/8192) para nao truncar.
+// max_tokens cobre thinking + texto no Sonnet 5, entao usamos os mesmos tetos do
+// Advisor logado (leve 5120 / pesado 12288) para nao truncar.
 const ANON_RULES_BLOCK = `You are the TAIME Executive Advisor, a senior strategic technology intelligence partner, answering a visitor who is trying the advisor without an account.
 
 WHAT YOU DELIVER: strategic ADVICE synthesized from TAIME's intelligence, in your own voice. The visitor gets your read and your recommended move, not the underlying archive.
@@ -120,10 +120,24 @@ function detectLanguage(text: string): Lang {
   return ptHits > enHits ? 'pt' : 'en'
 }
 
-function pickMaxTokens(message: string): number {
-  const m = message.toLowerCase()
-  const heavy = /(plano|plan\b|roadmap|detalh|detail|completo|complete|aprofund|deep dive|passo a passo|step by step|estrat[ée]gia detalhada|breakdown)/.test(m)
-  return heavy ? 8192 : 5120
+// v5.0: mesma calibracao do Advisor logado. Perguntas de framework (then/now/next),
+// veredito, investimento, prioridade e trajetoria caem no teto pesado (12288) para
+// o thinking do Sonnet 5 nao cortar o texto visivel. O teto e limite, nao alvo.
+const HEAVY_MAX_TOKENS = 12288
+const LIGHT_MAX_TOKENS = 5120
+function pickMaxTokens(message: string, isTrajectory = false): number {
+  if (isTrajectory) return HEAVY_MAX_TOKENS
+  const m = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const heavy = new RegExp([
+    'plano', 'plan\\b', 'roadmap', 'detalh', 'detail', 'completo', 'complete',
+    'aprofund', 'deep dive', 'passo a passo', 'step by step', 'estrategia detalhada',
+    'breakdown', 'then\\s*now\\s*next', 'then/now/next', 'thennownext', 'now\\s*next',
+    'veredito', 'verdict', 'investiment', 'investment', 'onde focar', 'onde investir',
+    'where to (?:focus|invest)', 'prioriz', 'priorit', 'prioridade', 'trade-?off',
+    'trajetoria', 'trajectory', 'evolu', 'historic', 'history', 'ao longo do tempo',
+    'over time', 'then and now',
+  ].join('|')).test(m)
+  return heavy ? HEAVY_MAX_TOKENS : LIGHT_MAX_TOKENS
 }
 
 function languageInstruction(lang: Lang): string {
@@ -366,7 +380,16 @@ export async function POST(req: NextRequest) {
   const candidates: TrendChunk[] = isTraj && deduped.length > 0
     ? selectTrajectoryChunks(deduped, { now: new Date(), totalCap: 12, recentMonths: 18, reservePct: 0.28 }).selected
     : (deduped.length > 0 ? scoreTieBreakSort(deduped, 0.04) : deduped)
-  const selected = candidates.length > 0 ? await refineChunks(message, candidates) : []
+  let selected = candidates.length > 0 ? await refineChunks(message, candidates) : []
+
+  // v5.0 (defeito A): recencia inegociavel end-to-end tambem no anon. Se o refinador
+  // descartar o chunk mais recente numa trajetoria, injeta na frente (NOW no presente).
+  if (isTraj && candidates.length > 0 && selected.length > 0) {
+    const newest = candidates.reduce((a, b) => (b.period > a.period ? b : a))
+    if (!selected.some(c => c.trend_id === newest.trend_id)) {
+      selected = [newest, ...selected].slice(0, 8)
+    }
+  }
 
   // Task 5 (observabilidade): trajetoria entregando um so ano = sintoma de bug.
   if (isTraj && selected.length > 0) {
@@ -418,7 +441,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model:      ADVISOR_MODEL,
-        max_tokens: pickMaxTokens(message),
+        max_tokens: pickMaxTokens(message, isTraj),
         system,
         messages:   [{ role: 'user', content: message }],
       }),

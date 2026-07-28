@@ -2,6 +2,51 @@
 
 ---
 
+## [2026-07-27] - HOTFIX pos-e13b104: recencia antes da espinha + truncamento do teto
+
+Dois defeitos que o e13b104 introduziu (commit NOVO, nao reescrita do e13b104).
+
+### DEFEITO A: a espinha de theme_slug canibalizou a reserva de recencia
+- Sintoma (producao, 3 conversas): trajetoria de cybersecurity chamava ago/2025 de
+  "NOW mais recente" e ignorava fev/2026+ (que existe: 24 reports/236 chunks; o
+  ARCHIVE COVERAGE mostra ao modelo). Causa: no e13b104 a espinha preenchia PRIMEIRO
+  (ate ~metade das vagas) e o elo mais novo do tema dominante era ago/2025; as trends
+  de 2026, de theme_slug diferente e similaridade BAIXA (pergunta de cheiro
+  historico), ficavam de fora quando a reserva de recencia era espremida depois.
+- Fix (lib/trajectory-select, selectTrajectoryChunks): INVERTE a ordem. Agora (1)
+  RESERVA DE RECENCIA primeiro e inegociavel, rebalanceada por ano DENTRO da janela
+  recente (a rodada 0 pega o melhor de cada ano recente, entao o ANO MAIS NOVO entra
+  mesmo com sim baixa); (2) espinha preenche o arco historico nas vagas restantes;
+  (3) rebalance no que sobra. A espinha da consistencia ao PASSADO; o presente vem
+  por recencia, sempre.
+- Garantia end-to-end nos routes: se o refinador (Haiku) descartar o unico chunk do
+  ano mais novo numa trajetoria, o route reinjeta o mais recente na frente do
+  selecionado (advisor E /ask). Guarda: console.warn se trajetoria entregar zero
+  chunk dos ultimos 12 meses embora o pool tenha material recente.
+- Teste novo (trajectory-select.test): espinha termina em ano antigo + material
+  recente de outro tema com sim baixa -> o recente DEVE entrar. 15/15 passam.
+- Validacao real (cybersecurity desde 2016, 3x): 2026_present=true, newest=2026-02-16
+  nas tres; espinha estavel; distribuicao 2016..2026.
+
+### DEFEITO B: truncamento (resposta cortada em 4 palavras)
+- Sintoma: "com base no THEN NOW NEXT, qual o NEXT e onde focar investimento?"
+  retornou "Meu veredito: o investim" + "Resposta resumida por limite de espaco".
+  Causa: a pergunta caia no teto LEVE (5120); o thinking do Sonnet 5 consumiu quase
+  tudo e o texto visivel saiu com 4 palavras. O classificador nao reconhecia
+  framework/veredito/investimento/prioridade/trajetoria como pesados.
+- Fix (pickMaxTokens, advisor E /ask): (a) perguntas de framework (then/now/next),
+  veredito, investimento, prioridade, foco e trajetoria caem no teto pesado; (b)
+  trajetoria (isTrajectoryQuestion) sempre pesado; (c) teto pesado 8192 -> 12288.
+- Guarda de qualidade (route): se o texto visivel sair < 200 chars COM
+  stop_reason=max_tokens, REGENERA uma vez com o teto pesado ANTES de exibir qualquer
+  aviso de corte. O cliente nunca ve "Meu veredito: o investim".
+- Validacao: heavy("then now next ... investimento")=true, heavy("historico de
+  evolucao")=true, heavy("quanto custa o plano")=false.
+
+Build 0 erros, tsc 0 erros, testes 26/26 (period-intent) + 15/15 (trajectory-select).
+
+---
+
 ## [2026-07-27] - Blindagem da rota (regressao e17f1a8) + selecao estrategica (score + espinha)
 
 ### PARTE A: regressao - /api/advisor/chat respondeu TEXTO em producao

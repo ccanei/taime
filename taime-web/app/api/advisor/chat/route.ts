@@ -13,7 +13,7 @@ import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 import { isTrajectoryQuestion, preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
-import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
+import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -157,19 +157,37 @@ function detectLanguage(text: string): Lang {
   return ptHits > enHits ? 'pt' : 'en'
 }
 
-// Heurística leve de max_tokens: teto por padrão, folga maior quando a mensagem
-// pede plano/detalhe/aprofundamento.
+// Heurística de max_tokens: teto por padrão, folga MAIOR para perguntas densas.
 //
 // IMPORTANTE (Sonnet 5): max_tokens e teto do TOTAL (adaptive thinking + texto
-// visivel), que roda por padrao no Sonnet 5. Os valores do 4.6 (1536/4096) eram
-// pequenos demais: o thinking consumia o orcamento e a resposta era cortada em
-// TODA chamada (stop_reason=max_tokens). Subimos com folga; o teto e limite, nao
-// alvo, entao respostas curtas continuam curtas e rapidas. Longe do maximo do
-// Sonnet 5 (128k), e a funcao tem maxDuration=60s de folga de tempo.
-function pickMaxTokens(message: string): number {
-  const m = message.toLowerCase()
-  const heavy = /(plano|plan\b|roadmap|detalh|detail|completo|complete|aprofund|deep dive|passo a passo|step by step|estrat[ée]gia detalhada|breakdown)/.test(m)
-  return heavy ? 8192 : 5120
+// visivel), que roda por padrao no Sonnet 5. O thinking pode consumir boa parte do
+// orcamento; se o teto for baixo a resposta e cortada (stop_reason=max_tokens).
+//
+// v5.0 (defeito pos-e13b104): "com base no THEN NOW NEXT, qual o NEXT e onde focar
+// investimento?" caia no teto leve (5120), o thinking comeu quase tudo e o texto
+// visivel saiu com 4 palavras. Perguntas de FRAMEWORK (then/now/next), VEREDITO,
+// INVESTIMENTO, PRIORIZACAO e TRAJETORIA sao inerentemente densas e passam a cair
+// no teto pesado. Teto pesado subiu para 12288 (custo marginal trivial vs corte
+// inaceitavel). O teto e limite, nao alvo: respostas curtas seguem curtas.
+const HEAVY_MAX_TOKENS = 12288
+const LIGHT_MAX_TOKENS = 5120
+function pickMaxTokens(message: string, isTrajectory = false): number {
+  if (isTrajectory) return HEAVY_MAX_TOKENS
+  const m = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const heavy = new RegExp([
+    'plano', 'plan\\b', 'roadmap', 'detalh', 'detail', 'completo', 'complete',
+    'aprofund', 'deep dive', 'passo a passo', 'step by step', 'estrategia detalhada',
+    'breakdown',
+    // framework then/now/next e suas variacoes
+    'then\\s*now\\s*next', 'then/now/next', 'thennownext', 'now\\s*next',
+    // veredito / decisao / investimento / prioridade / foco
+    'veredito', 'verdict', 'investiment', 'investment', 'onde focar', 'onde investir',
+    'where to (?:focus|invest)', 'prioriz', 'priorit', 'prioridade', 'trade-?off',
+    // trajetoria / evolucao / historico
+    'trajetoria', 'trajectory', 'evolu', 'historic', 'history', 'ao longo do tempo',
+    'over time', 'then and now',
+  ].join('|')).test(m)
+  return heavy ? HEAVY_MAX_TOKENS : LIGHT_MAX_TOKENS
 }
 
 function languageInstruction(lang: Lang): string {
@@ -1355,7 +1373,17 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     // ── Caminho vetorial ──────────────────────────────────────────────────
     const refined  = await refineChunks(userMessage, candidates)
     routerUsage    = refined.usage
-    const selected = refined.selected.length > 0 ? refined.selected : candidates.slice(0, 8)
+    let selected   = refined.selected.length > 0 ? refined.selected : candidates.slice(0, 8)
+
+    // v5.0 (defeito A): recencia INEGOCIAVEL end-to-end. O refinador (Haiku) pode
+    // descartar o unico chunk do ano mais novo. Em trajetoria, se o mais recente do
+    // pool nao entrou no selecionado, injeta na frente (ancora o NOW no presente).
+    if (trajectory) {
+      const newest = candidates.reduce((a, b) => (b.period > a.period ? b : a))
+      if (!selected.some(c => c.trend_id === newest.trend_id)) {
+        selected = [newest, ...selected].slice(0, 8)
+      }
+    }
 
     selectionSource = 'vector'
     lang            = refined.language ?? preferLang
@@ -1371,6 +1399,17 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     const distinctYears = Object.keys(deliveredYearDist).length
     if (trajectory && distinctYears <= 1) {
       console.warn(`[advisor-thermometer] TRAJETORIA com ${distinctYears} ano(s) distinto(s) nos chunks entregues. pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)} periodo=${reqFrom ?? 'null'}..${reqTo ?? 'hoje'}`)
+    }
+    // Guarda do defeito A (v5.0): trajetoria que NAO entregou nenhum chunk dos
+    // ultimos 12 meses embora exista material recente no pool. Sintoma da espinha
+    // canibalizando a recencia. deduped e o pool (o que a busca trouxe na janela).
+    if (trajectory) {
+      const recentCutoff = firstOfMonthUTC(new Date(), 12)
+      const deliveredHasRecent = selected.some(c => c.period >= recentCutoff)
+      const poolHasRecent      = deduped.some(c => c.period >= recentCutoff)
+      if (!deliveredHasRecent && poolHasRecent) {
+        console.warn(`[advisor-thermometer] TRAJETORIA sem chunk dos ultimos 12 meses embora o pool tenha material recente (espinha canibalizando recencia?). pergunta="${userMessage.slice(0, 160)}" dist=${JSON.stringify(deliveredYearDist)}`)
+      }
     }
 
     // Part 4: titulos das trends selecionadas para o Advisor citar pelo nome e
@@ -1530,7 +1569,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     { role: 'user' as const, content: userMessage },
   ]
 
-  const maxTokens = pickMaxTokens(userMessage)
+  const maxTokens = pickMaxTokens(userMessage, trajectory)
 
   // ── Chamada principal ──────────────────────────────────────────────────────
   const first = await callMain(system, conversationMessages, maxTokens)
@@ -1576,6 +1615,24 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
       groundingViolations = runGroundingChecks(reply, contextBlock).violations
     } else {
       groundingViolations = check.violations
+    }
+  }
+  // ── Guarda de qualidade (v5.0): corte severo -> REGENERAR antes de exibir nada.
+  //    Defeito pos-e13b104: o thinking do Sonnet 5 consumiu quase todo o teto e o
+  //    texto visivel saiu com ~4 palavras ("Meu veredito: o investim") + aviso de
+  //    corte. Se o texto visivel sair minusculo COM stop_reason=max_tokens, o
+  //    cliente NUNCA deve ver isso: regeramos UMA vez com o teto no maximo pesado
+  //    (o thinking ja "pensou"; a 2a passada tende a ir direto ao texto). So
+  //    dispara no caso severo (< ~200 chars), entao nao pesa no caminho normal.
+  const SEVERE_TRUNCATION_CHARS = 200
+  if (stopReason === 'max_tokens' && reply.trim().length < SEVERE_TRUNCATION_CHARS) {
+    console.warn(`[advisor-truncation] corte severo (${reply.trim().length} chars, max_tokens=${maxTokens}); regenerando com teto ${HEAVY_MAX_TOKENS}. pergunta="${userMessage.slice(0, 120)}"`)
+    const regen = await callMain(system, conversationMessages, HEAVY_MAX_TOKENS)
+    if (regen.ok && regen.reply.trim().length >= SEVERE_TRUNCATION_CHARS) {
+      reply      = regen.reply
+      stopReason = regen.stopReason
+      mainUsage  = regen.usage
+      groundingViolations = runGroundingChecks(reply, contextBlock).violations
     }
   }
   const attributionFlag = groundingViolations.length > 0

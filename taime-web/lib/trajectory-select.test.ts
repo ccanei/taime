@@ -137,6 +137,21 @@ check('espinha degrada com graca quando nenhum tema se repete', () => {
   assert.deepStrictEqual(spineSlugs, [], 'nenhum tema dominante')
   assert.strictEqual(selected.length, 4, 'ainda seleciona pelo rebalance')
 })
+check('recencia vence espinha antiga: 2026 (baixa sim, fora do tema dominante) DEVE entrar', () => {
+  // Regressao pos-e13b104: o tema dominante "cyber" vai ate 2025 (espinha termina
+  // em 2025); 2026 existe em OUTRO theme_slug com similaridade BAIXA. A janela
+  // recente e povoada por 2025 de alta similaridade. Uma reserva por similaridade
+  // pura deixaria 2026 de fora; a reserva por ano DENTRO da janela recente garante.
+  const cyber = ['2016', '2018', '2020', '2022', '2024', '2025']
+    .map((y, i) => chunkX(y + '-06-01', 0.90 - i * 0.001, 'cyber', 75, 'cy' + y))
+  const noise2025 = Array.from({ length: 5 }, (_, i) => chunkX('2025-0' + (i + 1) + '-01', 0.88 - i * 0.001, 'cyber', 75, 'n25_' + i))
+  const now2026 = chunkX('2026-02-01', 0.40, 'emerging-2026', 60, 'now26') // baixa sim, tema diferente
+  const { selected, spineSlugs } = selectTrajectoryChunks([...cyber, ...noise2025, now2026], { now: NOW, totalCap: 10, recentMonths: 18, reservePct: 0.28 })
+  assert.strictEqual(spineSlugs[0], 'cyber', 'cyber e o tema dominante')
+  assert.ok(selected.some(c => c.period.slice(0, 4) === '2026'), '2026 (recente, fora da espinha) DEVE entrar por recencia; veio: ' + selected.map(c => c.period.slice(0, 7)).join(','))
+  // e o arco historico da espinha continua presente (2016 etc)
+  assert.ok(selected.some(c => c.period.slice(0, 4) === '2016'), 'espinha historica preservada (2016)')
+})
 check('espinha consistente entre execucoes repetidas (mesma entrada -> mesma espinha)', () => {
   const mk = () => {
     const cyber = ['2019', '2021', '2023', '2025', '2026'].map((y, i) => chunkX(y + '-03-01', 0.9 - i * 0.001, 'cyber', 70, 'cy' + y))

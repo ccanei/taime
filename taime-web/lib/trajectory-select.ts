@@ -119,16 +119,21 @@ export function rebalanceByYear<T extends { period: string }>(chunks: T[], total
   return out
 }
 
-// Selecao final de trajetoria (v4.9). Ordem de garantias:
+// Selecao final de trajetoria (v5.0). Ordem de garantias (recencia PRIMEIRO):
 //   1. desempate por TAIME Score na fronteira (scoreTieBreakSort);
-//   2. ESPINHA cronologica do(s) tema(s) dominante(s) (continuidade estrutural,
-//      a MESMA entre execucoes repetidas), limitada a ~metade das vagas;
-//   3. RESERVA de recencia (top por similaridade nos ultimos recentMonths meses),
-//      garantindo NOW/NEXT ancorados no presente;
+//   2. RESERVA de recencia INEGOCIAVEL (ultimos recentMonths meses), preenchida
+//      ANTES de tudo e rebalanceada por ano DENTRO da janela recente para garantir
+//      que o ANO MAIS NOVO entre mesmo com similaridade baixa. Ancora NOW/NEXT no
+//      presente;
+//   3. ESPINHA cronologica do(s) tema(s) dominante(s) preenche o ARCO HISTORICO nas
+//      vagas restantes (continuidade estrutural, a MESMA entre execucoes);
 //   4. rebalanceByYear sobre o restante.
-// Degrada com graca: sem tema dominante a espinha fica vazia; sem material recente
-// a reserva fica vazia; ambos caem no rebalanceamento. Devolve os chunks
-// selecionados e os slugs da espinha (para o termometro auditar consistencia).
+// v5.0 corrige o defeito do e13b104: a espinha preenchia primeiro e canibalizava a
+// recencia (o elo mais novo do tema dominante era ago/2025 e as trends de 2026, de
+// theme_slug diferente e baixa similaridade, ficavam de fora). Agora a recencia
+// vem primeiro e e inegociavel; a espinha da consistencia ao PASSADO.
+// Degrada com graca: sem material recente a reserva fica vazia; sem tema dominante
+// a espinha fica vazia; ambos caem no rebalanceamento.
 export function selectTrajectoryChunks<
   T extends Periodized & { theme_slug?: string | null; score?: number | null },
 >(
@@ -147,23 +152,26 @@ export function selectTrajectoryChunks<
   const out: T[] = []
   const push = (c: T) => { if (!chosen.has(c) && out.length < totalCap) { chosen.add(c); out.push(c) } }
 
-  // 2. espinha do tema dominante primeiro, ate ~metade das vagas (nao afoga o resto).
-  const spineCap = Math.max(1, Math.floor(totalCap * 0.5))
+  // 2. RESERVA DE RECENCIA primeiro e inegociavel. Rebalance por ano DENTRO da
+  //    janela recente: a rodada 0 pega o melhor chunk de CADA ano recente, entao o
+  //    ano mais novo (ex: 2026) entra mesmo tendo similaridade menor que os anos
+  //    densos ligeiramente mais antigos (ex: 2025).
+  const cutoff       = firstOfMonthUTC(now, recentMonths)
+  const reserveSlots = Math.min(totalCap, Math.max(1, Math.round(totalCap * reservePct)))
+  const recentPool   = ranked.filter(c => c.period >= cutoff)
+  for (const c of rebalanceByYear(recentPool, reserveSlots)) push(c)
+
+  // 3. ESPINHA do tema dominante preenche o arco historico nas vagas restantes,
+  //    deixando uma folga (~15%) para o rebalance trazer diversidade.
+  const spineTarget = Math.max(out.length, totalCap - Math.ceil(totalCap * 0.15))
   for (const c of spine) {
-    if (out.length >= spineCap) break
+    if (out.length >= spineTarget) break
     push(c)
   }
 
-  // 3. reserva de recencia.
-  const cutoff       = firstOfMonthUTC(now, recentMonths)
-  const reserveSlots = Math.min(totalCap, Math.max(1, Math.round(totalCap * reservePct)))
-  const recent = ranked.filter(c => c.period >= cutoff && !chosen.has(c)).slice(0, reserveSlots)
-  for (const c of recent) push(c)
-
   // 4. rebalanceamento por ano com as vagas restantes.
-  const rest      = ranked.filter(c => !chosen.has(c))
-  const remaining = totalCap - out.length
-  for (const c of rebalanceByYear(rest, remaining)) push(c)
+  const rest = ranked.filter(c => !chosen.has(c))
+  for (const c of rebalanceByYear(rest, totalCap - out.length)) push(c)
 
   return { selected: out, spineSlugs }
 }
