@@ -593,8 +593,8 @@ export default async function LandingPage() {
                 ),
                 title: 'Executive Advisor',
                 desc:  isEn
-                  ? "Talk to the archive: a strategic advisor that connects years of signals to your company's context and answers with priorities, trade-offs and the next move."
-                  : 'Converse com o arquivo: um conselheiro estratégico que conecta anos de sinais ao contexto da sua empresa e responde com prioridades, trade-offs e o próximo movimento.',
+                  ? "A strategic advisor that connects years of signals to your company's context."
+                  : 'Um conselheiro estratégico que conecta anos de sinais ao contexto da sua empresa.',
                 soon: false,
                 cta:  { href: '/ask', label: isEn ? 'Try it now, no signup' : 'Experimente agora, sem cadastro' },
               },
