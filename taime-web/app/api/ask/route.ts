@@ -6,6 +6,7 @@ import { embedQuery } from '@/lib/embeddings'
 import { preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
+import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 
 // ── Advisor ANONIMO (/ask): 3 perguntas sem login, mesmo modelo do produto ──
 // Caminho SEPARADO do /api/advisor/chat: sem user_id, sem memoria de sessao, sem
@@ -202,6 +203,7 @@ async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
 const CHUNK_REFINER_INSTRUCTIONS = `You are a context refiner for a strategic advisor. You receive a user message and a list of candidate intelligence chunks retrieved by semantic search. Select and order up to 8 chunks that best answer the message. Prefer sharp relevance over volume. Respond with PURE JSON only: {"selected":[<indexes>]}. Indexes must exist in the candidate list.`
 
 async function refineChunks(message: string, chunks: TrendChunk[]): Promise<TrendChunk[]> {
+  const _tRefine = Date.now()
   try {
     const list = chunks.map((c, i) => `[${i}] ${c.content.replace(/\s+/g, ' ').slice(0, 320)}`).join('\n---\n')
     const res = await fetch(ANTHROPIC_API, {
@@ -218,8 +220,12 @@ async function refineChunks(message: string, chunks: TrendChunk[]): Promise<Tren
         messages:   [{ role: 'user', content: `USER MESSAGE:\n${message}\n\nCANDIDATE CHUNKS:\n${list}` }],
       }),
     })
-    if (!res.ok) return chunks.slice(0, 8)
-    const data = await res.json() as { content?: Array<{ text?: string }> }
+    if (!res.ok) {
+      logLlmCall({ caller: 'ask', model: ROUTER_MODEL, latency_ms: Date.now() - _tRefine, success: false, error_code: `http_${res.status}`, meta: { step: 'refine' } })
+      return chunks.slice(0, 8)
+    }
+    const data = await res.json() as { content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+    logLlmCall({ caller: 'ask', model: ROUTER_MODEL, ...usageTokens(data.usage), latency_ms: Date.now() - _tRefine, success: true, meta: { step: 'refine' } })
     const raw  = data.content?.[0]?.text ?? ''
     const json = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
     const parsed = JSON.parse(json) as { selected?: unknown }
@@ -432,6 +438,7 @@ export async function POST(req: NextRequest) {
   let reply = ''
   let inputTokens = 0
   let outputTokens = 0
+  const _tMain = Date.now()
   try {
     const res = await fetch(ANTHROPIC_API, {
       method: 'POST',
@@ -450,17 +457,21 @@ export async function POST(req: NextRequest) {
     })
     if (!res.ok) {
       console.error('[ask] anthropic error:', res.status, await res.text())
+      logLlmCall({ caller: 'ask', model: ADVISOR_MODEL, latency_ms: Date.now() - _tMain, success: false, error_code: `http_${res.status}`, meta: { step: 'main' } })
       return NextResponse.json({ error: 'ai_error' }, { status: 502 })
     }
     const data = await res.json() as {
       content?: Array<{ type: string; text: string }>
-      usage?:   { input_tokens?: number; output_tokens?: number }
+      usage?:   { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
     }
     reply = data.content?.find(b => b.type === 'text')?.text ?? ''
     inputTokens  = data.usage?.input_tokens  ?? 0
     outputTokens = data.usage?.output_tokens ?? 0
+    // Telemetria geral (llm_calls), alem do anon_advisor_log existente. Fire-and-forget.
+    logLlmCall({ caller: 'ask', model: ADVISOR_MODEL, ...usageTokens(data.usage), latency_ms: Date.now() - _tMain, success: true, meta: { step: 'main' } })
   } catch (e) {
     console.error('[ask] anthropic exception:', e)
+    logLlmCall({ caller: 'ask', model: ADVISOR_MODEL, latency_ms: Date.now() - _tMain, success: false, error_code: 'exception', meta: { step: 'main' } })
     return NextResponse.json({ error: 'ai_error' }, { status: 502 })
   }
 

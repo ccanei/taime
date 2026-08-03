@@ -15,6 +15,7 @@ import { preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
+import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -1400,8 +1401,11 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
 
   if (candidates.length > 0) {
     // ── Caminho vetorial ──────────────────────────────────────────────────
+    const _tRefine = Date.now()
     const refined  = await refineChunks(userMessage, candidates)
     routerUsage    = refined.usage
+    // Telemetria do refino Haiku (fire-and-forget).
+    logLlmCall({ caller: 'advisor', model: ROUTER_MODEL, ...usageTokens(refined.usage), latency_ms: Date.now() - _tRefine, success: refined.usage !== null, user_id: user.id, meta: { step: 'refine', session_id: sessionId } })
     let selected   = refined.selected.length > 0 ? refined.selected : candidates.slice(0, 8)
 
     // v5.0 (defeito A): recencia INEGOCIAVEL end-to-end. O refinador (Haiku) pode
@@ -1601,7 +1605,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   const maxTokens = pickMaxTokens(userMessage, strategic)
 
   // ── Chamada principal ──────────────────────────────────────────────────────
+  const _tMain = Date.now()
   const first = await callMain(system, conversationMessages, maxTokens)
+  logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(first.usage), latency_ms: Date.now() - _tMain, success: first.ok, error_code: first.ok ? null : 'api_error', user_id: user.id, meta: { step: 'main', session_id: sessionId } })
   if (!first.ok) {
     console.error('Anthropic API error:', first.errText)
     return NextResponse.json({ error: 'AI service error' }, { status: 502 })
@@ -1631,11 +1637,13 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
 
     const corrective = `Your previous response violated the grounding rules:\n${bullets}\n\nRewrite your previous answer keeping the same substance and recommendations, but enforce all rules: sources by category only, tools and vendors by category + selection criteria (no product names unless a loaded report cites them with a link), and no prices, tiers or implementation timelines unless they appear in the loaded reports. Return only the rewritten answer.`
 
+    const _tRetry = Date.now()
     const retry = await callMain(system, [
       ...conversationMessages,
       { role: 'assistant', content: reply },
       { role: 'user', content: corrective },
     ], maxTokens)
+    logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(retry.usage), latency_ms: Date.now() - _tRetry, success: retry.ok, error_code: retry.ok ? null : 'api_error', user_id: user.id, meta: { step: 'grounding_retry', session_id: sessionId } })
 
     if (retry.ok && retry.reply.trim()) {
       reply      = retry.reply
@@ -1656,7 +1664,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   const SEVERE_TRUNCATION_CHARS = 200
   if (stopReason === 'max_tokens' && reply.trim().length < SEVERE_TRUNCATION_CHARS) {
     console.warn(`[advisor-truncation] corte severo (${reply.trim().length} chars, max_tokens=${maxTokens}); regenerando com teto ${HEAVY_MAX_TOKENS}. pergunta="${userMessage.slice(0, 120)}"`)
+    const _tRegen = Date.now()
     const regen = await callMain(system, conversationMessages, HEAVY_MAX_TOKENS)
+    logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(regen.usage), latency_ms: Date.now() - _tRegen, success: regen.ok, error_code: regen.ok ? null : 'api_error', user_id: user.id, meta: { step: 'truncation_regen', session_id: sessionId } })
     if (regen.ok && regen.reply.trim().length >= SEVERE_TRUNCATION_CHARS) {
       reply      = regen.reply
       stopReason = regen.stopReason
