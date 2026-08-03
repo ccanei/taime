@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { parsePeriod } from './period-utils';
 import { validatePersistedReport } from './validate-report';
 import { stripLoneSurrogates, deepStripLoneSurrogates } from './sanitize';
+import { logLlmCall, usageTokens, errorCodeOf, flushLlmCalls } from './llm-telemetry';
 /**
  * TAIME — Report Generator
  * Gera relatório executivo em pt-BR e en via Claude Sonnet 4.6
@@ -680,6 +681,9 @@ async function anthropicPost(
 ): Promise<{ text: string; usage: AnthropicUsage }> {
   const maxAttempts = opts.maxAttempts ?? 4;
   const baseDelay   = opts.baseDelayMs ?? 2000;
+  // Telemetria (fire-and-forget): modelo do proprio body; caller/period fixos.
+  const _t0    = Date.now();
+  const _model = (body as { model?: string } | null)?.model ?? cfg.model;
 
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -713,6 +717,7 @@ async function anthropicPost(
         usage: AnthropicUsage;
       };
       const text = data.content.find(b => b.type === 'text')?.text ?? '';
+      logLlmCall({ caller: 'generate', model: _model, ...usageTokens(data.usage), latency_ms: Date.now() - _t0, success: true, period: PERIOD });
       return { text, usage: data.usage };
     } catch (err) {
       lastErr = err;
@@ -720,7 +725,10 @@ async function anthropicPost(
       // Erro de cliente não-re-tentável (lançado acima sem _retryable): propaga já.
       const msg = err instanceof Error ? err.message : String(err);
       const isHttpClientError = msg.startsWith('Anthropic API (') && !(err as { _retryable?: boolean })._retryable;
-      if (isHttpClientError) throw err;
+      if (isHttpClientError) {
+        logLlmCall({ caller: 'generate', model: _model, latency_ms: Date.now() - _t0, success: false, error_code: errorCodeOf(err), period: PERIOD });
+        throw err;
+      }
 
       // Erros de rede (ECONNRESET, fetch failed, timeout) e status transitórios: re-tenta.
       if (attempt < maxAttempts) {
@@ -732,6 +740,7 @@ async function anthropicPost(
       }
     }
   }
+  logLlmCall({ caller: 'generate', model: _model, latency_ms: Date.now() - _t0, success: false, error_code: errorCodeOf(lastErr), period: PERIOD });
   throw new Error(`anthropicPost falhou após ${maxAttempts} tentativas: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
 }
 
@@ -1319,5 +1328,7 @@ async function main(): Promise<void> {
 // Só executa o pipeline quando rodado diretamente (npx ts-node generate-report.ts).
 // Quando importado (ex.: pelos testes de parse), não dispara a geração.
 if (require.main === module) {
-  main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });
+  main()
+    .then(() => flushLlmCalls())
+    .catch(async err => { console.error('\n✗ Erro fatal:', err); await flushLlmCalls(); process.exit(1); });
 }

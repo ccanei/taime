@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { parsePeriod } from './period-utils';
 import { deepStripLoneSurrogates } from './sanitize';
+import { logLlmCall, usageTokens, flushLlmCalls } from './llm-telemetry';
 
 /**
  * TAIME — Report Validator (LLM-as-judge + checks determinísticos)
@@ -155,6 +156,8 @@ async function anthropicPost(body: unknown): Promise<{ text: string; usage: Anth
   // Rede final: remove surrogates orfaos de todo o body (todos os prompts do
   // validador passam por aqui) antes de serializar.
   const payload = JSON.stringify(deepStripLoneSurrogates(body));
+  const _t0    = Date.now();
+  const _model = (body as { model?: string } | null)?.model ?? cfg.model;
 
   for (let attempt = 0; ; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -176,6 +179,7 @@ async function anthropicPost(body: unknown): Promise<{ text: string; usage: Anth
       _USAGE_TOTAL.output     += data.usage.output_tokens ?? 0;
       _USAGE_TOTAL.cache_read += data.usage.cache_read_input_tokens ?? 0;
       _USAGE_TOTAL.cache_write += data.usage.cache_creation_input_tokens ?? 0;
+      logLlmCall({ caller: 'validate', model: _model, ...usageTokens(data.usage), latency_ms: Date.now() - _t0, success: true, period: PERIOD });
       return { text, usage: data.usage };
     }
 
@@ -188,6 +192,7 @@ async function anthropicPost(body: unknown): Promise<{ text: string; usage: Anth
       await _sleep(wait);
       continue;
     }
+    logLlmCall({ caller: 'validate', model: _model, latency_ms: Date.now() - _t0, success: false, error_code: `http_${res.status}`, period: PERIOD });
     throw new Error(`Anthropic API (${res.status}): ${errText}`);
   }
 }
@@ -998,5 +1003,7 @@ async function main(): Promise<void> {
 
 // Só roda o CLI se executado diretamente (permite importar validatePersistedReport)
 if (require.main === module) {
-  main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });
+  main()
+    .then(() => flushLlmCalls())
+    .catch(async err => { console.error('\n✗ Erro fatal:', err); await flushLlmCalls(); process.exit(1); });
 }

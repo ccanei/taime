@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { parsePeriod } from './period-utils';
 import { isSignalWithinPeriod } from './date-check';
 import { stripLoneSurrogates, deepStripLoneSurrogates } from './sanitize';
+import { logLlmCall, usageTokens, flushLlmCalls } from './llm-telemetry';
 /**
  * TAIME — Signal Analyzer
  * Agrupa sinais do período em 4-12 clusters temáticos via Claude Sonnet 4.6
@@ -195,6 +196,7 @@ async function callClaude(signalsText: string, signalCount: number): Promise<LLM
     `SIGNALS:\n\n${signalsText}\n\n` +
     `Return valid JSON only.`;
 
+  const _t0 = Date.now();
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -213,10 +215,15 @@ async function callClaude(signalsText: string, signalCount: number): Promise<LLM
     })),
   });
 
-  if (!res.ok) throw new Error(`Anthropic API (${res.status}): ${await res.text()}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    logLlmCall({ caller: 'analyze', model: cfg.model, latency_ms: Date.now() - _t0, success: false, error_code: `http_${res.status}`, period: PERIOD });
+    throw new Error(`Anthropic API (${res.status}): ${errText}`);
+  }
 
   const data = await res.json() as { content: Array<{ type: string; text: string }>; usage: AnthropicUsage };
   const u    = data.usage;
+  logLlmCall({ caller: 'analyze', model: cfg.model, ...usageTokens(u), latency_ms: Date.now() - _t0, success: true, period: PERIOD });
   console.log(
     `  Tokens: ${u.input_tokens}in / ${u.output_tokens}out` +
     (u.cache_creation_input_tokens ? ` / ${u.cache_creation_input_tokens} cache-written` : '') +
@@ -398,4 +405,6 @@ async function main(): Promise<void> {
   console.log(`\nPróximo: npx ts-node generate-report.ts\n`);
 }
 
-main().catch(err => { console.error('\n✗ Erro fatal:', err); process.exit(1); });
+main()
+  .then(() => flushLlmCalls())
+  .catch(async err => { console.error('\n✗ Erro fatal:', err); await flushLlmCalls(); process.exit(1); });
