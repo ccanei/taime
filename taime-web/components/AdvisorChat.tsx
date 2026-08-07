@@ -108,8 +108,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
       : `${used} of ${msgLimit} messages${plan === 'essential' ? ' this cycle' : ''}`
   )
   const upgradeText = plan === 'free'
-    ? (isPt ? 'Você usou suas 10 mensagens. Assine o Essential para 100 mensagens por mês.'
-            : 'You have used your 10 messages. Subscribe to Essential for 100 messages per month.')
+    ? (isPt ? 'Você usou suas 10 mensagens. Assine o Essential para 250 mensagens por mês.'
+            : 'You have used your 10 messages. Subscribe to Essential for 250 messages per month.')
     : (isPt ? 'Você atingiu o limite deste ciclo. Assine o Strategic para uso ampliado.'
             : 'You reached the limit for this cycle. Subscribe to Strategic for expanded use.')
   const upgradeCta = isPt ? 'Ver planos' : 'View plans'

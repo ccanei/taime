@@ -44,7 +44,7 @@ export default function PlanosPage() {
       {/* ── CARDS DE PLANOS ──────────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-6 pb-16">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
-          {p.planCards.map(({ name, price, desc, badge, highlight, cta }, idx) => {
+          {p.planCards.map(({ name, price, priceOriginal, priceNote, freeNote, desc, badge, highlight, cta }, idx) => {
             const planKey = PLAN_KEYS[idx] ?? 'free'
             return (
               <div
@@ -62,11 +62,20 @@ export default function PlanosPage() {
                   </span>
                 )}
                 <h2 className="text-lg font-bold text-zinc-900 mb-1">{name}</h2>
-                <p className={`text-2xl font-bold tabular-nums mb-1
-                  ${highlight ? 'text-zinc-900' : 'text-zinc-600'}`}>
-                  {price}
-                </p>
-                <p className="text-sm text-zinc-500 mb-5">{desc}</p>
+                <div className="flex items-baseline gap-2 flex-wrap mb-1">
+                  {priceOriginal && (
+                    <span className="text-base font-semibold text-zinc-400 line-through tabular-nums">{priceOriginal}</span>
+                  )}
+                  <p className={`text-2xl font-bold tabular-nums ${highlight ? 'text-zinc-900' : 'text-zinc-600'}`}>{price}</p>
+                </div>
+                {priceNote && (
+                  <p className="text-[11px] font-semibold text-taime-700 mb-1 leading-snug">{priceNote}</p>
+                )}
+                <p className="text-sm text-zinc-500 mb-1">{desc}</p>
+                {freeNote && (
+                  <p className="text-xs text-zinc-400 mb-4 leading-snug">{freeNote}</p>
+                )}
+                {!freeNote && <div className="mb-4" />}
                 <Link href={`/login?plan=${planKey}`}
                   className={highlight
                     ? 'btn-primary w-full justify-center py-3'

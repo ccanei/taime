@@ -698,9 +698,8 @@ async function routeContext(
 }
 
 // ── Busca vetorial (pgvector) ───────────────────────────────────────────────
-// Passo 3: busca semantica por trend (match_trend_chunks). Passo 4: o period_floor
-// passa a refletir o plano (janela de contexto). Strategic -> piso permissivo
-// (ve tudo, comportamento identico ao Passo 3); Essential -> hoje menos 36 meses.
+// Busca semantica por trend (match_trend_chunks) sobre o arquivo COMPLETO. Sem
+// janela por plano: todos os planos veem tudo (piso permissivo).
 // Nunca lanca: devolve error para o chamador decidir o fallback.
 const VECTOR_MATCH_COUNT = 16
 // v4.6: quando o periodo pedido e estreito (<= 3 meses), o universo de candidatos

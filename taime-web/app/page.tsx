@@ -1050,7 +1050,7 @@ export default async function LandingPage() {
           <h2 className="text-3xl font-bold text-zinc-900 mb-3">{h.plansTitle}</h2>
           <p className="text-sm text-zinc-400 mb-12">{h.plansSub}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            {h.plans.map(({ name, price, badge, desc, features, cta, href, highlight }, idx) => {
+            {h.plans.map(({ name, price, priceOriginal, priceNote, freeNote, badge, desc, features, cta, href, highlight }, idx) => {
               // Os planCards do i18n vêm na ordem Free / Essential / Strategic.
               // Mapeamos o índice para a chave usada pelo /login?plan=...
               const planKey  = (['free', 'essential', 'strategic'] as const)[idx] ?? 'free'
@@ -1065,11 +1065,19 @@ export default async function LandingPage() {
                   )}
                   <div>
                     <h3 className="text-lg font-bold text-zinc-900 mb-1">{name}</h3>
-                    {price
-                      ? <p className="text-2xl font-bold text-zinc-900 tabular-nums">{price}</p>
-                      : <p className="text-2xl font-bold text-zinc-400">Grátis</p>
-                    }
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      {priceOriginal && (
+                        <span className="text-base font-semibold text-zinc-400 line-through tabular-nums">{priceOriginal}</span>
+                      )}
+                      <p className={`text-2xl font-bold tabular-nums ${price ? 'text-zinc-900' : 'text-zinc-400'}`}>{price ?? 'Grátis'}</p>
+                    </div>
+                    {priceNote && (
+                      <p className="text-[11px] font-semibold text-taime-700 mt-1 leading-snug">{priceNote}</p>
+                    )}
                     <p className="text-sm text-zinc-500 mt-1">{desc}</p>
+                    {freeNote && (
+                      <p className="text-xs text-zinc-400 mt-1 leading-snug">{freeNote}</p>
+                    )}
                   </div>
                   <ul className="space-y-2 flex-1">
                     {features.map((f, i) => (

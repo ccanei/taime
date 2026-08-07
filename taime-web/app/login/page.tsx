@@ -584,9 +584,9 @@ function LoginPageInner() {
                       disabled={status === 'loading'}
                       className={INPUT_CLS}
                     >
-                      <option value="free">{t.nav.howItWorks === 'Como funciona' ? 'Gratuito, preview público' : 'Free, public preview'}</option>
-                      <option value="essential">{t.nav.howItWorks === 'Como funciona' ? 'Essencial, histórico de 3 anos' : 'Essential, 3-year history'}</option>
-                      <option value="strategic">{t.nav.howItWorks === 'Como funciona' ? 'Estratégico, histórico completo' : 'Strategic, full archive'}</option>
+                      <option value="free">{t.nav.howItWorks === 'Como funciona' ? 'Gratuito, 2 relatórios por mês' : 'Free, 2 reports per month'}</option>
+                      <option value="essential">{t.nav.howItWorks === 'Como funciona' ? 'Essencial, arquivo completo' : 'Essential, full archive'}</option>
+                      <option value="strategic">{t.nav.howItWorks === 'Como funciona' ? 'Estratégico, para organizações' : 'Strategic, for organizations'}</option>
                     </select>
                   </div>
 

@@ -37,8 +37,8 @@ function welcomeEmailHtml(firstNameRaw: string, lang: 'pt-BR' | 'en'): string {
     ? 'No seu plano gratuito, você tem acesso a dois relatórios completos por mês, com cobertura do último ano. Cada relatório traz o panorama TYPE, ACT, IMPACT, MOVE, EXIT e a leitura temporal THEN, NOW, NEXT que orienta a próxima decisão.'
     : 'On your free plan, you have access to two complete reports per month, with coverage of the most recent year. Each report carries the TYPE, ACT, IMPACT, MOVE, EXIT view and the THEN, NOW, NEXT temporal reading that guides your next decision.'
   const p3 = pt
-    ? 'Comece pelo seu painel e explore os relatórios mais recentes. Quando quiser ampliar a profundidade temporal e a cobertura, os planos superiores estarão à sua disposição.'
-    : 'Start from your dashboard and explore the latest reports. When you are ready to extend temporal depth and coverage, the higher plans will be available to you.'
+    ? 'Comece pelo seu painel e explore os relatórios mais recentes. Todo o arquivo, desde 2015, está à sua disposição; quando quiser leitura ilimitada e o Advisor com mais fôlego, o Essential está a um passo.'
+    : 'Start from your dashboard and explore the latest reports. The full archive, since 2015, is at your disposal; when you want unlimited reading and more room on the Advisor, Essential is one step away.'
   const p4 = pt ? 'Boa leitura.' : 'Enjoy the read.'
   const cta = pt ? 'Acessar o painel' : 'Open your dashboard'
   const sign = pt ? 'Equipe TAIME' : 'The TAIME team'
