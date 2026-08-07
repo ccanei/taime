@@ -52,13 +52,13 @@ export type AdvisorWindowType = 'lifetime' | 'rolling_30d' | null
 /**
  * Limite de mensagens do Advisor por plano.
  *   free      -> 10   (vitalicio, nunca reseta)
- *   essential -> 100  (por janela de 30 dias)
+ *   essential -> 250  (por janela de 30 dias)
  *   strategic -> null (ilimitado)
  * Null (sem subscription) e tratado como free.
  */
 export function getMessageLimit(plan: Plan | null): number | null {
   if (plan === 'strategic') return null
-  if (plan === 'essential') return 100
+  if (plan === 'essential') return 250
   return 10
 }
 
@@ -74,40 +74,12 @@ export function getWindowType(plan: Plan | null): AdvisorWindowType {
   return 'lifetime'
 }
 
-// Piso permissivo: libera todo o arquivo. Ponto unico de verdade para o floor
-// "sem limite" usado pela busca vetorial do Advisor.
+// Piso permissivo: libera TODO o arquivo (desde 2015+). Ponto unico de verdade
+// para o floor "sem limite" da busca vetorial do Advisor. A janela temporal por
+// plano foi eliminada: TODOS os planos consultam o arquivo completo. O que limita
+// o Free e a COTA de reports (free_report_unlocks), nao mais a data.
 export const ADVISOR_PERMISSIVE_FLOOR = '2000-01-01'
 
 // Teto permissivo (v4.6): "sem limite superior" para a busca por intervalo de
 // periodo. Casa com o DEFAULT da funcao match_trend_chunks.
 export const ADVISOR_PERMISSIVE_CEILING = '9999-12-01'
-
-/**
- * Janela de contexto do Advisor em MESES, por plano (Opcao C: a janela de
- * contexto do Advisor = a janela de relatorios do plano).
- *
- *   strategic -> null  (sem limite, ve todo o arquivo desde 2000)
- *   essential -> 60    (ultimos 5 anos)
- *   free/null -> 60    (ultimos 5 anos; default alinhado ao Free)
- *
- * Este e o UNICO lugar onde o numero 60 vive. Nao espalhar pelo codigo.
- */
-export function getAdvisorWindowMonths(plan: Plan | null): number | null {
-  if (plan === 'strategic') return null
-  return 60
-}
-
-/**
- * Deriva o period_floor (primeiro dia do mes de hoje menos a janela) a partir
- * do plano. Strategic (janela null) devolve o piso permissivo. Free/Essential
- * devolvem 'YYYY-MM-01' de (hoje - 60 meses). Em UTC para nao depender do fuso
- * do server.
- */
-export function getAdvisorPeriodFloor(plan: Plan | null, now: Date = new Date()): string {
-  const months = getAdvisorWindowMonths(plan)
-  if (months === null) return ADVISOR_PERMISSIVE_FLOOR
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1))
-  const y = d.getUTCFullYear()
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  return `${y}-${m}-01`
-}

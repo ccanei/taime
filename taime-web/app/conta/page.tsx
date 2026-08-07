@@ -71,15 +71,15 @@ export default async function AccountPage() {
   const preferredLanguage: 'pt-BR' | 'en' =
     profileRow.preferred_language === 'en' ? 'en' : 'pt-BR'
 
-  // Free: contagem de desbloqueios nos últimos 30 dias (janela rolling).
-  // Mesma fórmula usada em app/reports/[id]/page.tsx: distinct report_id em
-  // report_views com unlocked_at >= now() - 30d.
+  // Free: contagem de desbloqueios de reports nos últimos 30 dias (janela rolling).
+  // Fonte: free_report_unlocks (mesma cota que free_unlock_report aplica em
+  // app/reports/[id]/page.tsx). Distinct report_id com unlocked_at >= now() - 30d.
   const FREE_LIMIT = 2
   let freeUsedCount = 0
   if (planKey === 'free') {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const { data: views } = await service
-      .from('report_views')
+      .from('free_report_unlocks')
       .select('report_id, unlocked_at')
       .eq('user_id', user.id)
       .gte('unlocked_at', cutoff)

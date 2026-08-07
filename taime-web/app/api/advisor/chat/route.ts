@@ -3,15 +3,12 @@ import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-serv
 import {
   getUserPlan,
   hasAdvisorAccess,
-  getAdvisorWindowMonths,
-  getAdvisorPeriodFloor,
   ADVISOR_PERMISSIVE_FLOOR,
   ADVISOR_PERMISSIVE_CEILING,
 } from '@/lib/plan'
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
-import { preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
@@ -876,9 +873,9 @@ async function buildArchiveCoverageBlock(
     if (n > 0) parts.push(`${y}:${n}`)
     else { parts.push(`${y}:none`); gaps.push(String(y)) }
   }
-  const text = `ARCHIVE COVERAGE (published TAIME reports per year WITHIN this client's plan window). This is the ONLY source of truth about what the archive covers:
+  const text = `ARCHIVE COVERAGE (published TAIME reports per year in the FULL TAIME archive, available to every plan). This is the ONLY source of truth about what the archive covers:
 ${parts.join(', ')}
-${gaps.length ? `Real gaps, no report exists for these years: ${gaps.join(', ')}.` : 'No gaps inside the window.'}
+${gaps.length ? `Real gaps, no report exists for these years: ${gaps.join(', ')}.` : 'No gaps in the archive.'}
 Reason about coverage from THIS map, never from what this turn's search happened to return. A year shown with a count EXISTS in the archive even if it did not surface in this turn's retrieval. It is FORBIDDEN to tell the client you have no report for a year that appears here with a count. For such a year, say the strongest signals this turn come from other years, never that the year is missing. Only a year marked "none" is a true absence you may state as fact.`
 
   coverageCache.set(periodFloor, { at: now.getTime(), text })
@@ -925,53 +922,6 @@ async function matchSessionSummaries(
   } catch {
     return []
   }
-}
-
-// Passo 4: sinalizacao de "fora da janela". Para planos restritos (Essential),
-// uma segunda busca com piso permissivo detecta se existe trend relevante ANTES
-// do period_floor do plano. NAO trazemos o conteudo completo dessas trends, so a
-// existencia (period, theme_slug, title) para a recusa construtiva no preview.
-interface OutOfWindowItem {
-  period:     string
-  theme_slug: string | null
-  title:      string
-}
-
-function collectOutOfWindow(chunks: TrendChunk[], periodFloor: string): OutOfWindowItem[] {
-  const items: OutOfWindowItem[] = []
-  const seen  = new Set<string>()
-  for (const c of chunks) {
-    if (c.period >= periodFloor) continue // dentro da janela, ja disponivel
-    const key = `${c.period}|${c.theme_slug ?? ''}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    items.push({
-      period:     c.period,
-      theme_slug: c.theme_slug,
-      title:      c.content.split('\n')[0].slice(0, 100),
-    })
-    if (items.length >= 4) break
-  }
-  return items
-}
-
-// Bloco condicional (so quando ha trend relevante fora da janela do Essential).
-// Manda recusa construtiva: responde o que cabe na janela E sinaliza honestamente
-// que ha analise mais profunda/antiga disponivel no Strategic. Dinamico por turno,
-// fora do cache. Mantem a disciplina de brevidade (v4.4).
-function buildOutOfWindowBlock(items: OutOfWindowItem[], windowMonths: number): string {
-  const lines = items
-    .map(i => `- ${i.period}${i.theme_slug ? ` (${i.theme_slug})` : ''}: ${i.title}`)
-    .join('\n')
-  return `PLAN WINDOW NOTICE (the client is on a plan with a ${windowMonths}-month context window):
-The semantic search found TAIME analysis relevant to this question in periods OUTSIDE the client's plan window. You do NOT have the full content of these, only that they exist:
-${lines}
-
-How to handle this, mandatory for this turn:
-- Answer with the intelligence you DO have inside the plan window. Deliver real substance; never refuse outright.
-- Then, in one or two sentences, signal honestly that deeper or older analysis on this theme exists in the period(s) listed above and is available on the Strategic plan. Frame it as a constructive note, not a hard wall.
-- Do not fabricate the content of the out-of-window periods. You only know they exist, not what they say. Do not cite findings or link to them.
-- Keep the brevity discipline. This notice does not license a longer answer.`
 }
 
 // Dedup: a mesma trend volta como pt e en. Mantem uma so, preferindo o idioma
@@ -1275,10 +1225,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   let deliveredYearDist:     Record<string, number> = {}
   let spineSlugs:            string[]               = []
 
-  // Passo 4: janela de contexto por plano. Strategic -> piso permissivo (ve
-  // tudo); Essential -> hoje menos 36 meses. Ponto unico de verdade em lib/plan.
-  const windowMonths = getAdvisorWindowMonths(plan)
-  const periodFloor  = getAdvisorPeriodFloor(plan)
+  // Janela temporal ELIMINADA: todos os planos consultam o arquivo COMPLETO. O
+  // que limita o Free e a cota de reports (free_report_unlocks), nao o Advisor.
+  const periodFloor = ADVISOR_PERMISSIVE_FLOOR
 
   const preferLang = detectLanguage(userMessage)
 
@@ -1326,9 +1275,8 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
                          : VECTOR_MATCH_COUNT
   let periodEmptyNotice: { from: string; to: string; nearest: string | null } | null = null
 
-  // Embedding gerado UMA vez e reusado nas duas buscas (dentro e fora da janela).
+  // Busca vetorial sobre o arquivo COMPLETO (sem janela por plano). Uma so busca.
   let chunks: TrendChunk[] = []
-  let outOfWindowItems: OutOfWindowItem[] = []
   const emb = await embedQuery(userMessage)
   if (!emb.ok) {
     vectorError = `embed: ${emb.error}`
@@ -1336,17 +1284,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     const inWindow = await matchTrendChunks(service, emb.vector, effectiveFloor, matchCount, effectiveCeiling)
     vectorError = inWindow.error
     chunks       = inWindow.chunks
-
-    // So planos restritos (Essential) detectam material fora da janela. Para
-    // Strategic (windowMonths === null) este passo nem roda: zero custo extra.
-    // Busca ampla (sem teto/periodo pedido) so para sinalizar o que existe antes
-    // do piso do PLANO; independe do periodo citado na pergunta.
-    if (windowMonths !== null) {
-      const wide = await matchTrendChunks(service, emb.vector, ADVISOR_PERMISSIVE_FLOOR, VECTOR_MATCH_COUNT)
-      if (!wide.error) outOfWindowItems = collectOutOfWindow(wide.chunks, periodFloor)
-    }
   }
-  const outOfWindowHit = outOfWindowItems.length > 0
 
   // Fase 3: alem da ultima sessao (sempre presente), traz ate 2 resumos antigos
   // RELEVANTES a esta pergunta por busca semantica. Reusa o embedding ja gerado.
@@ -1488,10 +1426,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     selectionSource = 'vector'
     lang            = preferLang
     contextBlock    = buildTrendContextBlock([], lang)
-    // Se o periodo pedido esta DENTRO da janela do plano (sem out-of-window
-    // hit), buscamos o periodo disponivel mais proximo para oferecer. Quando ha
-    // out-of-window hit, a recusa construtiva do Passo 4 ja cobre o caso.
-    if (!outOfWindowHit && reqFrom && reqTo) {
+    // Periodo pedido sem conteudo: busca o periodo disponivel mais proximo (no
+    // arquivo completo) para o Advisor oferecer com naturalidade.
+    if (reqFrom && reqTo) {
       const nearest  = await nearestAvailablePeriod(service, periodFloor, reqFrom, reqTo)
       periodEmptyNotice = { from: reqFrom, to: reqTo, nearest }
     }
@@ -1548,12 +1485,11 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
 
   // ── System em blocos: regras + perfil + contexto (cacheáveis) e idioma ─────
   // contextBlock e reusado na rede de segurança de grounding (mesmo texto).
-  // Task 3: mapa do arquivo (cobertura por ano na janela do plano). Estavel entre
-  // turnos (cache por period_floor), entra como bloco cacheado antes do contexto.
+  // Mapa do arquivo COMPLETO (cobertura por ano, todos os planos). Cache 10 min.
   // v4.9: fail-safe com timeout. Se a query travar ou explodir, a resposta sai SEM
   // o mapa (degrada) em vez de derrubar a rota; nunca gasta mais que 4s aqui.
   const coverageBlock = await withTimeout(
-    buildArchiveCoverageBlock(service, periodFloor, new Date()).catch(e => {
+    buildArchiveCoverageBlock(service, ADVISOR_PERMISSIVE_FLOOR, new Date()).catch(e => {
       console.error('[advisor-coverage] falhou (degradando sem o mapa):', e instanceof Error ? e.message : e)
       return null
     }),
@@ -1571,24 +1507,11 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   if (memorySummaries.length > 0) {
     system.push({ type: 'text', text: buildMemoryBlock(memorySummaries) })
   }
-  // Passo 4: aviso de recusa construtiva quando ha analise relevante fora da
-  // janela do plano (so Essential). Dinamico por turno, fora do cache.
+  // Teaser TEMPORAL removido: sem janela por plano, nao ha "conteudo fora da
+  // janela" a sinalizar. O arquivo completo ja esta acessivel a todos os planos.
   //
-  // Teaser de profundidade: em perguntas de trajetoria/timing, troca o aviso
-  // generico por METADADOS de tema (nome + ano de inicio, sem periodos/titulos).
-  // So Essential/Free (windowMonths !== null); Strategic ve tudo e nunca entra aqui.
-  if (outOfWindowHit && windowMonths !== null) {
-    let depthThemes: Awaited<ReturnType<typeof preWindowThemes>> = []
-    if (trajectory) {
-      const slugs = outOfWindowItems.map(i => i.theme_slug)
-      depthThemes = await preWindowThemes(service, slugs, periodFloor)
-    }
-    system.push(depthThemes.length > 0
-      ? { type: 'text', text: buildDepthMetadataBlock(depthThemes, 'strategic') }
-      : { type: 'text', text: buildOutOfWindowBlock(outOfWindowItems, windowMonths) })
-  }
-  // v4.6: periodo pedido sem conteudo (dentro da janela do plano). Aviso de
-  // disponibilidade para o Advisor responder com naturalidade. Fora do cache.
+  // Periodo pedido sem conteudo: aviso de disponibilidade para o Advisor responder
+  // com naturalidade. Fora do cache.
   if (periodEmptyNotice) {
     system.push({ type: 'text', text: buildPeriodEmptyBlock(periodEmptyNotice.from, periodEmptyNotice.to, periodEmptyNotice.nearest) })
   }
@@ -1717,7 +1640,6 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     delivered_year_distribution: deliveredYearDist,
     spine_theme_slugs:    spineSlugs,
     period_empty_hit:     periodEmptyNotice !== null,
-    out_of_window_hit:    outOfWindowHit,
     memory_summaries_used: memorySummaries.map(s => s.session_id),
     attribution_flag:     attributionFlag,
     grounding_violations: groundingViolations,

@@ -47,10 +47,16 @@ export default async function ReportPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   const isLoggedIn = !!user
 
-  let plan:            Plan | null = null
-  let savedScrollPct:  number      = 0
-  let freeUnlockCount: number      = 0
-  let alreadyUnlocked: boolean     = false
+  // Prefetch do Next (link em viewport/hover) executa o server component. NUNCA
+  // pode CONSUMIR cota nem contar leitura: so a navegacao real consome.
+  const isPrefetch = (await headers()).get('next-router-prefetch') === '1'
+
+  let plan:             Plan | null = null
+  let savedScrollPct:   number      = 0
+  let freeUnlockAllowed: boolean    = false
+
+  // Sample publico (is_public): NUNCA consome cota e fica aberto para o Free.
+  const isPublicSample = (data.report as { is_public?: boolean }).is_public === true
 
   if (user) {
     // ── Plano corrente ──
@@ -73,44 +79,59 @@ export default async function ReportPage({ params }: Props) {
       .maybeSingle()
     savedScrollPct = progress && !progress.completed ? (progress.scroll_pct ?? 0) : 0
 
-    // ── FREE: conta desbloqueios ativos dos últimos 30 dias e verifica se
-    //         ESTE relatório está entre eles (alreadyUnlocked).
+    // ── COTA do Free (arquivo completo, 2 reports por 30 dias) ──
+    // Decidido ATOMICAMENTE por free_unlock_report (SECURITY DEFINER): report ja
+    // desbloqueado na janela relê sem consumir; sob cota consome e libera; sem cota
+    // nega (só preview). Essential/Strategic e o sample publico nao passam pela cota.
     if (plan === 'free' || plan === null) {
-      const service = createSupabaseService()
-      const cutoff  = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-
-      const { data: views } = await service
-        .from('report_views')
-        .select('report_id, unlocked_at')
-        .eq('user_id', user.id)
-        .gte('unlocked_at', cutoff)
-
-      const distinctIds = new Set((views ?? []).map(v => v.report_id as string))
-      freeUnlockCount = distinctIds.size
-      alreadyUnlocked = distinctIds.has(id)
+      if (isPublicSample) {
+        freeUnlockAllowed = true // sample publico: aberto, sem consumir
+      } else if (isPrefetch) {
+        // Prefetch: checagem READ-ONLY da cota (nunca consome). Se ja ativo ou sob
+        // a cota, mostra completo no prefetch; a navegacao real e que consome.
+        try {
+          const service = createSupabaseService()
+          const cutoff  = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+          const { data: views, error } = await service
+            .from('free_report_unlocks')
+            .select('report_id, unlocked_at')
+            .eq('user_id', user.id)
+            .gte('unlocked_at', cutoff)
+          if (error) {
+            freeUnlockAllowed = true // tabela ausente: fail-open
+          } else {
+            const distinct = new Set((views ?? []).map(v => (v as { report_id: string }).report_id))
+            freeUnlockAllowed = distinct.has(id) || distinct.size < 2
+          }
+        } catch {
+          freeUnlockAllowed = true // fail-open
+        }
+      } else {
+        // Navegacao real: desbloqueio ATOMICO (decide + consome).
+        try {
+          const service = createSupabaseService()
+          const { data: unlock, error } = await service.rpc('free_unlock_report', {
+            p_user_id:   user.id,
+            p_report_id: id,
+          })
+          if (error) {
+            // Migration ainda nao aplicada (funcao ausente) ou erro de infra:
+            // fail-open para nao bloquear leitura legitima antes da migration.
+            freeUnlockAllowed = true
+          } else {
+            const row = (Array.isArray(unlock) ? unlock[0] : unlock) as { allowed?: boolean } | undefined
+            freeUnlockAllowed = row?.allowed === true
+          }
+        } catch {
+          freeUnlockAllowed = true // fail-open
+        }
+      }
+    } else {
+      freeUnlockAllowed = true // essential/strategic: sem gate de cota
     }
   }
 
-  const accessLevel = getAccessLevel({
-    plan,
-    reportPeriod: data.report.period,
-    isLoggedIn,
-    freeUnlockCount,
-    alreadyUnlocked,
-  })
-
-  // ── FREE: se vai ver completo e ainda não desbloqueou, grava report_views.
-  //   Consome 1 slot. Usa upsert para o caso raro de existir entrada antiga
-  //   (>30 dias) — renova o unlocked_at para agora (re-unlock).
-  if ((plan === 'free' || plan === null) && user && accessLevel.canSeeFullReport && !alreadyUnlocked) {
-    const service = createSupabaseService()
-    await service
-      .from('report_views')
-      .upsert(
-        { user_id: user.id, report_id: id, unlocked_at: new Date().toISOString() },
-        { onConflict: 'user_id,report_id' },
-      )
-  }
+  const accessLevel = getAccessLevel({ plan, isLoggedIn, freeUnlockAllowed })
 
   const isPt = detectLocale((await cookies()).get('taime-locale')?.value) === 'pt'
 
@@ -118,7 +139,6 @@ export default async function ReportPage({ params }: Props) {
   //   Ignora prefetch do Next (link em viewport/hover) para nao inflar o contador.
   //   Fail-open se a funcao ainda nao existir (migration nao aplicada).
   if (user && accessLevel.canSeeFullReport) {
-    const isPrefetch = (await headers()).get('next-router-prefetch') === '1'
     if (!isPrefetch) {
       try {
         const service = createSupabaseService()

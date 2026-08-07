@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createSupabaseService } from '@/lib/supabase-server'
-import { getAdvisorPeriodFloor, ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
+import { ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
 import { embedQuery } from '@/lib/embeddings'
-import { preWindowThemes, buildDepthMetadataBlock } from '@/lib/depth-teaser'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
@@ -340,9 +339,9 @@ export async function POST(req: NextRequest) {
     // fail-open no teto de IP: o cookie ainda limita a 3.
   }
 
-  // ── Geracao: vector search (60 meses) + refino + Sonnet 5, SEM fontes ───────
+  // ── Geracao: vector search (arquivo COMPLETO) + refino + Sonnet 5, SEM fontes ─
   const lang = detectLanguage(message)
-  const periodFloor = getAdvisorPeriodFloor('free') // janela de 60 meses (5 anos)
+  const periodFloor = ADVISOR_PERMISSIVE_FLOOR // arquivo completo (sem janela)
 
   // v4.8: trajetoria tambem no /ask. Reusa a mesma matematica de selecao do
   // Advisor logado (lib/trajectory-select): pool maior + reserva de recencia +
@@ -407,31 +406,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Teaser de profundidade: so em perguntas de trajetoria/timing, uma busca ampla
-  // (sem teto de janela) revela quais temas relevantes existem ANTES dos 60 meses.
-  // Injeta so METADADOS (nome do tema + ano de inicio), nota aponta p/ CADASTRO.
-  let depthThemes: Awaited<ReturnType<typeof preWindowThemes>> = []
-  if (emb.ok && isTraj) {
-    try {
-      const { data: wideData } = await service.rpc('match_trend_chunks', {
-        query_embedding: emb.vector,
-        period_floor:    ADVISOR_PERMISSIVE_FLOOR,
-        match_count:     VECTOR_MATCH_COUNT,
-        period_ceiling:  ADVISOR_PERMISSIVE_CEILING,
-      })
-      const slugs = ((wideData ?? []) as TrendChunk[])
-        .filter(c => c.period < periodFloor)
-        .map(c => c.theme_slug)
-      depthThemes = await preWindowThemes(service, slugs, periodFloor)
-    } catch { /* sem teaser neste turno */ }
-  }
-
+  // Teaser TEMPORAL removido: sem janela de plano, todo o arquivo ja e consultado.
   const system: SystemBlock[] = [
     { type: 'text', text: ANON_RULES_BLOCK,               cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildAnonContextBlock(selected) },
-    ...(depthThemes.length > 0
-      ? [{ type: 'text' as const, text: buildDepthMetadataBlock(depthThemes, 'subscribers') }]
-      : []),
     { type: 'text', text: languageInstruction(lang) },
   ]
 

@@ -3,7 +3,7 @@ import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-serv
 import {
   getUserPlan,
   hasAdvisorAccess,
-  getAdvisorPeriodFloor,
+  ADVISOR_PERMISSIVE_FLOOR,
 } from '@/lib/plan'
 
 // ── Abertura proativa do Advisor ────────────────────────────────────────────
@@ -254,11 +254,11 @@ export async function POST(req: NextRequest) {
   const sector   = (adv?.sector ?? '').trim() || null
 
   // ── Busca dos temas quentes recentes dentro do interesse ──────────────────
-  // Recente + maior TAIME Score, respeitando a janela do plano (period_floor).
+  // Recente + maior TAIME Score sobre o arquivo COMPLETO (sem janela por plano).
   // Interesse mapeado a categoria → filtra por categoria. Transversal → sem
   // filtro (maior score em geral). Fallback: se o filtro por categoria vier
-  // vazio na janela, cai para sem filtro para ainda ancorar em algo real.
-  const periodFloor = getAdvisorPeriodFloor(plan)
+  // vazio, cai para sem filtro para ainda ancorar em algo real.
+  const periodFloor = ADVISOR_PERMISSIVE_FLOOR
   const categories  = mapInterestToCategories(interest)
 
   const { data: reportData } = await service
