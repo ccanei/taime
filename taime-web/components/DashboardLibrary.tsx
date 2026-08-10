@@ -1,16 +1,30 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { formatPeriod, scoreColor, scoreRing } from '@/lib/types'
 import type { EditionSummary, ReportLookupEntry } from '@/lib/dashboard'
 
 type Locale = 'pt' | 'en'
 
+interface TrajItem { reportId: string; rank: number; period: string; title: string; score: number }
+
+const MONTHS_SHORT = {
+  pt: ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+}
+
+// "jul 2026" / "Jul 2026" a partir de um period 'YYYY-MM-DD'.
+function shortPeriod(period: string, locale: Locale): string {
+  const m = Number.parseInt(period.slice(5, 7), 10) - 1
+  const y = period.slice(0, 4)
+  return `${MONTHS_SHORT[locale][m] ?? ''} ${y}`.trim()
+}
+
 export interface TrajectoryTheme {
   name:  string
   start: number
-  index: number // aponta para EditionSummary.themeMatches
+  index: number // indice em CURATED_THEME_SLUGS (usado pelo endpoint /api/trajectory)
 }
 
 const UI = {
@@ -18,6 +32,13 @@ const UI = {
     trajLabel:   'Acompanhe a trajetória',
     trajSub:     'O mesmo tema, período após período. Clique para ver a análise através dos anos.',
     today:       'hoje',
+    trajTitle:   'Trajetória',
+    trajCount:   (n: number, y: string) => `${n} análise${n !== 1 ? 's' : ''} desde ${y}`,
+    trajBack:    'Voltar ao arquivo',
+    trajLoading: 'Montando a trajetória...',
+    trajError:   'Não foi possível carregar a trajetória.',
+    trajRetry:   'Tentar de novo',
+    trajEmpty:   'Nenhuma análise deste tema encontrada.',
     search:      'Buscar no arquivo... (Enter para busca inteligente)',
     allPeriods:  'Todos os períodos',
     filterByCat: 'Filtrar por categoria',
@@ -45,6 +66,13 @@ const UI = {
     trajLabel:   'Follow the trajectory',
     trajSub:     'The same theme, period after period. Click to read the analysis through the years.',
     today:       'today',
+    trajTitle:   'Trajectory',
+    trajCount:   (n: number, y: string) => `${n} analys${n !== 1 ? 'es' : 'is'} since ${y}`,
+    trajBack:    'Back to archive',
+    trajLoading: 'Building the trajectory...',
+    trajError:   'Could not load the trajectory.',
+    trajRetry:   'Try again',
+    trajEmpty:   'No analysis found for this theme.',
     search:      'Search the archive... (Enter for smart search)',
     allPeriods:  'All periods',
     filterByCat: 'Filter by category',
@@ -104,11 +132,17 @@ export default function DashboardLibrary({
   const [search, setSearch]     = useState('')
   const [period, setPeriod]     = useState('')
   const [category, setCategory] = useState('')
-  const [theme, setTheme]       = useState<number | null>(null)
   const [visible, setVisible]   = useState(PAGE_SIZE)
   const [semantic, setSemantic] = useState<SemanticMatch[] | null>(null)
   const [smartLoading, setSmartLoading] = useState(false)
   const [smartError, setSmartError]     = useState(false)
+
+  // Trajetoria (nivel trend, sob demanda): tema aberto + itens carregados.
+  const [trajTheme, setTrajTheme]     = useState<number | null>(null)
+  const [trajItems, setTrajItems]     = useState<TrajItem[] | null>(null)
+  const [trajLoading, setTrajLoading] = useState(false)
+  const [trajError, setTrajError]     = useState(false)
+  const trajRef = useRef<HTMLDivElement>(null)
 
   const newSet = useMemo(() => new Set(newSincePeriods), [newSincePeriods])
 
@@ -123,6 +157,7 @@ export default function DashboardLibrary({
   async function runSmart() {
     const q = search.trim()
     if (!q) { setSemantic(null); setSmartError(false); return }
+    closeTrajectory()
     setSmartLoading(true); setSmartError(false)
     try {
       const res = await fetch('/api/search', {
@@ -140,7 +175,39 @@ export default function DashboardLibrary({
   }
 
   function clearSmart() { setSemantic(null); setSmartError(false) }
-  function clearAll() { setSearch(''); setPeriod(''); setCategory(''); setTheme(null); clearSmart(); resetPage() }
+  function closeTrajectory() { setTrajTheme(null); setTrajItems(null); setTrajError(false); setTrajLoading(false) }
+  function clearAll() { setSearch(''); setPeriod(''); setCategory(''); closeTrajectory(); clearSmart(); resetPage() }
+
+  // Busca so as trends do tema clicado (payload sob demanda, um tema por vez).
+  async function fetchTrajectory(index: number) {
+    setTrajItems(null); setTrajError(false); setTrajLoading(true)
+    try {
+      const res = await fetch(`/api/trajectory?theme=${index}`)
+      if (!res.ok) throw new Error(String(res.status))
+      const json = await res.json() as { items?: TrajItem[] }
+      setTrajItems(json.items ?? [])
+    } catch {
+      setTrajItems(null); setTrajError(true)
+    } finally {
+      setTrajLoading(false)
+    }
+  }
+
+  // Abre a VISAO DE TRAJETORIA (nivel trend). Toggle no mesmo tema fecha; clicar
+  // outro troca a trajetoria. O scroll suave ao painel acontece no useEffect abaixo.
+  function openTrajectory(index: number) {
+    if (trajTheme === index) { closeTrajectory(); return }
+    clearSmart()
+    setTrajTheme(index)
+    void fetchTrajectory(index)
+  }
+
+  // Scroll suave ate o painel quando um tema e aberto.
+  useEffect(() => {
+    if (trajTheme !== null && trajRef.current) {
+      trajRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [trajTheme])
 
   // Arquivo filtrado (modo browse: estruturais + palavra-chave).
   const filtered = useMemo(() => {
@@ -148,14 +215,27 @@ export default function DashboardLibrary({
     return editions.filter(e => {
       if (period && e.period.slice(0, 7) !== period) return false
       if (category && !e.categories.includes(category)) return false
-      if (theme !== null && !e.themeMatches.includes(theme)) return false
       if (kw) {
         const hay = (e.periodLabel + ' ' + e.parts.map(p => p.title).join(' ')).toLowerCase()
         if (!hay.includes(kw)) return false
       }
       return true
     })
-  }, [editions, period, category, theme, search])
+  }, [editions, period, category, search])
+
+  // Itens da trajetoria agrupados por ANO (cronologico asc), para ler como timeline.
+  const trajGroups = useMemo(() => {
+    if (!trajItems) return [] as [string, TrajItem[]][]
+    const map = new Map<string, TrajItem[]>()
+    for (const it of trajItems) {
+      const y = it.period.slice(0, 4)
+      const arr = map.get(y)
+      if (arr) arr.push(it); else map.set(y, [it])
+    }
+    return [...map.entries()]
+  }, [trajItems])
+
+  const trajMeta = trajTheme !== null ? themes.find(th => th.index === trajTheme) ?? null : null
 
   // Resultados flat da busca semantica (ranqueados pela API).
   const smartResults = useMemo(() => {
@@ -165,7 +245,7 @@ export default function DashboardLibrary({
       .filter((x): x is { id: string } & ReportLookupEntry => x !== null)
   }, [semantic, reportLookup])
 
-  const anyFilter = !!(search || period || category || theme !== null)
+  const anyFilter = !!(search || period || category)
 
   return (
     <div className="space-y-8">
@@ -175,11 +255,12 @@ export default function DashboardLibrary({
         <p className="mt-0.5 mb-4 text-sm text-zinc-500 max-w-2xl">{t.trajSub}</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
           {themes.map(th => {
-            const active = theme === th.index
+            const active = trajTheme === th.index
             return (
               <button
                 key={th.index}
-                onClick={() => { setTheme(active ? null : th.index); clearSmart(); resetPage() }}
+                onClick={() => void openTrajectory(th.index)}
+                aria-pressed={active}
                 className={`text-left rounded-xl border px-3.5 py-3 transition-all
                   ${active
                     ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600'
@@ -294,8 +375,91 @@ export default function DashboardLibrary({
         </div>
       </section>
 
-      {/* ── Conteúdo: resultados de busca OU arquivo por edição ─────── */}
-      {semantic ? (
+      {/* ── Conteúdo: trajetória de tema OU busca OU arquivo por edição ── */}
+      {trajTheme !== null ? (
+        <section ref={trajRef} className="scroll-mt-24">
+          <div className="flex items-start justify-between gap-4 mb-5">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold tracking-[0.15em] text-taime-700 uppercase">{t.trajTitle}</p>
+              <h2 className="mt-0.5 text-xl font-bold text-zinc-900 leading-snug">{trajMeta?.name}</h2>
+              <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  <span>{trajMeta?.start}</span>
+                  <span className="w-6 h-px bg-gradient-to-r from-taime-300 to-taime-500" />
+                  <span className="font-semibold text-taime-600 uppercase tracking-wide">{t.today}</span>
+                </span>
+                {trajItems && trajItems.length > 0 && (
+                  <span className="text-zinc-300">·</span>
+                )}
+                {trajItems && trajItems.length > 0 && (
+                  <span className="font-medium text-zinc-500 tabular-nums">
+                    {t.trajCount(trajItems.length, trajItems[0].period.slice(0, 4))}
+                  </span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={closeTrajectory}
+              className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-taime-700
+                         border border-zinc-200 hover:border-taime-200 rounded-lg px-3 py-2 transition-colors">
+              <span aria-hidden>←</span> {t.trajBack}
+            </button>
+          </div>
+
+          {trajLoading ? (
+            <div className="flex items-center gap-2 text-sm text-zinc-500 py-10 justify-center">
+              <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              {t.trajLoading}
+            </div>
+          ) : trajError ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <p className="text-sm text-amber-800 mb-3">{t.trajError}</p>
+              <button
+                onClick={() => { if (trajTheme !== null) void fetchTrajectory(trajTheme) }}
+                className="text-xs font-medium text-taime-600 hover:underline">
+                {t.trajRetry}
+              </button>
+            </div>
+          ) : !trajItems || trajItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-zinc-200 p-12 text-center text-sm text-zinc-400">
+              {t.trajEmpty}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {trajGroups.map(([year, items]) => (
+                <div key={year} className="relative">
+                  {/* Cabeçalho de ano: âncora temporal da timeline. */}
+                  <div className="flex items-center gap-3 mb-2.5">
+                    <span className="text-sm font-bold text-zinc-900 tabular-nums">{year}</span>
+                    <span className="flex-1 h-px bg-zinc-100" />
+                    <span className="text-[11px] text-zinc-400 tabular-nums">{items.length}</span>
+                  </div>
+                  <div className="space-y-2 sm:pl-4 sm:border-l-2 sm:border-taime-100">
+                    {items.map(it => (
+                      <Link
+                        key={`${it.reportId}-${it.rank}`}
+                        href={`/reports/${it.reportId}#trend-${it.rank}`}
+                        className="group flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3
+                                   hover:border-taime-200 hover:shadow-sm transition-all">
+                        <span className="shrink-0 w-16 text-[11px] font-medium text-zinc-400 tabular-nums uppercase tracking-wide">
+                          {shortPeriod(it.period, locale)}
+                        </span>
+                        <span className="flex-1 min-w-0 text-sm text-zinc-800 group-hover:text-taime-600 transition-colors line-clamp-2">
+                          {it.title}
+                        </span>
+                        <span className={`shrink-0 text-sm font-bold tabular-nums ${scoreColor(it.score)}`}>{it.score}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : semantic ? (
         <section>
           <h2 className="text-lg font-bold text-zinc-900 mb-4">{t.results}</h2>
           {smartResults.length === 0 ? (
