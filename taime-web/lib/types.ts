@@ -115,23 +115,23 @@ export function avgScore(trends: Pick<ReportTrend, 'taime_score'>[]): number {
   return Math.round(trends.reduce((s, t) => s + t.taime_score, 0) / trends.length)
 }
 
+// Regua unica do TAIME Score (0-100), padronizada em todo o dashboard e nos cards
+// da home: 80+ forca estrategica alta (verde), 60-79 relevante (azul), <60 discreto
+// (cinza). Ponto unico de verdade; nao espalhar limiares pelo codigo.
 export function scoreColor(score: number): string {
-  if (score >= 85) return 'text-emerald-700'
-  if (score >= 70) return 'text-taime-600'
-  if (score >= 50) return 'text-amber-700'
+  if (score >= 80) return 'text-emerald-700'
+  if (score >= 60) return 'text-taime-600'
   return 'text-zinc-500'
 }
 
 export function scoreBg(score: number): string {
-  if (score >= 85) return 'bg-emerald-600'
-  if (score >= 70) return 'bg-taime-600'
-  if (score >= 50) return 'bg-amber-500'
+  if (score >= 80) return 'bg-emerald-600'
+  if (score >= 60) return 'bg-taime-600'
   return 'bg-zinc-400'
 }
 
 export function scoreRing(score: number): string {
-  if (score >= 85) return 'ring-emerald-200 bg-emerald-50'
-  if (score >= 70) return 'ring-blue-200 bg-blue-50'
-  if (score >= 50) return 'ring-amber-200 bg-amber-50'
+  if (score >= 80) return 'ring-emerald-200 bg-emerald-50'
+  if (score >= 60) return 'ring-blue-200 bg-blue-50'
   return 'ring-zinc-200 bg-zinc-50'
 }
