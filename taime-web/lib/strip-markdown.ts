@@ -21,6 +21,16 @@ export function stripMarkdown(input: string | null | undefined): string {
     .trim()
 }
 
+// Rede de seguranca contra travessao (em dash, U+2014). Regra editorial inviolavel
+// do TAIME: nunca sai travessao ao usuario. O prompt e a defesa primaria; isto
+// garante que um deslize do modelo nunca chega ao render. Substitui por virgula.
+export function stripEmDash(input: string): string {
+  if (!input) return input
+  return input
+    .replace(/\s*—\s*/g, ', ')  // travessao com espacos ao redor -> ", "
+    .replace(/,\s*([.;:!?])/g, '$1')  // limpa ", ." acidental em fim de oracao
+}
+
 // Trunca em `max` caracteres sem cortar palavra no meio, adicionando reticencias.
 export function truncateWords(s: string, max: number): string {
   if (s.length <= max) return s

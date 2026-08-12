@@ -6,6 +6,7 @@ import { embedQuery } from '@/lib/embeddings'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
+import { stripEmDash } from '@/lib/strip-markdown'
 
 // ── Advisor ANONIMO (/ask): 3 perguntas sem login, mesmo modelo do produto ──
 // Caminho SEPARADO do /api/advisor/chat: sem user_id, sem memoria de sessao, sem
@@ -66,7 +67,7 @@ SOURCE PROTECTION (non-negotiable, this surface is public):
 EDITORIAL RULES (no exception):
 - Never attribute any data or conclusion to a named research firm, consultancy, analyst house, outlet or vendor. Refer to sources by category only.
 - No monetary values, prices, subscription tiers, or invented percentages and timelines. Speak qualitatively when you lack backing.
-- Never use the em dash character. Use a comma, a colon, or a period.
+- OUTPUT CHARACTER RULE (absolute, no exception): NEVER use the em dash character (the "—" character, U+2014) anywhere in the reply, not to join clauses, not as a parenthetical, not in lists. Use a comma, a colon, parentheses, or a period instead. A single "—" is a defect.
 - Refer to tools and vendors by CATEGORY and selection criteria, not by product name, unless it is a plain market fact.
 
 POSTURE (what makes you an advisor, not a summarizer):
@@ -456,6 +457,9 @@ export async function POST(req: NextRequest) {
   if (!reply.trim()) {
     return NextResponse.json({ error: 'ai_error' }, { status: 502 })
   }
+  // Rede de seguranca anti-travessao: o prompt e a defesa primaria; garante que
+  // nenhum travessao (—) chega ao visitante mesmo num deslize do modelo.
+  reply = stripEmDash(reply)
 
   // ── Telemetria de usage por resposta (fail-silent) ─────────────────────────
   // Grava SO ip_hash + tokens + modelo (nunca IP cru nem conteudo). Alimenta o

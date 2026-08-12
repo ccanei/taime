@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -75,24 +76,31 @@ function shortenReportLinks(md: string): string {
   })
 }
 
-const COMPONENTS: Components = {
-  h1: ({ children }) => <h3 className="text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5">{children}</h3>,
-  h2: ({ children }) => <h3 className="text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5">{children}</h3>,
-  h3: ({ children }) => <h4 className="text-sm font-semibold text-zinc-900 mt-3 first:mt-0 mb-1">{children}</h4>,
-  h4: ({ children }) => <h4 className="text-sm font-semibold text-zinc-900 mt-2.5 first:mt-0 mb-1">{children}</h4>,
-  p:  ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 last:mb-0 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 last:mb-0 space-y-1">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-zinc-900">{children}</strong>,
-  em: ({ children }) => <em className="italic">{children}</em>,
-  a: ({ href, title, children }) => {
+// Colapsa chips de citacao identicos e adjacentes (mesmo report + trend, isto e,
+// mesma ancora e mesmo rotulo) num unico chip. Roda depois do encurtamento, quando
+// os tokens ja estao normalizados para o periodo curto. Trends distintas (rank
+// diferente -> URL diferente) nao colapsam.
+function collapseAdjacentDupLinks(md: string): string {
+  return md.replace(
+    /(\[[^\]]*\]\(\/reports\/[^)]*#trend-\d+[^)]*\))(?:[\s,;·]+\1)+/g,
+    '$1',
+  )
+}
+
+// Renderer do link, parametrizado pelo mapa de citacao: quando o chip nao tem titulo
+// no markdown (o Advisor emite so o periodo), o titulo completo da trend vem do mapa
+// e vira o tooltip (atributo title). Trends: report_id + rank derivados da ancora.
+function makeAnchor(citations?: Record<string, string>): Components['a'] {
+  return ({ href, title, children }) => {
     const url = typeof href === 'string' ? href : ''
     if (url && isReportLink(url)) {
-      // Chip de citacao: pastilha da cor de marca, link para a ancora da trend.
-      // title = titulo completo da trend (hover), quando o texto foi encurtado.
+      let hover = typeof title === 'string' && title ? title : undefined
+      if (!hover && citations) {
+        const m = url.match(/\/reports\/([^#?]+)#trend-(\d+)/)
+        if (m) hover = citations[`${m[1]}#trend-${m[2]}`]
+      }
       return (
-        <a href={url} target="_blank" rel="noopener noreferrer" title={title}
+        <a href={url} target="_blank" rel="noopener noreferrer" title={hover}
            className="inline-flex items-baseline gap-0.5 rounded-md bg-taime-50 border border-taime-100
                       px-1.5 py-0.5 text-[0.82em] font-medium text-taime-700 no-underline align-baseline
                       whitespace-nowrap hover:bg-taime-100 transition-colors">
@@ -107,7 +115,20 @@ const COMPONENTS: Components = {
         {children}
       </a>
     )
-  },
+  }
+}
+
+const COMPONENTS: Components = {
+  h1: ({ children }) => <h3 className="text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5">{children}</h3>,
+  h2: ({ children }) => <h3 className="text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5">{children}</h3>,
+  h3: ({ children }) => <h4 className="text-sm font-semibold text-zinc-900 mt-3 first:mt-0 mb-1">{children}</h4>,
+  h4: ({ children }) => <h4 className="text-sm font-semibold text-zinc-900 mt-2.5 first:mt-0 mb-1">{children}</h4>,
+  p:  ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 last:mb-0 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 last:mb-0 space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold text-zinc-900">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
   blockquote: ({ children }) => (
     <blockquote className="border-l-[3px] border-taime-600 bg-taime-50/60 rounded-r pl-3.5 pr-3 py-2 text-zinc-600">
       {children}
@@ -145,13 +166,14 @@ function splitBlocks(md: string): string[] {
   return md.replace(/\r\n/g, '\n').split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
 }
 
-export default function AdvisorMarkdown({ content }: { content: string }) {
+export default function AdvisorMarkdown({ content, citations }: { content: string; citations?: Record<string, string> }) {
   const blocks = splitBlocks(content)
+  const components = useMemo<Components>(() => ({ ...COMPONENTS, a: makeAnchor(citations) }), [citations])
 
   return (
     <div className="text-sm leading-[1.65] text-zinc-800 break-words max-w-[70ch]">
       {blocks.map((raw, i) => {
-        const block     = shortenReportLinks(raw)
+        const block     = collapseAdjacentDupLinks(shortenReportLinks(raw))
         const isFirst   = i === 0
         const isLast    = i === blocks.length - 1
         const isQuote   = /^\s*>/.test(block)
@@ -169,7 +191,7 @@ export default function AdvisorMarkdown({ content }: { content: string }) {
 
         return (
           <div key={i} className={`${isLast ? '' : 'mb-3.5'} ${wrap}`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
               {block}
             </ReactMarkdown>
           </div>

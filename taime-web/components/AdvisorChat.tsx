@@ -16,6 +16,42 @@ interface Message {
   role:       'user' | 'assistant'
   content:    string
   created_at: string
+  citations?: Record<string, string>  // "reportId#trend-rank" -> titulo, p/ tooltip dos chips
+}
+
+// Botao discreto de copiar (por resposta do Advisor). Copia o markdown limpo e da
+// um feedback breve ("Copiado"). Aparece no hover da mensagem.
+function CopyButton({ text, isPt }: { text: string; isPt: boolean }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text.trim())
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch { /* clipboard indisponivel: silencioso */ }
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={isPt ? 'Copiar resposta' : 'Copy answer'}
+      title={isPt ? 'Copiar' : 'Copy'}
+      className={`absolute top-2 right-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px]
+                  transition-opacity focus-visible:opacity-100 focus:outline-none
+                  ${copied ? 'opacity-100 text-taime-700' : 'opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-600 hover:bg-zinc-100'}`}
+    >
+      {copied ? (
+        <>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <span className="font-medium">{isPt ? 'Copiado' : 'Copied'}</span>
+        </>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  )
 }
 
 interface AdvisorProfile {
@@ -134,6 +170,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [sessions,     setSessions]     = useState<SessionRow[]>([])
   const [viewArchived, setViewArchived] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)   // mobile only
+  const [sessionQuery, setSessionQuery] = useState('')      // busca client-side na sidebar
 
   // ── Abertura proativa: sugestão de partida + chips, ancorada em trends reais.
   // Iniciativa do Advisor, fora da cota (nunca passa pelo /chat). Ver
@@ -375,7 +412,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: text, sessionId: sid }),
       })
-      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean }
+      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string> }
 
       // Cota esgotada: nada foi gerado nem consumido. Remove a mensagem otimista
       // e mostra o CTA de upgrade no lugar do input.
@@ -393,6 +430,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         role:       'assistant',
         content:    json.reply,
         created_at: new Date().toISOString(),
+        citations:  json.citations,
       }
       setMessages(prev => [...prev, assistantMsg])
       // Persistencia: se o backend nao conseguiu gravar a conversa, avisa o usuario
@@ -451,6 +489,12 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
 
   // ── Sidebar ─────────────────────────────────────────────────────────────────
 
+  // Filtro client-side por titulo (os dados ja estao carregados; sem nova chamada).
+  const sessionQ = sessionQuery.trim().toLowerCase()
+  const visibleSessions = sessionQ
+    ? sessions.filter(s => (s.title ?? '').toLowerCase().includes(sessionQ))
+    : sessions
+
   const sidebarBody = (
     <>
       <div className="px-3 py-3 border-b border-zinc-100">
@@ -483,15 +527,30 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         </button>
       </div>
 
+      {sessions.length > 0 && (
+        <div className="px-3 py-2 border-b border-zinc-100">
+          <input
+            type="text"
+            value={sessionQuery}
+            onChange={e => setSessionQuery(e.target.value)}
+            placeholder={isPt ? 'Buscar conversas...' : 'Search conversations...'}
+            className="w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-800
+                       placeholder:text-zinc-400 outline-none focus:ring-1 focus:ring-taime-500 focus:border-transparent"
+          />
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto py-1">
-        {sessions.length === 0 ? (
+        {visibleSessions.length === 0 ? (
           <p className="px-3 py-6 text-xs text-zinc-400 text-center">
-            {viewArchived
-              ? (isPt ? 'Nenhuma sessão arquivada.' : 'No archived sessions.')
-              : (isPt ? 'Nenhuma sessão anterior ainda.' : 'No previous sessions yet.')}
+            {sessionQ
+              ? (isPt ? 'Nenhuma conversa encontrada.' : 'No conversation found.')
+              : viewArchived
+                ? (isPt ? 'Nenhuma sessão arquivada.' : 'No archived sessions.')
+                : (isPt ? 'Nenhuma sessão anterior ainda.' : 'No previous sessions yet.')}
           </p>
         ) : (
-          sessions.map(s => {
+          visibleSessions.map(s => {
             const isActive = s.session_id === sessionId
             return (
               <button
@@ -644,7 +703,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 ${msg.role === 'user' ? 'bg-zinc-800 text-white' : 'bg-taime-600 text-white'}`}>
                 {msg.role === 'user' ? userInitials : 'T'}
               </div>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed
+              <div className={`group relative max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed
                 ${msg.role === 'user'
                   ? 'bg-zinc-800 text-white rounded-tr-sm'
                   : 'bg-white border border-zinc-200 text-zinc-800 rounded-tl-sm shadow-sm'}`}>
@@ -654,7 +713,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                     ))
                   : (
                     <>
-                      <AdvisorMarkdown content={msg.content} />
+                      <CopyButton text={msg.content} isPt={isPt} />
+                      <AdvisorMarkdown content={msg.content} citations={msg.citations} />
                       <AdvisorFeedback
                         question={messages[i - 1]?.role === 'user' ? messages[i - 1].content : ''}
                         answer={msg.content}

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
+import { stripEmDash } from '@/lib/strip-markdown'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import {
   getUserPlan,
@@ -249,6 +250,8 @@ function languageInstruction(lang: Lang): string {
 // Grounding, links, NEXT em camadas, sem lacunas falsas, sem travessao: inalterados.
 const RULES_BLOCK = `You are the TAIME Executive Advisor, a senior strategic technology intelligence consultant with access to the client's organizational context and to TAIME's published intelligence reports.
 
+OUTPUT CHARACTER RULE (absolute, checked on every reply): NEVER use the em dash character (the "—" character, U+2014) anywhere in your response. Not to join clauses, not as a parenthetical, not in lists, not in tables, not in titles. Every place you might reach for an em dash, use a comma, a colon, parentheses, or a period instead. A single "—" in the output is a defect. This overrides any stylistic habit; it is not optional and has no exception.
+
 GROUNDING RULES (non-negotiable):
 
 1. NATURE OF CLAIMS. Separate two kinds of statements:
@@ -488,6 +491,58 @@ async function extractContext(message: string): Promise<ExtractedContext> {
     return out
   } catch {
     return {}
+  }
+}
+
+// Titulo de fallback melhorado: primeira pergunta aparada em fronteira de palavra.
+// Usado imediatamente na criacao da sessao; o titulo Haiku o substitui depois.
+function fallbackTitle(q: string): string {
+  const clean = q.replace(/\s+/g, ' ').trim()
+  if (clean.length <= 60) return clean
+  const cut = clean.slice(0, 60)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > 30 ? cut.slice(0, lastSpace) : cut).trim() + '…'
+}
+
+// Auto-titulo da conversa (uma chamada Haiku, apos a 1a resposta completa). Gera
+// 4-6 palavras no idioma da conversa a partir da pergunta + resposta. Best-effort:
+// qualquer falha devolve null e o titulo de fallback e mantido.
+async function generateSessionTitle(
+  firstQuestion: string,
+  firstAnswer: string,
+  lang: Lang,
+  userId: string,
+  sessionId: string,
+): Promise<string | null> {
+  const langName = lang === 'pt' ? 'Portuguese (pt-BR)' : 'English'
+  const sys = `You write a concise title for a strategic advisory conversation. Output ONLY the title, nothing else: 4 to 6 words, written in ${langName}, no surrounding quotes, no trailing punctuation, no markdown. Capture the concrete subject: the theme and, when present, the time span or the decision at stake. Example of the desired style: "Evolução de cybersecurity 2016-2026". NEVER use the em dash character (U+2014); use a hyphen or the word "a" for ranges.`
+  const t0 = Date.now()
+  try {
+    const res = await fetch(ANTHROPIC_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      ROUTER_MODEL,
+        max_tokens: 32,
+        system:     [{ type: 'text', text: sys }],
+        messages:   [{ role: 'user', content: `First question:\n${firstQuestion}\n\nAdvisor answer (excerpt):\n${firstAnswer.slice(0, 800)}` }],
+      }),
+    })
+    const data = res.ok
+      ? (await res.json()) as { content?: Array<{ type: string; text: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+      : null
+    logLlmCall({ caller: 'advisor', model: ROUTER_MODEL, ...usageTokens(data?.usage ?? null), latency_ms: Date.now() - t0, success: res.ok, error_code: res.ok ? null : 'api_error', user_id: userId, meta: { step: 'title', session_id: sessionId } })
+    if (!data) return null
+    let title = (data.content?.find(b => b.type === 'text')?.text ?? '').trim()
+    title = stripEmDash(title).replace(/^["'“”]+|["'“”]+$/g, '').replace(/\s+/g, ' ').replace(/[.\s]+$/, '').trim()
+    return title ? title.slice(0, 80) : null
+  } catch {
+    logLlmCall({ caller: 'advisor', model: ROUTER_MODEL, ...usageTokens(null), latency_ms: Date.now() - t0, success: false, error_code: 'exception', user_id: userId, meta: { step: 'title', session_id: sessionId } })
+    return null
   }
 }
 
@@ -1215,6 +1270,8 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   let routerUsage:           Usage | null = null
   let reportIdsUsed:         string[]     = []
   let trendIdsUsed:          string[]     = []
+  // Mapa de citacao p/ tooltip dos chips no cliente: "reportId#trend-rank" -> titulo.
+  const citations:          Record<string, string> = {}
   let similarities:          number[]     = []
   let vectorError:           string | null = null
   let routerSelection:       'router' | 'fallback' | null = null
@@ -1414,6 +1471,11 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
       }
     } catch { /* segue sem titulos/tnn */ }
     contextBlock = buildTrendContextBlock(selected, lang, titleById, tnnById)
+    // Mapa de citacao (chave = sufixo da ancora do link) para o tooltip dos chips.
+    for (const c of selected) {
+      const ttl = titleById.get(c.trend_id)
+      if (ttl) citations[`${c.report_id}#trend-${c.rank}`] = ttl
+    }
   } else if (periodIntent && emb.ok) {
     // ── Periodo explicito sem conteudo (v4.6) ─────────────────────────────
     // O usuario citou um periodo, a busca vetorial naquele intervalo voltou
@@ -1616,6 +1678,11 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // ── Rede de seguranca anti-travessao (regra editorial inviolavel): o prompt e a
+  //    defesa primaria; aqui garantimos que nenhum travessao (—) chega ao cliente
+  //    nem ao historico, mesmo num deslize do modelo.
+  reply = stripEmDash(reply)
+
   // ── Persist both messages to advisory_memory ──────────────────────────────
   // v4.2: created_at explícito e sequencial. Sem isso, PostgreSQL avalia now()
   // uma vez por transação e os dois rows ficam com timestamp idêntico, deixando
@@ -1642,6 +1709,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     memory_summaries_used: memorySummaries.map(s => s.session_id),
     attribution_flag:     attributionFlag,
     grounding_violations: groundingViolations,
+    citations,
     truncated,
     language:             lang,
     usage:                mainUsage,
@@ -1703,7 +1771,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   // demais. Migracao ausente (42883/42P01) e tolerada; qualquer OUTRO erro e
   // logado com detalhe, nunca silenciado.
   const isNewSession = history.length === 0
-  const title        = isNewSession ? userMessage.slice(0, 80) : null
+  // Titulo inicial = fallback melhorado (pergunta aparada em fronteira de palavra).
+  // Em sessao nova, o auto-titulo Haiku o substitui logo apos a resposta (after()).
+  const title        = isNewSession ? fallbackTitle(userMessage) : null
   try {
     const { error: sessionErr } = await service.rpc('advisor_session_upsert', {
       p_session_id: sessionId,
@@ -1723,6 +1793,28 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     console.error('[advisor-persist] advisor_session_upsert EXCEPTION:', e)
   }
 
+  // ── Auto-titulo da conversa (fire-and-forget, apos a resposta) ─────────────
+  //    Apenas na 1a resposta (sessao nova). Uma chamada Haiku gera 4-6 palavras no
+  //    idioma da conversa e substitui o titulo de fallback. Roda em after() para
+  //    NAO atrasar a resposta; se falhar, o fallback permanece.
+  if (isNewSession && historySaved) {
+    const qForTitle = userMessage
+    const aForTitle = reply
+    const langForTitle = lang
+    after(async () => {
+      const generated = await generateSessionTitle(qForTitle, aForTitle, langForTitle, user.id, sessionId)
+      if (!generated) return
+      const { error: titleErr } = await service
+        .from('advisor_sessions')
+        .update({ title: generated })
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+      if (titleErr && titleErr.code !== '42883' && titleErr.code !== '42P01') {
+        console.error('[advisor-title] update FAILED:', { code: titleErr.code, message: titleErr.message, session_id: sessionId })
+      }
+    })
+  }
+
   // ── Passo OPCIONAL (best-effort) DEPOIS da persistencia critica: captacao
   //    passiva de contexto do perfil (idempotente). Totalmente isolado, nunca
   //    quebra a resposta nem a persistencia acima, mesmo se a API/rede falhar.
@@ -1735,5 +1827,5 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
 
   // Responde com a cota e history_saved (false = a conversa NAO pode ser gravada;
   // a UI avisa o usuario). Strategic vem com limit null (sem contador).
-  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved })
+  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations })
 }
