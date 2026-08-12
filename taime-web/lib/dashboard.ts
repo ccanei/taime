@@ -53,6 +53,14 @@ export interface DashboardData {
   categories:   string[]                          // distintas, por frequencia
 }
 
+// "O arquivo em numeros" (rail): derivado da agregacao ja existente, sem fetch novo.
+export interface ArchiveStats {
+  totalEditions: number
+  totalTrends:   number
+  spanStartYear: string
+  spark:         number[]  // score medio por periodo, cronologico, ultimos ~24
+}
+
 function trendMetaOf(r: Report): TrendMeta[] {
   return (r.report_trends ?? []) as unknown as TrendMeta[]
 }

@@ -5,7 +5,7 @@ import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-serv
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import { getTranslations } from '@/lib/i18n'
 import { scoreColor, scoreRing, type Report } from '@/lib/types'
-import { buildEditions, CURATED_THEME_SLUGS } from '@/lib/dashboard'
+import { buildEditions, CURATED_THEME_SLUGS, type ArchiveStats } from '@/lib/dashboard'
 import { stripMarkdown, truncateWords } from '@/lib/strip-markdown'
 import LogoutButton from '@/components/LogoutButton'
 import LanguageSelector from '@/components/LanguageSelector'
@@ -102,11 +102,105 @@ export default async function DashboardPage() {
     ? truncateWords(stripMarkdown(advisorStatus.lastMessage), 130)
     : null
 
+  // "O arquivo em numeros" (rail): derivado da agregacao ja existente, sem fetch novo.
+  const stats: ArchiveStats = {
+    totalEditions: editions.length,
+    totalTrends:   editions.reduce((s, e) => s + e.totalTrends, 0),
+    spanStartYear: editions.length ? editions[editions.length - 1].period.slice(0, 4) : '',
+    spark:         editions.slice(0, 24).reverse().map(e => e.avgScore),
+  }
+
+  // ── Herói editorial (coluna principal) ──────────────────────────────
+  const heroNode = hero && (
+    <section className="rounded-2xl border border-taime-200 bg-gradient-to-br from-taime-50 to-white ring-1 ring-taime-100 overflow-hidden">
+      <div className="p-6 sm:p-8">
+        <p className="text-[11px] font-bold tracking-[0.15em] text-taime-700 uppercase">
+          {isEn ? 'Current edition' : 'Edição atual'} <span className="text-taime-300">·</span> {hero.periodLabel}
+        </p>
+        {hero.summary && (
+          <p className="mt-3 text-[15px] leading-relaxed text-zinc-600 max-w-2xl line-clamp-2"
+             style={{ fontFamily: 'Georgia, serif' }}>
+            {hero.summary}
+          </p>
+        )}
+        <div className="mt-5 space-y-2">
+          {hero.parts.map(p => (
+            <Link key={p.id} href={`/reports/${p.id}`}
+              className="group flex items-center gap-4 rounded-xl bg-white/70 hover:bg-white border border-zinc-200/80 hover:border-taime-200 px-4 py-3 transition-all">
+              <span className="text-[10px] font-bold text-taime-600 tabular-nums uppercase tracking-wide shrink-0 w-14">
+                {isEn ? `Part ${p.number}` : `Parte ${p.number}`}
+              </span>
+              <span className="flex-1 min-w-0 text-sm font-semibold text-zinc-900 group-hover:text-taime-600 transition-colors line-clamp-1">
+                {p.title}
+              </span>
+              <span className="text-[11px] text-zinc-400 shrink-0 hidden sm:block">{p.nTrends} trends</span>
+              <div className={`shrink-0 w-9 h-9 rounded-lg ring-2 ${scoreRing(p.score)} flex items-center justify-center`}>
+                <span className={`text-sm font-bold tabular-nums ${scoreColor(p.score)}`}>{p.score}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+        <div className="mt-5">
+          <Link href={`/reports/${hero.parts[0]?.id ?? ''}`} className="btn-primary text-sm px-5 py-2.5 inline-flex">
+            {isEn ? 'Read the edition →' : 'Ler a edição →'}
+          </Link>
+        </div>
+      </div>
+    </section>
+  )
+
+  // ── Advisor compacto (rail no desktop, topo no mobile) ──────────────
+  const advisorNode = (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-8 h-8 rounded-lg bg-taime-50 ring-1 ring-taime-100 flex items-center justify-center shrink-0">
+          <span className="text-sm">🧠</span>
+        </div>
+        <h2 className="text-sm font-bold text-zinc-900">Executive Advisor</h2>
+        {advisorUnlocked && showNewBadge && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-taime-600 text-white tracking-wide">{isEn ? 'NEW' : 'NOVO'}</span>
+        )}
+        {!advisorUnlocked && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-zinc-100 text-zinc-500 tracking-wide">{isEn ? 'SOON' : 'EM BREVE'}</span>
+        )}
+      </div>
+      <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3 mb-3">
+        {advisorUnlocked && advisorStatus.hasProfile
+          ? (advisorSnippet ?? (isEn ? 'Advisor configured. Start a conversation.' : 'Advisor configurado. Inicie uma conversa.'))
+          : (isEn
+              ? 'Strategic advisor with strategic memory across the TAIME archive and personalized context for your company.'
+              : 'Consultor estratégico com memória estratégica do arquivo TAIME e contexto personalizado para a sua empresa.')}
+      </p>
+      {advisorUnlocked ? (
+        <Link href="/dashboard/advisor" className="btn-primary text-xs w-full justify-center inline-flex px-3 py-2">
+          {advisorStatus.hasProfile
+            ? (isEn ? 'Continue conversation →' : 'Continuar conversa →')
+            : (isEn ? 'Set up your Advisor →' : 'Configurar seu Advisor →')}
+        </Link>
+      ) : (
+        <Link href="/planos" className="text-xs font-medium text-taime-600 hover:text-taime-800 inline-flex">
+          {isEn ? 'Essential and Strategic plans →' : 'Planos Essential e Strategic →'}
+        </Link>
+      )}
+    </div>
+  )
+
+  const continueNode = (continueReport && continueRow) ? (
+    <ContinueReadingCard
+      reportId={continueReport.id}
+      titlePt={continueReport.title_pt_br}
+      titleEn={continueReport.title_en}
+      periodLabel={continueReport.period_label ?? null}
+      scrollPct={continueRow.scroll_pct}
+      locale={locale}
+    />
+  ) : null
+
   return (
     <div className="min-h-screen bg-zinc-50">
       {/* Header */}
       <header className="bg-white border-b border-zinc-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/" className="font-bold text-xl tracking-tight text-zinc-900">TAIME</Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-zinc-400 hidden sm:block">{user.email}</span>
@@ -119,108 +213,7 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-10 space-y-10">
-
-        {/* ── Faixa do Advisor (discreta, integrada) ─────────────────── */}
-        <div className="rounded-xl border border-zinc-200 bg-white px-5 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-lg bg-taime-50 ring-1 ring-taime-100 flex items-center justify-center shrink-0">
-                <span className="text-base">🧠</span>
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-zinc-900">Executive Advisor</h2>
-                  {advisorUnlocked && showNewBadge && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-taime-600 text-white tracking-wide">{isEn ? 'NEW' : 'NOVO'}</span>
-                  )}
-                  {!advisorUnlocked && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-zinc-100 text-zinc-500 tracking-wide">{isEn ? 'SOON' : 'EM BREVE'}</span>
-                  )}
-                </div>
-                {advisorUnlocked && advisorStatus.hasProfile ? (
-                  <p className="text-xs text-zinc-500 leading-relaxed line-clamp-1 mt-0.5">
-                    {advisorSnippet
-                      ? advisorSnippet
-                      : (isEn ? 'Advisor configured. Start a conversation.' : 'Advisor configurado. Inicie uma conversa.')}
-                  </p>
-                ) : (
-                  <p className="text-xs text-zinc-400 leading-relaxed mt-0.5 max-w-md">
-                    {isEn
-                      ? 'Strategic advisor with strategic memory across the TAIME archive and personalized context for your company.'
-                      : 'Consultor estratégico com memória estratégica do arquivo TAIME e contexto personalizado para a sua empresa.'}
-                  </p>
-                )}
-              </div>
-            </div>
-            {advisorUnlocked ? (
-              <Link href="/dashboard/advisor" className="btn-primary text-sm px-4 py-2 shrink-0 whitespace-nowrap">
-                {advisorStatus.hasProfile
-                  ? (isEn ? 'Continue conversation →' : 'Continuar conversa →')
-                  : (isEn ? 'Set up your Advisor →' : 'Configurar seu Advisor →')}
-              </Link>
-            ) : (
-              <Link href="/planos" className="text-sm font-medium text-zinc-500 hover:text-taime-700 transition-colors shrink-0 px-4 py-2 whitespace-nowrap">
-                {isEn ? 'Essential and Strategic plans →' : 'Planos Essential e Strategic →'}
-              </Link>
-            )}
-          </div>
-        </div>
-
-        {/* ── Continuar lendo ────────────────────────────────────────── */}
-        {continueReport && continueRow && (
-          <ContinueReadingCard
-            reportId={continueReport.id}
-            titlePt={continueReport.title_pt_br}
-            titleEn={continueReport.title_en}
-            periodLabel={continueReport.period_label ?? null}
-            scrollPct={continueRow.scroll_pct}
-            locale={locale}
-          />
-        )}
-
-        {/* ── EDIÇÃO ATUAL (herói editorial) ─────────────────────────── */}
-        {hero && (
-          <section className="rounded-2xl border border-taime-200 bg-gradient-to-br from-taime-50 to-white ring-1 ring-taime-100 overflow-hidden">
-            <div className="p-6 sm:p-8">
-              <p className="text-[11px] font-bold tracking-[0.15em] text-taime-700 uppercase">
-                {isEn ? 'Current edition' : 'Edição atual'} <span className="text-taime-300">·</span> {hero.periodLabel}
-              </p>
-              {hero.summary && (
-                <p className="mt-3 text-[15px] leading-relaxed text-zinc-600 max-w-2xl line-clamp-2"
-                   style={{ fontFamily: 'Georgia, serif' }}>
-                  {hero.summary}
-                </p>
-              )}
-              <div className="mt-5 space-y-2">
-                {hero.parts.map(p => (
-                  <Link key={p.id} href={`/reports/${p.id}`}
-                    className="group flex items-center gap-4 rounded-xl bg-white/70 hover:bg-white border border-zinc-200/80 hover:border-taime-200 px-4 py-3 transition-all">
-                    <span className="text-[10px] font-bold text-taime-600 tabular-nums uppercase tracking-wide shrink-0 w-14">
-                      {isEn ? `Part ${p.number}` : `Parte ${p.number}`}
-                    </span>
-                    <span className="flex-1 min-w-0 text-sm font-semibold text-zinc-900 group-hover:text-taime-600 transition-colors line-clamp-1">
-                      {p.title}
-                    </span>
-                    <span className="text-[11px] text-zinc-400 shrink-0 hidden sm:block">
-                      {isEn ? `${p.nTrends} trends` : `${p.nTrends} trends`}
-                    </span>
-                    <div className={`shrink-0 w-9 h-9 rounded-lg ring-2 ${scoreRing(p.score)} flex items-center justify-center`}>
-                      <span className={`text-sm font-bold tabular-nums ${scoreColor(p.score)}`}>{p.score}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-              <div className="mt-5">
-                <Link href={`/reports/${hero.parts[0]?.id ?? ''}`} className="btn-primary text-sm px-5 py-2.5 inline-flex">
-                  {isEn ? 'Read the edition →' : 'Ler a edição →'}
-                </Link>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ── Trajetórias + Filtros + Arquivo por edição ─────────────── */}
+      <main className="max-w-6xl mx-auto px-6 py-10">
         {editions.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
             <p className="text-zinc-400">{isEn ? 'No published reports yet.' : 'Nenhum relatório publicado ainda.'}</p>
@@ -233,9 +226,12 @@ export default async function DashboardPage() {
             themes={trajectory}
             newSincePeriods={newSincePeriods}
             locale={locale}
+            stats={stats}
+            heroNode={heroNode}
+            advisorNode={advisorNode}
+            continueNode={continueNode}
           />
         )}
-
       </main>
 
       <FeedbackWidget />
