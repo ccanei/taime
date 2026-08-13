@@ -35,8 +35,9 @@ interface AdvisorProfile {
 }
 
 interface MemoryRow {
-  role:    string
-  content: string
+  role:              string
+  content:           string
+  context_metadata?: { opening?: boolean } | null
 }
 
 // Resumo de uma sessao anterior do MESMO usuario (memoria de cliente).
@@ -1249,7 +1250,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   // ao modelo na ordem cronológica natural.
   const { data: historyData } = await service
     .from('advisory_memory')
-    .select('role, content, created_at, id')
+    .select('role, content, created_at, id, context_metadata')
     .eq('user_id', user.id)
     .eq('session_id', sessionId)
     .order('created_at', { ascending: false })
@@ -1257,6 +1258,14 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     .limit(20)
 
   const history = ((historyData ?? []) as MemoryRow[]).slice().reverse()
+
+  // A abertura proativa (context_metadata.opening=true) e uma mensagem do assistant
+  // gravada ANTES de qualquer turno do usuario. Separa-la: ela vai para o SYSTEM
+  // (para o Advisor reconhecer o que disse e poder ser questionado sobre a fonte),
+  // NUNCA para o array de mensagens da API (senao o 1o turno comecaria com assistant,
+  // ou criaria roles consecutivos). O dialogo real segue user/assistant alternado.
+  const openingRow      = history.find(m => m.context_metadata?.opening === true) ?? null
+  const dialogueHistory = history.filter(m => m.context_metadata?.opening !== true)
 
   // ── Memoria de cliente (Fase 2): resumo da ultima sessao fechada ──────────
   // Sempre injetado quando existe. Estritamente por user_id (nunca cruza
@@ -1582,10 +1591,19 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   if (periodEmptyNotice) {
     system.push({ type: 'text', text: buildPeriodEmptyBlock(periodEmptyNotice.from, periodEmptyNotice.to, periodEmptyNotice.nearest) })
   }
+  // Abertura proativa: se esta sessao comecou com uma saudacao tua (persistida), ela
+  // entra aqui para que voce RECONHECA o que disse e possa ser questionado sobre a
+  // fonte. Fora do array de mensagens (senao o 1o turno comecaria com assistant).
+  if (openingRow) {
+    system.push({
+      type: 'text',
+      text: `YOUR PROACTIVE OPENING FOR THIS CONVERSATION (you already sent this greeting to the client to break the blank screen; it is the first thing in this chat, above the client's first message):\n"""\n${openingRow.content}\n"""\nYou OWN this opening: never deny having said it. If the client asks where a figure or claim in it comes from, point to the report you linked inside it (the markdown link is the source) and offer to go deeper. If the opening carried no figure, say it was a qualitative framing and offer to pull the specific report. Do not repeat the opening verbatim; build forward from it.`,
+    })
+  }
   system.push({ type: 'text', text: languageInstruction(lang) }) // dinâmico, fora do cache
 
   const conversationMessages = [
-    ...history.map(m => ({
+    ...dialogueHistory.map(m => ({
       role:    m.role as 'user' | 'assistant',
       content: m.content,
     })),
@@ -1776,7 +1794,10 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   // titulo derivado da pergunta, incrementa message_count/last_activity nas
   // demais. Migracao ausente (42883/42P01) e tolerada; qualquer OUTRO erro e
   // logado com detalhe, nunca silenciado.
-  const isNewSession = history.length === 0
+  // Sessao "nova" para efeito de titulo = sem nenhum turno real do usuario ainda.
+  // A abertura proativa persistida nao conta como turno (senao o auto-titulo nao
+  // dispararia na 1a mensagem de verdade).
+  const isNewSession = dialogueHistory.length === 0
   // Titulo inicial = fallback melhorado (pergunta aparada em fronteira de palavra).
   // Em sessao nova, o auto-titulo Haiku o substitui logo apos a resposta (after()).
   const title        = isNewSession ? fallbackTitle(userMessage) : null

@@ -187,6 +187,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   // quando a aba volta a ficar visivel, o fetch morreu -> recupera do server.
   const pendingSidRef     = useRef<string | null>(null)
   const recoveringRef     = useRef(false)
+  // Espelha o sessionId atual para leitura fora do ciclo de render (ex: fetchOpening,
+  // que e useCallback com deps [isPt] e capturaria um sessionId defasado).
+  const sessionIdRef      = useRef<string>('')
+  useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -252,11 +256,15 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const fetchOpening = useCallback(async () => {
     if (openingFetchedRef.current) return
     openingFetchedRef.current = true
+    // Garante um sessionId estavel ANTES de gerar: a abertura e persistida sob ele
+    // e o primeiro envio real reusa o mesmo id (handleSend faz sessionId || novo).
+    let sid = sessionIdRef.current
+    if (!sid) { sid = generateSessionId(); sessionIdRef.current = sid; setSessionId(sid) }
     try {
       const res = await fetch('/api/advisor/opening', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ lang: isPt ? 'pt' : 'en' }),
+        body:    JSON.stringify({ lang: isPt ? 'pt' : 'en', sessionId: sid }),
       })
       if (!res.ok) return
       const json = await res.json() as { opening?: string; chips?: string[] }
@@ -400,7 +408,14 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
       created_at: new Date().toISOString(),
     }
 
-    setMessages(prev => [...prev, userMsg])
+    // Se a conversa comeca com a abertura proativa, ela vira a PRIMEIRA mensagem do
+    // transcript (o servidor ja a persistiu como assistant), para permanecer visivel
+    // depois do 1o envio, nao so no bloco pre-envio. Na recarga, vem do advisory_memory.
+    const openingSeed: Message[] = (messages.length === 0 && !hasHistory && opening)
+      ? [{ id: crypto.randomUUID(), role: 'assistant', content: opening.text, created_at: new Date(Date.now() - 1000).toISOString() }]
+      : []
+
+    setMessages(prev => [...prev, ...openingSeed, userMsg])
     setInput('')
     setLoading(true)
     setHistoryWarn(false)

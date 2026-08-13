@@ -57,6 +57,8 @@ interface ReportRow {
 
 // Trend achatada e pronta para o grounding.
 interface FlatTrend {
+  report_id: string
+  rank:      number
   period:   string
   label:    string   // period_label || period
   title_en: string
@@ -103,12 +105,26 @@ function stripEmDash(s: string): string {
   return s.replace(/\s*[—–]\s*/g, ', ')
 }
 
+// Rotulo curto de citacao (mmm/aaaa em pt, Mmm aaaa em en), igual ao estilo do
+// chat, para o texto do link markdown.
+const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function citeLabel(period: string, lang: Lang): string {
+  const m = Number.parseInt(period.slice(5, 7), 10) - 1
+  const y = period.slice(0, 4)
+  const mm = lang === 'pt' ? MONTHS_PT[m] : MONTHS_EN[m]
+  return lang === 'pt' ? `${mm}/${y}` : `${mm} ${y}`
+}
+
+// Contexto de trends COM link de citacao pronto (CITE_AS), no mesmo padrao do
+// chat: [mmm/aaaa](/reports/ID#trend-rank). O modelo copia essa string ao citar.
 function buildTrendContext(trends: FlatTrend[], lang: Lang): string {
   return trends.map((t, i) => {
-    const title = lang === 'pt' ? (t.title_pt || t.title_en) : (t.title_en || t.title_pt)
-    const now   = lang === 'pt' ? (t.now_pt || t.now_en) : (t.now_en || t.now_pt)
-    const cat   = t.category ? ` | category: ${t.category}` : ''
-    return `[${i + 1}] period: ${t.label} | score: ${t.score}/100${cat}\n    title: ${title}${now ? `\n    now: ${now}` : ''}`
+    const title  = lang === 'pt' ? (t.title_pt || t.title_en) : (t.title_en || t.title_pt)
+    const now    = lang === 'pt' ? (t.now_pt || t.now_en) : (t.now_en || t.now_pt)
+    const cat    = t.category ? ` | category: ${t.category}` : ''
+    const citeAs = `[${citeLabel(t.period, lang)}](/reports/${t.report_id}#trend-${t.rank})`
+    return `[${i + 1}] period: ${t.label} | score: ${t.score}/100${cat}\n    title: ${title}${now ? `\n    now: ${now}` : ''}\n    CITE_AS: ${citeAs}`
   }).join('\n')
 }
 
@@ -137,14 +153,19 @@ OPENING (40 to 70 words):
 - Greet briefly and connect to the client's interest. If a role is provided, you may anchor to it ("as a [role]..."). If no role is provided, use only the interest. NEVER invent a role, company or sector that is not in the CLIENT block.
 - Anchor the suggestion in ONE concrete, provocative theme taken from the REAL trends provided. Name the theme naturally and tie it to what the client likely faces ("the recent signals on [interest] point to [real theme]; does that connect with what you are dealing with?").
 - Partner tone: confident, concise, a peer who makes the client think. Invite them to reveal their context conversationally, never as a form. End with one light question.
-- GROUNDING: the theme MUST come from the provided trends. Never invent a trend, a score, a company or a datum. Do not cite scores or periods explicitly; just use the theme substance.
+
+GROUNDING AND CITATION (this is the same standard as every TAIME answer, no exception):
+- Any QUANTITATIVE claim you make (a percentage, a count, a figure, "most companies", "less than X%") MUST appear VERBATIM in the material of one of the provided trends (its title or its "now" text). If you state such a figure, you MUST attach that trend's markdown link immediately after it: copy its CITE_AS string EXACTLY as given (it already has the shape [mmm/yyyy](/reports/ID#trend-rank)).
+- If the provided trends contain NO citable figure that fits, write the opening QUALITATIVELY, with no numbers at all. A qualitative, linked-or-unlinked opening is always better than an invented statistic.
+- It is STRICTLY FORBIDDEN to use a number, percentage or market statistic from your own general knowledge. If it is not in the provided trend material, it does not exist for this opening.
+- Do NOT cite TAIME Scores and do NOT invent a company, a period or a datum. Only the CITE_AS links provided may be used; never construct or guess a URL.
 
 CHIPS (3 to 4 items, 2 to 5 words each):
-- Short, clickable topic starters derived from the provided trends, phrased as things the client might ask. Concrete, not generic. Each must trace back to a provided trend.
+- Short, clickable topic starters derived from the provided trends, phrased as things the client might ask. Concrete, not generic. Each must trace back to a provided trend. Chips carry NO numbers and NO links, only plain short text.
 
 HARD RULES:
 - Write everything in the requested LANGUAGE.
-- No em dash anywhere. No markdown headings. Plain prose for the opening.
+- No em dash anywhere. No markdown headings. Plain prose for the opening (a single markdown link on a cited figure is allowed and required when you cite a number).
 - Use ONLY the provided trends. If some detail is not there, do not invent it.`
 
 async function generateOpening(
@@ -217,9 +238,11 @@ export async function POST(req: NextRequest) {
   }
 
   let lang: Lang = 'pt'
+  let sessionId = ''
   try {
-    const body = await req.json() as { lang?: string }
+    const body = await req.json() as { lang?: string; sessionId?: string }
     lang = pickLang(body?.lang ?? null)
+    sessionId = typeof body?.sessionId === 'string' ? body.sessionId.trim() : ''
   } catch { /* body opcional; default pt */ }
 
   const service = createSupabaseService()
@@ -282,6 +305,8 @@ export async function POST(req: NextRequest) {
         if (!titleKey || seen.has(titleKey)) continue
         seen.add(titleKey)
         out.push({
+          report_id: r.id,
+          rank:      typeof t.rank === 'number' ? t.rank : 1,
           period:   r.period,
           label:    r.period_label?.trim() || r.period,
           title_en: t.title_en ?? '',
@@ -311,11 +336,41 @@ export async function POST(req: NextRequest) {
   }
   if (!result) result = neutralOpening(lang)
 
-  // NÃO persiste nada. Iniciativa do Advisor, fora da cota de mensagens.
+  // ── Persiste a abertura como mensagem do assistant da sessao ──────────────
+  // Iniciativa do Advisor: grava em advisory_memory (para aparecer no historico,
+  // entrar no contexto dos turnos seguintes e poder ser questionada), mas NAO
+  // toca no contador de cota (checkAndConsumeMessage vive so no /chat) nem no
+  // advisor_sessions (a sessao so aparece na sidebar quando ha 1a mensagem real).
+  // Marcada com context_metadata.opening=true: o /chat a injeta no system e a tira
+  // do array de mensagens da API (senao violaria "primeiro turno = user"). Idempotente:
+  // remove aberturas anteriores da mesma sessao antes de inserir (troca de idioma / refetch).
+  let persisted = false
+  if (sessionId) {
+    try {
+      await service.from('advisory_memory')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+        .contains('context_metadata', { opening: true })
+      const { error: insErr } = await service.from('advisory_memory').insert({
+        user_id:          user.id,
+        session_id:       sessionId,
+        role:             'assistant',
+        content:          result.opening,
+        context_metadata: { opening: true, lang, grounded, chips: result.chips },
+      })
+      if (insErr) console.error('[advisor-opening] persist falhou:', insErr.code, insErr.message)
+      else persisted = true
+    } catch (e) {
+      console.error('[advisor-opening] persist excecao (ignorada):', e)
+    }
+  }
+
   return NextResponse.json({
     opening:  result.opening,
     chips:    result.chips,
     grounded,
+    persisted,
     interest,
   })
 }
