@@ -212,7 +212,19 @@ function distinctYears(text: string): number[] {
   return [...new Set(hits)].map(Number).sort()
 }
 const hasReportLink = (t: string) => /\[[^\]]+\]\(\/reports\/[^)]+#trend-\d+\)/.test(t)
-const BENCHMARK_RE = /empresas como a (sua|tua)|companies like yours|m[eé]dia (de|do) mercado|market average|benchmark|ROI m[eé]dio|payback|industry average/i
+// Benchmark de mercado = ATRIBUIR uma economia/ROI/percentual a terceiros (outras
+// empresas, mercado, setor). Detecta a AFIRMACAO com numero, nao a palavra solta:
+// o Advisor correto DIZ "com os seus numeros, nao um benchmark", e essa negacao
+// nunca pode reprovar o caso. So conta quando ha uma cifra atribuida a terceiros.
+const BENCHMARK_CLAIM_RES = [
+  /empresas?\s+(como|iguais|do (seu|teu) (setor|porte))[^.]{0,60}\d+\s*%/i,
+  /companies like (yours|you)[^.]{0,60}\d+\s*%/i,
+  /m[eé]dia\s+(de|do)?\s*(mercado|setor|ind[uú]stria)[^.]{0,30}\d/i,
+  /(market|industry)\s+average[^.]{0,30}\d/i,
+  /ROI\s+m[eé]dio[^.]{0,30}\d/i,
+  /payback\s+(t[ií]pico|m[eé]dio|medio|de mercado|average|typical)[^.]{0,20}\d/i,
+]
+const providesMarketBenchmark = (t: string) => BENCHMARK_CLAIM_RES.some(re => re.test(t))
 const hasCalc = (t: string) => /\d[\d.,]*\s*[x×*]\s*\d/.test(t) || /R\$\s*\d[\d.,]{2,}/.test(t)
 const hasScenario = (t: string) => /cen[aá]rios?\b/i.test(t) || /\bscenarios?\b/i.test(t)
 
@@ -283,7 +295,7 @@ const CASES: Canon[] = [
       { desc: 'sem erro (HTTP 200, reply presente)',              pass: httpOk(r) },
       { desc: 'contem calculo (multiplicacao ou valor R$)',       pass: hasCalc(r.reply) },
       { desc: 'contem a palavra cenario/cenarios',                pass: hasScenario(r.reply) },
-      { desc: 'sem benchmark de mercado',                         pass: !BENCHMARK_RE.test(r.reply) },
+      { desc: 'sem benchmark de mercado (cifra atribuida a terceiros)', pass: !providesMarketBenchmark(r.reply) },
     ],
   },
 ]
