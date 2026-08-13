@@ -23,12 +23,14 @@ const ADVISOR_MODEL = 'claude-sonnet-5'
 const ROUTER_MODEL  = 'claude-haiku-4-5'
 
 // Limites
-const ANON_QUESTION_LIMIT = 3       // por visitante (cookie assinado, persistente 1 ano)
+const ANON_QUESTION_LIMIT = 3       // perguntas de TECNOLOGIA por visitante (cookie assinado)
+const META_QUESTION_LIMIT = 5       // perguntas META (sobre a propria plataforma), cota separada
 const IP_HOURLY_CAP        = 8       // por ip_hash, janela deslizante de 1h (anti-rajada)
 const IP_MONTHLY_CAP       = 12      // por ip_hash, janela de 30 dias (teto acumulado).
                                      // Alto de proposito: CGNAT das operadoras moveis BR
                                      // poe muitos usuarios legitimos atras do mesmo IP.
-const COOKIE_NAME          = 'taime_ask'
+const COOKIE_NAME          = 'taime_ask'        // contador de perguntas de tecnologia
+const COOKIE_NAME_META     = 'taime_ask_meta'   // contador de perguntas meta (mesmo padrao)
 const VECTOR_MATCH_COUNT   = 16
 // v4.8: trajetoria puxa um pool maior antes da selecao temporal (mesma logica do
 // Advisor logado).
@@ -107,6 +109,60 @@ You draw on a recent window of the archive. Some turns include a PRE-WINDOW THEM
 - This note stays fully inside SOURCE PROTECTION: name only the generic theme and the start year, never a report, period, trend name, title, score, or any content. NEVER more than one note. NEVER on tactical questions with no temporal dimension. When the block is absent, never imply hidden depth.
 
 NEVER say "As an AI" or "I cannot". You are an advisor with context and opinions.`
+
+// Bloco META_TAIME: fatos sobre a propria plataforma que o Advisor pode usar ao
+// responder perguntas sobre o TAIME (roteadas pelo classificador). Acrescentado ao
+// prompt existente (nao substitui). Sem travessao, sem valores monetarios, sem citar
+// casas de pesquisa. Escrito em ingles (instrucao de modelo); o idioma da RESPOSTA e
+// definido por languageInstruction, entao o Advisor traduz os fatos conforme a pergunta.
+const META_TAIME_BLOCK = `META_TAIME (use ONLY to answer questions about the TAIME platform itself; a classifier has already routed this question here):
+TAIME is a strategic technology intelligence platform that turns global signals into structured executive reports in the THEN/NOW/NEXT framework, with a five dimension TAIME Score and a historical archive that keeps temporal continuity.
+The Executive Advisor is a chat that reasons over that archive with the posture of a strategic peer.
+Free plan: immediate sign up, two full reports per month, one year of history, ten Advisor test messages with the same depth as the paid plan.
+Essential plan: a thirty six month archive with a preview of the rest, and an Advisor with one hundred messages per thirty day period; available at no charge for a limited time as a launch condition.
+Strategic plan: the full archive and an expanded Advisor; coming soon, through a waiting list.
+On this page a visitor can ask three technology questions without signing up.
+
+HOW TO ANSWER META QUESTIONS: respond about the platform directly and briefly, in the same strategic peer voice, with no FAQ tone and no aggressive selling. When it fits, close by suggesting the visitor try a real technology question or create the Free account. NEVER mention any monetary value or price. NEVER name a research or consulting firm. Do not promise features that are not listed above.`
+
+// Classificador de intencao (Haiku): "meta" (sobre a plataforma) ou "tech" (qualquer
+// outro assunto). Uma unica palavra, teto de tokens minimo. Qualquer duvida ou falha
+// cai para "tech" (fail-safe conservador: nunca da resposta gratuita por erro).
+const META_CLASSIFIER_INSTRUCTIONS = `You classify a single visitor question for the TAIME platform. Answer with EXACTLY one lowercase word and nothing else: "meta" or "tech".
+"meta" = the question is about the TAIME platform itself: what it is, how it works, its plans, the Executive Advisor, the historical archive, signing up, the account, or how the product functions.
+"tech" = the question is about technology, trends, strategy, market, or any other subject.
+When in doubt, answer "tech".`
+
+async function classifyMetaIntent(message: string): Promise<'meta' | 'tech'> {
+  const _t = Date.now()
+  try {
+    const res = await fetch(ANTHROPIC_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      ROUTER_MODEL,
+        max_tokens: 10,
+        system:     [{ type: 'text', text: META_CLASSIFIER_INSTRUCTIONS }],
+        messages:   [{ role: 'user', content: message }],
+      }),
+    })
+    if (!res.ok) {
+      logLlmCall({ caller: 'ask', model: ROUTER_MODEL, latency_ms: Date.now() - _t, success: false, error_code: `http_${res.status}`, meta: { step: 'classify' } })
+      return 'tech'
+    }
+    const data = await res.json() as { content?: Array<{ type: string; text: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+    logLlmCall({ caller: 'ask', model: ROUTER_MODEL, ...usageTokens(data.usage), latency_ms: Date.now() - _t, success: true, meta: { step: 'classify' } })
+    const word = (data.content?.find(b => b.type === 'text')?.text ?? '').trim().toLowerCase()
+    return word === 'meta' ? 'meta' : 'tech'
+  } catch {
+    logLlmCall({ caller: 'ask', model: ROUTER_MODEL, latency_ms: Date.now() - _t, success: false, error_code: 'exception', meta: { step: 'classify' } })
+    return 'tech'
+  }
+}
 
 // Bloco de inteligencia interna: SO o texto da trend, sem period/report_id/url.
 // Rotulado como conhecimento interno que nao pode ser exposto.
@@ -258,11 +314,11 @@ function dedupeChunks(chunks: TrendChunk[], preferLang: Lang): TrendChunk[] {
   return [...byTrend.values()].sort((a, b) => b.similarity - a.similarity)
 }
 
-function cookieHeader(count: number): string {
+function cookieHeader(count: number, name: string = COOKIE_NAME): string {
   const val = signCount(count)
   // 1 ano; httpOnly; SameSite Lax; Secure em producao.
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
-  return `${COOKIE_NAME}=${val}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}`
+  return `${name}=${val}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}`
 }
 
 export async function POST(req: NextRequest) {
@@ -285,9 +341,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'message_too_long' }, { status: 400 })
   }
 
-  // ── Limite por visitante (cookie assinado) ─────────────────────────────────
-  const used = readCount(req.cookies.get(COOKIE_NAME)?.value)
-  if (used >= ANON_QUESTION_LIMIT) {
+  // ── Contadores por visitante (cookies assinados): tech (3) e meta (5) ──────
+  const used     = readCount(req.cookies.get(COOKIE_NAME)?.value)
+  const usedMeta = readCount(req.cookies.get(COOKIE_NAME_META)?.value)
+
+  // ── Classificacao de intencao ANTES de qualquer gate de cota ───────────────
+  // "meta" = pergunta sobre a propria plataforma TAIME (nao consome a cota de 3 de
+  // tecnologia); "tech" = qualquer outro assunto (fluxo inalterado).
+  const intent = await classifyMetaIntent(message)
+
+  // Gate de cota conforme o fluxo (server-side, nunca so no client).
+  if (intent === 'meta') {
+    // Cota meta esgotada: convite cordial ao cadastro, SEM chamar o modelo. O texto
+    // final e localizado no cliente (flag metaLimitReached).
+    if (usedMeta >= META_QUESTION_LIMIT) {
+      return NextResponse.json(
+        { meta: true, metaLimitReached: true, used, limit: ANON_QUESTION_LIMIT },
+        { status: 200 },
+      )
+    }
+  } else if (used >= ANON_QUESTION_LIMIT) {
     return NextResponse.json(
       { error: 'limit_reached', used, limit: ANON_QUESTION_LIMIT },
       { status: 403 },
@@ -297,8 +370,10 @@ export async function POST(req: NextRequest) {
   const ip = clientIp(req)
   const ipHash = hashIp(ip)
 
-  // ── Captcha na 1a pergunta (cookie novo = used 0) ──────────────────────────
-  if (used === 0) {
+  // ── Captcha na 1a interacao do visitante (qualquer fluxo) ──────────────────
+  // Vale para tech e meta: o primeiro contato (ambos os contadores em 0) exige o
+  // desafio. Depois de provado humano, nao repete.
+  if (used === 0 && usedMeta === 0) {
     const token = (body.token ?? '').trim()
     if (!token) {
       return NextResponse.json({ error: 'captcha_required' }, { status: 403 })
@@ -340,8 +415,65 @@ export async function POST(req: NextRequest) {
     // fail-open no teto de IP: o cookie ainda limita a 3.
   }
 
-  // ── Geracao: vector search (arquivo COMPLETO) + refino + Sonnet 5, SEM fontes ─
   const lang = detectLanguage(message)
+
+  // ── Fluxo META: resposta sobre a propria plataforma ────────────────────────
+  // Mesmo modelo e mesma voz do /ask, com o bloco META_TAIME adicionado ao system.
+  // NAO consulta o arquivo (a pergunta e sobre o produto, nao sobre tecnologia) e
+  // consome a cota META (5), nunca a cota de tecnologia (3).
+  if (intent === 'meta') {
+    const metaSystem: SystemBlock[] = [
+      { type: 'text', text: ANON_RULES_BLOCK, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: META_TAIME_BLOCK },
+      { type: 'text', text: languageInstruction(lang) },
+    ]
+    let metaReply = ''
+    const _tMeta = Date.now()
+    try {
+      const res = await fetch(ANTHROPIC_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type':      'application/json',
+          'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta':    'prompt-caching-2024-07-31',
+        },
+        body: JSON.stringify({
+          model:      ADVISOR_MODEL,
+          max_tokens: LIGHT_MAX_TOKENS,
+          system:     metaSystem,
+          messages:   [{ role: 'user', content: message }],
+        }),
+      })
+      if (!res.ok) {
+        console.error('[ask] meta anthropic error:', res.status, await res.text())
+        logLlmCall({ caller: 'ask', model: ADVISOR_MODEL, latency_ms: Date.now() - _tMeta, success: false, error_code: `http_${res.status}`, meta: { step: 'meta' } })
+        return NextResponse.json({ error: 'ai_error' }, { status: 502 })
+      }
+      const data = await res.json() as {
+        content?: Array<{ type: string; text: string }>
+        usage?:   { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+      }
+      metaReply = data.content?.find(b => b.type === 'text')?.text ?? ''
+      logLlmCall({ caller: 'ask', model: ADVISOR_MODEL, ...usageTokens(data.usage), latency_ms: Date.now() - _tMeta, success: true, meta: { step: 'meta' } })
+    } catch (e) {
+      console.error('[ask] meta anthropic exception:', e)
+      logLlmCall({ caller: 'ask', model: ADVISOR_MODEL, latency_ms: Date.now() - _tMeta, success: false, error_code: 'exception', meta: { step: 'meta' } })
+      return NextResponse.json({ error: 'ai_error' }, { status: 502 })
+    }
+    if (!metaReply.trim()) {
+      return NextResponse.json({ error: 'ai_error' }, { status: 502 })
+    }
+    metaReply = stripEmDash(metaReply)
+    const nowMeta = usedMeta + 1
+    // Incrementa SO o cookie meta; a cota de tecnologia (used) fica intacta.
+    return NextResponse.json(
+      { reply: metaReply, meta: true, used, limit: ANON_QUESTION_LIMIT },
+      { status: 200, headers: { 'Set-Cookie': cookieHeader(nowMeta, COOKIE_NAME_META) } },
+    )
+  }
+
+  // ── Geracao TECH: vector search (arquivo COMPLETO) + refino + Sonnet 5 ──────
   const periodFloor = ADVISOR_PERMISSIVE_FLOOR // arquivo completo (sem janela)
 
   // v4.8: trajetoria tambem no /ask. Reusa a mesma matematica de selecao do

@@ -110,9 +110,11 @@ export const pt = {
       note:         'Esta é uma amostra. O arquivo completo e as fontes são exclusivos de assinantes.',
       chips: [
         'Como a governança de IA agêntica evoluiu e o que muda para a minha empresa?',
+        'O que é o TAIME?',
         'Minha empresa está atrasada em prontidão pós-quântica?',
         'O que a soberania de dados muda na minha decisão de arquitetura de cloud?',
       ],
+      metaLimit:        'Você já explorou bastante sobre o TAIME. Para continuar e colocar o Advisor para trabalhar de verdade, crie sua conta gratuita: são 2 relatórios completos por mês e mensagens de teste do Advisor com a mesma profundidade do plano pago.',
       limitThemesTitle: (themes: string) => `Suas perguntas tocaram ${themes}.`,
       limitThemesBody:  'O arquivo acompanha esses temas há anos. Crie sua conta gratuita e continue com 10 perguntas.',
       emailPrompt:      'Prefere pensar? Receba o Radar quinzenal no seu e-mail.',

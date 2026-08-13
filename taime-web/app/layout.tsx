@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import JsonLd from '@/components/JsonLd'
+import AskFloatingGate from '@/components/AskFloatingGate'
 import { globalGraph } from '@/lib/structured-data'
 import './globals.css'
 
@@ -52,6 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen">
         {children}
+        <AskFloatingGate />
         <Analytics />
       </body>
     </html>

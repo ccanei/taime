@@ -58,7 +58,8 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input,    setInput]    = useState('')
   const [loading,  setLoading]  = useState(false)
-  const [used,     setUsed]     = useState(0)
+  const [used,     setUsed]     = useState(0)          // perguntas de tecnologia consumidas (cota de 3)
+  const [interacted, setInteracted] = useState(false)  // ja fez ao menos 1 pergunta (tech ou meta)
   const [blocked,  setBlocked]  = useState<null | 'limit' | 'ip'>(null)
   const [error,    setError]    = useState('')
   const [token,    setToken]    = useState<string | null>(null)
@@ -73,11 +74,13 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   const widgetRendered = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const needsCaptcha = used === 0 && !!siteKey
+  // Captcha so na 1a interacao do visitante (tech ou meta). Depois de provado
+  // humano, nao repete, mesmo que a pergunta meta nao avance o contador de 3.
+  const needsCaptcha = !interacted && !!siteKey
 
   // ── Carrega e renderiza o Turnstile antes da 1a pergunta ───────────────────
   useEffect(() => {
-    if (!siteKey || used > 0) return
+    if (!siteKey || interacted) return
     let cancelled = false
 
     function renderWidget() {
@@ -113,7 +116,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       setTimeout(() => clearInterval(poll), 15000)
     }
     return () => { cancelled = true }
-  }, [siteKey, used])
+  }, [siteKey, interacted])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -138,6 +141,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       })
       const json = await res.json() as {
         reply?: string; used?: number; limit?: number; error?: string; themes?: string[]
+        meta?: boolean; metaLimitReached?: boolean
       }
 
       if (res.status === 503) { setBlocked(null); setError(L.unavailable); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
@@ -149,6 +153,17 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
         setError(L.captchaFail); setToken(null); widgetRendered.current = false
         setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return
       }
+      // Fluxo META (pergunta sobre o proprio TAIME): NAO consome a cota de 3 nem
+      // bloqueia. Cota meta esgotada: mensagem fixa localizada convidando ao cadastro.
+      if (json.metaLimitReached) {
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: L.metaLimit }])
+        setInteracted(true); setToken(null); return
+      }
+      if (json.meta && json.reply) {
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: json.reply! }])
+        setInteracted(true); setToken(null); return
+      }
+
       if (!res.ok || !json.reply) { setError(L.genericError); setMessages(prev => prev.filter(m => m.id !== userMsg.id)); return }
 
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: json.reply! }])
@@ -157,6 +172,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       }
       const nowUsed = json.used ?? used + 1
       setUsed(nowUsed)
+      setInteracted(true)
       setToken(null)
       if (nowUsed >= (json.limit ?? QUESTION_LIMIT)) setBlocked('limit')
     } catch (err) {
@@ -200,9 +216,11 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
-  const counter = messages.length === 0 && used === 0
+  // Contador de TECNOLOGIA: so aparece depois de consumir ao menos 1 pergunta de
+  // tecnologia. Perguntas meta nao mexem em `used`, entao nao avancam o contador.
+  const counter = used === 0
     ? null
-    : L.counter(Math.min(used + (loading ? 1 : 0), QUESTION_LIMIT), QUESTION_LIMIT)
+    : L.counter(Math.min(used, QUESTION_LIMIT), QUESTION_LIMIT)
 
   return (
     <div className="max-w-3xl mx-auto">

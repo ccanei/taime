@@ -111,9 +111,11 @@ export const en: Translations = {
       note:         'This is a sample. The full archive and the sources are exclusive to subscribers.',
       chips: [
         'How has agentic AI governance evolved and what changes for my company?',
+        'What is TAIME?',
         'Is my company behind on post-quantum readiness?',
         'What does data sovereignty change in my cloud architecture decision?',
       ],
+      metaLimit:        'You have explored TAIME quite a bit. To continue and put the Advisor to real work, create your free account: two full reports per month and Advisor test messages with the same depth as the paid plan.',
       limitThemesTitle: (themes: string) => `Your questions touched ${themes}.`,
       limitThemesBody:  'The archive has tracked these themes for years. Create your free account and continue with 10 questions.',
       emailPrompt:      'Prefer to think it over? Get the biweekly Radar in your inbox.',
