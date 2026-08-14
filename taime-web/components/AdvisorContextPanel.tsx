@@ -1,0 +1,187 @@
+'use client'
+
+import { scoreColor, scoreRing } from '@/lib/types'
+
+// Painel de contexto do workspace do Advisor. Duas seccoes:
+//  - VIVA ("Nesta resposta"): as analises que o turno atual consultou (cards
+//    clicaveis para a ancora da trend). Atualiza a cada resposta.
+//  - FIXA: "Sua empresa" (advisor_profiles preenchidos) e "Temas que voce
+//    acompanha" (theme_slugs recorrentes, com faixa temporal do arquivo).
+// So aparece no Advisor logado (o /ask nao renderiza este componente, anti-scraping).
+
+export interface PanelCard {
+  reportId: string
+  rank:     number
+  title:    string
+  period:   string
+  score:    number | null
+  category: string | null
+}
+export interface PanelTurn {
+  trends:   PanelCard[]
+  count:    number
+  yearFrom: string | null
+  yearTo:   string | null
+}
+export interface FixedContext {
+  profile: Record<string, string>
+  themes:  Array<{ slug: string; label: string; startYear: string | null; endYear: string | null }>
+}
+
+const MONTHS = {
+  pt: ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+}
+function shortPeriod(period: string, isPt: boolean): string {
+  const m = Number.parseInt(period.slice(5, 7), 10) - 1
+  const y = period.slice(0, 4)
+  const mm = (isPt ? MONTHS.pt : MONTHS.en)[m] ?? ''
+  return isPt ? `${mm}/${y}` : `${mm} ${y}`
+}
+
+// Rotulos dos campos de perfil (so os presentes sao renderizados).
+const PROFILE_LABELS: Record<string, { pt: string; en: string }> = {
+  sector:                 { pt: 'Setor',          en: 'Sector' },
+  company_size:           { pt: 'Porte',          en: 'Size' },
+  maturity_level:         { pt: 'Maturidade',     en: 'Maturity' },
+  strategic_objective:    { pt: 'Objetivo',       en: 'Objective' },
+  current_infrastructure: { pt: 'Infraestrutura', en: 'Infrastructure' },
+}
+const PROFILE_ORDER = ['sector', 'company_size', 'maturity_level', 'strategic_objective', 'current_infrastructure']
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-2">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+export default function AdvisorContextPanel({
+  turn, loading, isPt, fixed, onOpenProfile, onPickTheme,
+}: {
+  turn:          PanelTurn | null
+  loading:       boolean
+  isPt:          boolean
+  fixed:         FixedContext | null
+  onOpenProfile?: () => void
+  onPickTheme:   (label: string) => void
+}) {
+  const profileEntries = fixed ? PROFILE_ORDER.filter(k => fixed.profile[k]) : []
+  const companyName = fixed?.profile.company_name
+  const hasCompanyBlock = !!companyName || profileEntries.length > 0
+  const themes = fixed?.themes ?? []
+
+  return (
+    <div className="flex flex-col gap-6 p-4 text-sm">
+
+      {/* ── VIVA: Nesta resposta ─────────────────────────────────────── */}
+      <Section title={isPt ? 'Nesta resposta' : 'In this answer'}>
+        {loading ? (
+          <div className="space-y-2" aria-live="polite">
+            <p className="flex items-center gap-2 text-xs text-zinc-400">
+              <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              {isPt ? 'Consultando o arquivo...' : 'Searching the archive...'}
+            </p>
+            {[0, 1, 2].map(i => <div key={i} className="h-12 rounded-lg bg-zinc-100 animate-pulse" />)}
+          </div>
+        ) : turn && turn.trends.length > 0 ? (
+          <>
+            <p className="text-[11px] text-zinc-400 mb-2 tabular-nums">
+              {isPt
+                ? `${turn.count} ${turn.count === 1 ? 'análise' : 'análises'}`
+                : `${turn.count} ${turn.count === 1 ? 'analysis' : 'analyses'}`}
+              {turn.yearFrom && turn.yearTo && (
+                <span> · {turn.yearFrom === turn.yearTo ? turn.yearFrom : `${turn.yearFrom} ${isPt ? 'a' : 'to'} ${turn.yearTo}`}</span>
+              )}
+            </p>
+            <div className="space-y-2">
+              {turn.trends.map((c, i) => (
+                <a
+                  key={`${c.reportId}-${c.rank}-${i}`}
+                  href={`/reports/${c.reportId}#trend-${c.rank}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={c.title || undefined}
+                  className="group flex items-start gap-2.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-2
+                             hover:border-taime-200 hover:shadow-sm transition-all"
+                >
+                  {c.score !== null && (
+                    <span className={`shrink-0 w-8 h-8 rounded-md ring-1 ${scoreRing(c.score)} flex items-center justify-center`}>
+                      <span className={`text-[11px] font-bold tabular-nums ${scoreColor(c.score)}`}>{c.score}</span>
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium text-zinc-800 group-hover:text-taime-700 transition-colors line-clamp-2 leading-snug">
+                      {c.title || (isPt ? 'Análise' : 'Analysis')}
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-zinc-400 tabular-nums">
+                      <span>{shortPeriod(c.period, isPt)}</span>
+                      {c.category && <span className="text-zinc-300">·</span>}
+                      {c.category && <span className="truncate">{c.category}</span>}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            {isPt
+              ? 'As análises que eu consultar aparecem aqui a cada resposta.'
+              : 'The analyses I consult appear here with each answer.'}
+          </p>
+        )}
+      </Section>
+
+      {/* ── FIXA: Sua empresa ────────────────────────────────────────── */}
+      {hasCompanyBlock ? (
+        <Section title={isPt ? 'Sua empresa' : 'Your company'}>
+          {companyName && <p className="text-sm font-semibold text-zinc-900 mb-2">{companyName}</p>}
+          {profileEntries.length > 0 && (
+            <dl className="space-y-1.5">
+              {profileEntries.map(k => (
+                <div key={k} className="flex flex-col">
+                  <dt className="text-[10px] uppercase tracking-wide text-zinc-400">{isPt ? PROFILE_LABELS[k].pt : PROFILE_LABELS[k].en}</dt>
+                  <dd className="text-xs text-zinc-700 leading-snug">{fixed!.profile[k]}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </Section>
+      ) : fixed && onOpenProfile ? (
+        <button onClick={onOpenProfile} className="text-xs font-medium text-taime-600 hover:text-taime-800 text-left">
+          {isPt ? 'Completar meu perfil →' : 'Complete my profile →'}
+        </button>
+      ) : null}
+
+      {/* ── FIXA: Temas que voce acompanha ───────────────────────────── */}
+      {themes.length > 0 && (
+        <Section title={isPt ? 'Temas que você acompanha' : 'Themes you follow'}>
+          <div className="flex flex-col gap-1">
+            {themes.map(t => (
+              <button
+                key={t.slug}
+                onClick={() => onPickTheme(t.label)}
+                className="group flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-xs font-medium text-zinc-700 group-hover:text-taime-700 truncate">{t.label}</span>
+                {t.startYear && (
+                  <span className="shrink-0 flex items-center gap-1 text-[10px] tabular-nums text-zinc-400">
+                    <span>{t.startYear}</span>
+                    <span className="w-3 h-px bg-gradient-to-r from-taime-300 to-taime-500" />
+                    <span className="font-semibold text-taime-600 uppercase">{isPt ? 'hoje' : 'today'}</span>
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+    </div>
+  )
+}

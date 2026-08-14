@@ -7,6 +7,7 @@ import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
+import AdvisorContextPanel, { type PanelTurn, type FixedContext } from '@/components/AdvisorContextPanel'
 
 // Intencao de contato humano: pedir para falar com alguem/equipe/suporte/comercial.
 const HANDOFF_RE = /\b(falar|conversar|contat\w+)\b[^.?!]{0,40}\b(algu[eé]m|uma pessoa|humano|pessoa real|equipe|time|suporte|comercial|vendas|atendimento|respons[aá]vel)\b|\b(talk|speak|connect|get in touch)\b[^.?!]{0,40}\b(someone|a (human|person|rep)|the team|sales|support|a human)\b|\b(human (support|agent|being)|real person|contact (the )?(team|support|sales))\b/i
@@ -172,6 +173,12 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [sessionsOpen, setSessionsOpen] = useState(false)   // mobile only
   const [sessionQuery, setSessionQuery] = useState('')      // busca client-side na sidebar
 
+  // ── Workspace: sidebar colapsavel + painel de contexto direito ──────────────
+  const [collapsed,    setCollapsed]    = useState(true)    // sidebar colapsada por padrao no desktop
+  const [latestPanel,  setLatestPanel]  = useState<PanelTurn | null>(null) // "Nesta resposta" do ultimo turno
+  const [fixedContext, setFixedContext] = useState<FixedContext | null>(null) // perfil + temas (fixo)
+  const [panelOpen,    setPanelOpen]    = useState(false)   // folha do painel no mobile
+
   // ── Abertura proativa: sugestão de partida + chips, ancorada em trends reais.
   // Iniciativa do Advisor, fora da cota (nunca passa pelo /chat). Ver
   // app/api/advisor/opening/route.ts.
@@ -191,6 +198,38 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   // que e useCallback com deps [isPt] e capturaria um sessionId defasado).
   const sessionIdRef      = useRef<string>('')
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
+
+  // Estado da sidebar (expandida/colapsada) persiste na sessao do usuario.
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('taime-advisor-sidebar')
+      if (v === 'expanded') setCollapsed(false)
+      else if (v === 'collapsed') setCollapsed(true)
+    } catch { /* storage indisponivel: usa o default */ }
+  }, [])
+  function persistCollapsed(next: boolean) {
+    setCollapsed(next)
+    try { localStorage.setItem('taime-advisor-sidebar', next ? 'collapsed' : 'expanded') } catch { /* ignora */ }
+  }
+
+  // Clique num tema do painel: pre-preenche o composer com uma pergunta de
+  // trajetoria daquele tema e foca (sem enviar: nao consome cota sem intencao).
+  function handlePickTheme(label: string) {
+    setInput(isPt ? `Como evoluiu ${label} ao longo do tempo?` : `How has ${label} evolved over time?`)
+    setPanelOpen(false)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  // Contexto fixo do painel (perfil + temas). Uma vez, no mount. Fail-safe: se
+  // falhar, o painel fixo fica vazio e a conversa segue normal.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/advisor/context')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (!cancelled && j) setFixedContext(j as FixedContext) })
+      .catch(() => { /* silencioso */ })
+    return () => { cancelled = true }
+  }, [])
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -326,6 +365,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setMessages([])
     setHasHistory(false)
     setSessionsOpen(false)
+    setLatestPanel(null)   // "Nesta resposta" e por turno: zera na conversa nova
     // Reinicia a abertura proativa para a nova conversa (idle-gated).
     clearIdle()
     openingFetchedRef.current = false
@@ -342,6 +382,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     }
     setSessionId(sid)
     setSessionsOpen(false)
+    setLatestPanel(null)   // zera o "Nesta resposta" ao trocar de sessao
     // Ao abrir uma sessão existente, não há abertura proativa (não é tela vazia).
     clearIdle()
     openingFetchedRef.current = true
@@ -427,7 +468,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: text, sessionId: sid }),
       })
-      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string> }
+      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null }
 
       // Cota esgotada: nada foi gerado nem consumido. Remove a mensagem otimista
       // e mostra o CTA de upgrade no lugar do input.
@@ -448,6 +489,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         citations:  json.citations,
       }
       setMessages(prev => [...prev, assistantMsg])
+      // Painel "Nesta resposta": popula com as analises que este turno consultou.
+      if (json.context_panel) setLatestPanel(json.context_panel)
       // Persistencia: se o backend nao conseguiu gravar a conversa, avisa o usuario
       // (nao bloqueia; a resposta ja foi entregue).
       if (json.history_saved === false) setHistoryWarn(true)
@@ -594,9 +637,46 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   return (
     <div className="flex h-[calc(100vh-140px)] min-h-[500px] border border-zinc-200 rounded-2xl overflow-hidden bg-white">
 
-      {/* Sidebar desktop */}
-      <aside className="hidden md:flex md:flex-col w-60 bg-zinc-50 border-r border-zinc-200">
-        {sidebarBody}
+      {/* Sidebar desktop: colapsa em barra de icones; expande ao clicar (persiste). */}
+      <aside className={`hidden md:flex md:flex-col bg-zinc-50 border-r border-zinc-200 shrink-0 transition-[width] duration-150 ${collapsed ? 'w-14' : 'w-60'}`}>
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1 py-3">
+            <button
+              onClick={() => persistCollapsed(false)}
+              title={isPt ? 'Expandir conversas' : 'Expand conversations'}
+              aria-label={isPt ? 'Expandir conversas' : 'Expand conversations'}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-zinc-500 hover:bg-zinc-200/60 hover:text-zinc-800 transition-colors">
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
+            </button>
+            <button
+              onClick={newSession}
+              title={isPt ? 'Novo contexto' : 'New chat'}
+              aria-label={isPt ? 'Novo contexto' : 'New chat'}
+              className="w-9 h-9 rounded-lg flex items-center justify-center bg-taime-600 text-white hover:bg-taime-700 transition-colors">
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between pl-3 pr-2 py-2 border-b border-zinc-100">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">{isPt ? 'Conversas' : 'Conversations'}</span>
+              <button
+                onClick={() => persistCollapsed(true)}
+                title={isPt ? 'Colapsar' : 'Collapse'}
+                aria-label={isPt ? 'Colapsar' : 'Collapse'}
+                className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-400 hover:bg-zinc-200/60 hover:text-zinc-700 transition-colors">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
+                </svg>
+              </button>
+            </div>
+            {sidebarBody}
+          </>
+        )}
       </aside>
 
       {/* Sidebar mobile (overlay) */}
@@ -659,8 +739,18 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
             {/* Valvula discreta: falar com a equipe. O Advisor segue como via principal. */}
             <button
               onClick={() => setContactOpen(true)}
-              className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap">
+              className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap hidden sm:block">
               {isPt ? 'Falar com a equipe' : 'Talk to the team'}
+            </button>
+            {/* Acesso ao painel de contexto no mobile/telas estreitas (< lg). */}
+            <button
+              onClick={() => setPanelOpen(true)}
+              className="lg:hidden inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-taime-700 transition-colors whitespace-nowrap"
+              aria-label={isPt ? 'Abrir contexto' : 'Open context'}>
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+              {isPt ? 'Contexto' : 'Context'}
             </button>
           </div>
         </div>
@@ -851,6 +941,41 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           )}
         </div>
       </div>
+
+      {/* Painel de contexto (workspace): fixo a direita no desktop (>= lg). */}
+      <aside className="hidden lg:flex lg:flex-col w-[320px] shrink-0 border-l border-zinc-200 bg-white overflow-y-auto">
+        <AdvisorContextPanel
+          turn={latestPanel}
+          loading={loading || recovering}
+          isPt={isPt}
+          fixed={fixedContext}
+          onOpenProfile={onOpenProfile}
+          onPickTheme={handlePickTheme}
+        />
+      </aside>
+
+      {/* Painel de contexto no mobile/telas estreitas: folha sobre o chat. */}
+      {panelOpen && (
+        <div className="lg:hidden fixed inset-0 z-30 flex">
+          <button onClick={() => setPanelOpen(false)} className="flex-1 bg-black/40" aria-label={isPt ? 'Fechar' : 'Close'} />
+          <aside className="flex flex-col w-80 max-w-[85%] bg-white border-l border-zinc-200 shadow-xl overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-100 sticky top-0 bg-white">
+              <span className="text-xs font-bold text-zinc-700">{isPt ? 'Contexto' : 'Context'}</span>
+              <button onClick={() => setPanelOpen(false)} className="text-zinc-400 hover:text-zinc-700 p-1" aria-label={isPt ? 'Fechar' : 'Close'}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <AdvisorContextPanel
+              turn={latestPanel}
+              loading={loading || recovering}
+              isPt={isPt}
+              fixed={fixedContext}
+              onOpenProfile={onOpenProfile}
+              onPickTheme={handlePickTheme}
+            />
+          </aside>
+        </div>
+      )}
 
       {contactOpen && (
         <AdvisorContactModal

@@ -114,6 +114,24 @@ interface TrendChunk {
   score?:     number | null
 }
 
+// Painel de contexto "Nesta resposta" (workspace do Advisor). Derivado SO dos
+// dados que a rota ja selecionou/gravou este turno; nunca altera selecao, grounding,
+// gates nem o texto da resposta. Fail-safe: se a montagem falhar, sai null.
+interface ContextPanelCard {
+  reportId: string
+  rank:     number
+  title:    string
+  period:   string
+  score:    number | null
+  category: string | null
+}
+interface ContextPanel {
+  trends:   ContextPanelCard[]
+  count:    number
+  yearFrom: string | null
+  yearTo:   string | null
+}
+
 // 'vector' = contexto montado pela busca semantica no arquivo inteiro.
 // 'router_fallback' = busca vetorial falhou ou veio vazia; caiu no router por titulo.
 type SelectionSource = 'vector' | 'router_fallback'
@@ -1289,6 +1307,8 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   let trendIdsUsed:          string[]     = []
   // Mapa de citacao p/ tooltip dos chips no cliente: "reportId#trend-rank" -> titulo.
   const citations:          Record<string, string> = {}
+  // Painel "Nesta resposta" (workspace). Montado dos chunks ja selecionados. Fail-safe.
+  let contextPanel:         ContextPanel | null = null
   let similarities:          number[]     = []
   let vectorError:           string | null = null
   let routerSelection:       'router' | 'fallback' | null = null
@@ -1492,6 +1512,22 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     for (const c of selected) {
       const ttl = titleById.get(c.trend_id)
       if (ttl) citations[`${c.report_id}#trend-${c.rank}`] = ttl
+    }
+    // Painel "Nesta resposta": cards das analises consultadas (mesmos dados dos chips).
+    try {
+      const cards: ContextPanelCard[] = selected.map(c => ({
+        reportId: c.report_id,
+        rank:     c.rank,
+        title:    titleById.get(c.trend_id) ?? '',
+        period:   c.period,
+        score:    typeof c.score === 'number' ? c.score : null,
+        category: c.category,
+      }))
+      const years = selected.map(c => c.period.slice(0, 4)).filter(Boolean).sort()
+      contextPanel = { trends: cards, count: cards.length, yearFrom: years[0] ?? null, yearTo: years[years.length - 1] ?? null }
+    } catch (e) {
+      console.error('[advisor-panel] montagem falhou (ignorada):', e instanceof Error ? e.message : e)
+      contextPanel = null
     }
   } else if (periodIntent && emb.ok) {
     // ── Periodo explicito sem conteudo (v4.6) ─────────────────────────────
@@ -1856,5 +1892,5 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
 
   // Responde com a cota e history_saved (false = a conversa NAO pode ser gravada;
   // a UI avisa o usuario). Strategic vem com limit null (sem contador).
-  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations })
+  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations, context_panel: contextPanel })
 }
