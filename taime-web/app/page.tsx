@@ -437,8 +437,10 @@ export default async function LandingPage() {
               <p className="text-xs text-white/50 font-medium">{h.heroSub}</p>
             </div>
 
-            {/* ── Coluna direita: grafico-assinatura como arte dominante ──── */}
-            <div className="relative lg:pl-4">
+            {/* ── Coluna direita: grafico-assinatura como arte dominante ────
+                Sangria controlada: em telas largas o card estende alem do
+                container (bleed a direita), contido pelo overflow-hidden da secao. */}
+            <div className="relative lg:pl-4 lg:-mr-6 xl:-mr-16">
               <div className="rounded-2xl bg-zinc-900/70 border border-white/10 shadow-2xl ring-1 ring-white/5
                               p-6 sm:p-7 backdrop-blur-sm">
                 {/* Grafico-assinatura da metodologia: a trajetoria de uma tecnologia */}
@@ -522,8 +524,8 @@ export default async function LandingPage() {
       </section>
 
       {/* ── SEÇÃO 1c-2: PROFUNDIDADE TEMPORAL (linha do tempo Gantt) ──── */}
-      <section className="border-t border-zinc-100 bg-zinc-50/60 py-20">
-        <div className="max-w-5xl mx-auto px-6">
+      <section className="border-t border-zinc-100 bg-zinc-50/60 py-24">
+        <div className="max-w-7xl mx-auto px-6 lg:px-4">
           <ThemeTimeline
             title={h.themesCards.title}
             subtitle={h.themesCards.subtitle}
@@ -537,11 +539,15 @@ export default async function LandingPage() {
       {/* ── SEÇÃO 1b: VEJA O QUE VOCÊ RECEBE ──────────────────────────── */}
       <section className="border-t border-zinc-100 py-20">
         <div className="max-w-5xl mx-auto px-6">
+          {/* Assimetria (lado alternado): cabecalho a direita (40), cards a esquerda (60). */}
+          <div className="grid lg:grid-cols-[3fr_2fr] gap-8 lg:gap-12 lg:items-center">
+          <div className="lg:order-2">
           <p className="section-label mb-3">{isEn ? 'What you get' : 'O que você recebe'}</p>
-          <h2 className="text-3xl font-bold text-zinc-900 mb-10 max-w-2xl leading-snug">
+          <h2 className="text-3xl font-bold text-zinc-900 leading-snug">
             {isEn ? 'See what you get with TAIME' : 'Veja o que você recebe com o TAIME'}
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          </div>
+          <div className="lg:order-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               {
                 icon: (
@@ -629,6 +635,7 @@ export default async function LandingPage() {
               </div>
             ))}
           </div>
+          </div>
         </div>
       </section>
 
@@ -644,7 +651,7 @@ export default async function LandingPage() {
             maskImage: 'radial-gradient(ellipse 90% 70% at 50% 30%, black 45%, transparent 100%)',
           }}
         />
-        <div className="relative max-w-6xl mx-auto px-6">
+        <div className="relative max-w-5xl mx-auto px-6">
           <p className="section-label mb-3">{h.painsLabel}</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-zinc-900 mb-14 max-w-3xl leading-tight">
             {isEn ? 'Information is everywhere.' : 'Informação está em todo lugar.'}{' '}
@@ -826,8 +833,8 @@ export default async function LandingPage() {
 
       {/* ── SEÇÃO 4: É ASSIM QUE A RESPOSTA SE PARECE (showcase) ──────── */}
       {showcase && showcaseFw?.score_dimensions && showcaseTnn && showcase.reports && (
-        <section className="py-24 border-t border-zinc-100 bg-white">
-          <div className="max-w-5xl mx-auto px-6">
+        <section className="py-20 border-t border-zinc-100 bg-white">
+          <div className="max-w-3xl mx-auto px-6">
             <p className="section-label mb-3">
               {isEn ? 'This is what the answer looks like' : 'É assim que a resposta se parece'}
             </p>
@@ -939,8 +946,8 @@ export default async function LandingPage() {
       />
 
       {/* ── SEÇÃO 5: TENDÊNCIAS RECENTES (cards dinâmicos) + BUSCA ─────── */}
-      <section className="bg-zinc-50 border-t border-zinc-100 py-24">
-        <div className="max-w-5xl mx-auto px-6">
+      <section className="bg-zinc-50 border-t border-zinc-100 py-28">
+        <div className="max-w-7xl mx-auto px-6">
           <p className="section-label mb-3">{h.trendCards.label}</p>
           <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.trendCards.title}</h2>
 

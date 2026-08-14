@@ -35,15 +35,21 @@ export default function FrameworkSection({
       <div aria-hidden="true" className="absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full bg-taime-600/20 blur-3xl pointer-events-none" />
 
       <div className="relative max-w-6xl mx-auto px-6">
-        <p className="text-[11px] font-bold tracking-widest uppercase text-taime-300 mb-4">{copy.label}</p>
-        <h2 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.05] mb-4">{copy.title}</h2>
-        <p className="text-base text-white/60 max-w-2xl leading-relaxed mb-12">{copy.subtitle}</p>
-
-        {/* Grafico proprio da secao: o fluxo de decisao em 5 estagios */}
-        <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-6 sm:p-8 mb-4">
-          <FrameworkFlow className="w-full h-auto" />
+        {/* Assimetria: texto (40) a esquerda, diagrama (60) a direita. Mobile empilha. */}
+        <div className="grid lg:grid-cols-[2fr_3fr] gap-8 lg:gap-14 lg:items-center mb-14">
+          <div>
+            <p className="text-[11px] font-bold tracking-widest uppercase text-taime-300 mb-4">{copy.label}</p>
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.05] mb-4">{copy.title}</h2>
+            <p className="text-base text-white/60 leading-relaxed">{copy.subtitle}</p>
+          </div>
+          <div>
+            {/* Grafico proprio da secao: o fluxo de decisao em 5 estagios */}
+            <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-6 sm:p-8 mb-4">
+              <FrameworkFlow className="w-full h-auto" />
+            </div>
+            <p className="text-sm text-white/50 leading-relaxed">{copy.flowCaption}</p>
+          </div>
         </div>
-        <p className="text-sm text-white/50 max-w-3xl leading-relaxed mb-12">{copy.flowCaption}</p>
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Leitura temporal (ANTES / AGORA / A SEGUIR em PT) */}
