@@ -115,7 +115,7 @@ export const pt = {
         'O que a soberania de dados muda na minha decisão de arquitetura de cloud?',
       ],
       metaLimit:        'Você já explorou bastante sobre o TAIME. Para continuar e colocar o Advisor para trabalhar de verdade, crie sua conta gratuita: são 2 análises completas por mês e mensagens de teste do Advisor com a mesma profundidade do plano pago.',
-      arrivalSubtitle:  'Inteligência estratégica do arquivo TAIME, sem cadastro',
+      arrivalSubtitle:  'Inteligência estratégica aplicada à realidade da sua empresa, sem cadastro',
       tabHome:          'Início',
       tabChat:          'Conversa',
       cards: [

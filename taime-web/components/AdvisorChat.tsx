@@ -811,11 +811,15 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
           <AdvisorArrival
             subtitle={isPt
-              ? 'Inteligência estratégica do arquivo TAIME aplicada à sua empresa'
-              : 'Strategic intelligence from the TAIME archive applied to your company'}
+              ? 'Inteligência estratégica aplicada à realidade da sua empresa'
+              : 'Strategic intelligence applied to your company reality'}
             stats={fixedContext?.archive ?? null}
             cards={arrivalCards}
             isPt={isPt}
+            placeholder={isPt
+              ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas...'
+              : 'Ask about trends, strategy or technology decisions...'}
+            onSubmit={(t) => handleSend(t)}
           />
         </div>
 

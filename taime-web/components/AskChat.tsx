@@ -270,7 +270,21 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
 
       {/* Tela de chegada (aba Inicio): mesma primeira impressao, sem dados do arquivo. */}
       <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
-        <AdvisorArrival subtitle={L.arrivalSubtitle} stats={archiveStats} cards={arrivalCards} isPt={isPt} />
+        <AdvisorArrival
+          subtitle={L.arrivalSubtitle}
+          stats={archiveStats}
+          cards={arrivalCards}
+          isPt={isPt}
+          placeholder={L.placeholder}
+          onSubmit={(t) => {
+            // Enviar da chegada inicia a conversa. Respeita o captcha da 1a
+            // pergunta: se ainda falta o desafio, leva o texto ao composer do chat
+            // (onde o widget aparece); senao, envia direto.
+            setView('chat')
+            if (needsCaptcha && !token) { setInput(t); setTimeout(() => textareaRef.current?.focus(), 0) }
+            else { handleSend(t) }
+          }}
+        />
       </div>
 
       {/* Header */}

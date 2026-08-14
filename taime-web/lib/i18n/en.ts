@@ -116,7 +116,7 @@ export const en: Translations = {
         'What does data sovereignty change in my cloud architecture decision?',
       ],
       metaLimit:        'You have explored TAIME quite a bit. To continue and put the Advisor to real work, create your free account: two full analyses per month and Advisor test messages with the same depth as the paid plan.',
-      arrivalSubtitle:  'Strategic intelligence from the TAIME archive, no sign up',
+      arrivalSubtitle:  'Strategic intelligence applied to your company reality, no sign up',
       tabHome:          'Home',
       tabChat:          'Conversation',
       cards: [

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Compass, LineChart, Target, Crosshair, ShieldAlert, Sparkles,
   Play, MessageSquareText, type LucideIcon,
@@ -35,20 +36,31 @@ const ICONS: Record<string, LucideIcon> = {
 }
 
 export default function AdvisorArrival({
-  subtitle, stats, cards, isPt,
+  subtitle, stats, cards, isPt, onSubmit, placeholder,
 }: {
-  subtitle: string
-  stats:    ArrivalStats | null
-  cards:    ArrivalCard[]
-  isPt:     boolean
+  subtitle:    string
+  stats:       ArrivalStats | null
+  cards:       ArrivalCard[]
+  isPt:        boolean
+  onSubmit?:   (text: string) => void   // enviar dali inicia a conversa
+  placeholder?: string
 }) {
   const locale = isPt ? 'pt-BR' : 'en-US'
   const n = (v: number) => v.toLocaleString(locale)
+  const [text, setText] = useState('')
+
+  function submit(e?: React.FormEvent) {
+    e?.preventDefault()
+    const t = text.trim()
+    if (!t || !onSubmit) return
+    onSubmit(t)
+    setText('')
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-2 py-8 sm:py-12">
       {/* Cabecalho de apresentacao */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <div className="inline-flex items-center gap-2 mb-3">
           <span className="w-8 h-8 rounded-lg bg-taime-600 text-white flex items-center justify-center text-sm font-bold shrink-0">T</span>
           <h1 className="text-xl sm:text-2xl font-bold text-zinc-900 tracking-tight">TAIME Executive Advisor</h1>
@@ -70,7 +82,32 @@ export default function AdvisorArrival({
         )}
       </div>
 
-      {/* Grade de 4 cards */}
+      {/* Campo de pergunta: enviar dali inicia a conversa. Acima dos cards. */}
+      {onSubmit && (
+        <form onSubmit={submit} className="max-w-2xl mx-auto mb-5 flex items-end gap-2">
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+            placeholder={placeholder}
+            rows={2}
+            className="flex-1 resize-none rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm
+                       text-zinc-900 placeholder:text-zinc-400 outline-none shadow-sm
+                       focus:ring-2 focus:ring-taime-600 focus:border-transparent leading-relaxed"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            aria-label={isPt ? 'Enviar' : 'Send'}
+            className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </button>
+        </form>
+      )}
+
+      {/* Grade de 4 cards (sugestões, abaixo do campo) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {cards.map((c, i) => {
           const Icon = ICONS[c.iconKey] ?? MessageSquareText
