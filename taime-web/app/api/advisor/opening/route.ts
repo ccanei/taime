@@ -124,7 +124,8 @@ function buildTrendContext(trends: FlatTrend[], lang: Lang): string {
     const now    = lang === 'pt' ? (t.now_pt || t.now_en) : (t.now_en || t.now_pt)
     const cat    = t.category ? ` | category: ${t.category}` : ''
     const citeAs = `[${citeLabel(t.period, lang)}](/reports/${t.report_id}#trend-${t.rank})`
-    return `[${i + 1}] period: ${t.label} | score: ${t.score}/100${cat}\n    title: ${title}${now ? `\n    now: ${now}` : ''}\n    CITE_AS: ${citeAs}`
+    const primary = i === 0 ? ' (PRIMARY: anchor the opening here; any cited figure MUST come from this trend)' : ''
+    return `[${i + 1}]${primary} period: ${t.label} | score: ${t.score}/100${cat}\n    title: ${title}${now ? `\n    now: ${now}` : ''}\n    CITE_AS: ${citeAs}`
   }).join('\n')
 }
 
@@ -155,7 +156,7 @@ OPENING (40 to 70 words):
 - Partner tone: confident, concise, a peer who makes the client think. Invite them to reveal their context conversationally, never as a form. End with one light question.
 
 GROUNDING AND CITATION (this is the same standard as every TAIME answer, no exception):
-- Any QUANTITATIVE claim you make (a percentage, a count, a figure, "most companies", "less than X%") MUST appear VERBATIM in the material of one of the provided trends (its title or its "now" text). If you state such a figure, you MUST attach that trend's markdown link immediately after it: copy its CITE_AS string EXACTLY as given (it already has the shape [mmm/yyyy](/reports/ID#trend-rank)).
+- Anchor the opening on the PRIMARY trend, trend [1]. Any QUANTITATIVE claim you make (a percentage, a count, a figure, "most companies", "less than X%") MUST appear VERBATIM in the material of trend [1] (its title or its "now" text), and you MUST attach trend [1]'s markdown link immediately after it: copy its CITE_AS string EXACTLY as given (it already has the shape [mmm/yyyy](/reports/ID#trend-rank)). Do NOT cite a figure from any trend other than [1]; the other trends are only for the chips and for qualitative color.
 - If the provided trends contain NO citable figure that fits, write the opening QUALITATIVELY, with no numbers at all. A qualitative, linked-or-unlinked opening is always better than an invented statistic.
 - It is STRICTLY FORBIDDEN to use a number, percentage or market statistic from your own general knowledge. If it is not in the provided trend material, it does not exist for this opening.
 - Do NOT cite TAIME Scores and do NOT invent a company, a period or a datum. Only the CITE_AS links provided may be used; never construct or guess a URL.
@@ -318,8 +319,16 @@ export async function POST(req: NextRequest) {
         })
       }
     }
-    // Recente já vem primeiro (reports desc); dentro disso, ordena por score.
-    return out.sort((a, b) => b.score - a.score).slice(0, 6)
+    // Ordenacao TOTALMENTE deterministica (score desc, depois periodo desc,
+    // report_id, rank): sem isso, empates de score entre relatorios do mesmo
+    // periodo saem em ordem instavel entre requests, e PT e EN acabam ancorando em
+    // trends diferentes. A trend [1] tem de ser a MESMA nas duas linguas.
+    return out.sort((a, b) =>
+      b.score - a.score
+      || (a.period < b.period ? 1 : a.period > b.period ? -1 : 0)
+      || a.report_id.localeCompare(b.report_id)
+      || a.rank - b.rank,
+    ).slice(0, 6)
   }
 
   let selected = flatten(categories !== null)
