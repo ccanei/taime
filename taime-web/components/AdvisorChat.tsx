@@ -8,6 +8,7 @@ import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext } from '@/components/AdvisorContextPanel'
+import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
 
 // Intencao de contato humano: pedir para falar com alguem/equipe/suporte/comercial.
 const HANDOFF_RE = /\b(falar|conversar|contat\w+)\b[^.?!]{0,40}\b(algu[eé]m|uma pessoa|humano|pessoa real|equipe|time|suporte|comercial|vendas|atendimento|respons[aá]vel)\b|\b(talk|speak|connect|get in touch)\b[^.?!]{0,40}\b(someone|a (human|person|rep)|the team|sales|support|a human)\b|\b(human (support|agent|being)|real person|contact (the )?(team|support|sales))\b/i
@@ -98,6 +99,25 @@ function generateSessionId(): string {
   return crypto.randomUUID()
 }
 
+// Fallback client dos cards de chegada (usado so enquanto o /context nao respondeu
+// ou se falhar). Generico, calibrado a "tecnologia estrategica".
+interface HomeCardLite { iconKey: string; title: string; description: string; action: { kind: 'prompt' | 'session'; value: string } }
+function fallbackHomeCards(isPt: boolean): HomeCardLite[] {
+  const t = isPt ? 'tecnologia estratégica' : 'strategic technology'
+  if (isPt) return [
+    { iconKey: 'map',        title: `Onde ${t} está agora`, description: 'O estado atual e o que exige decisão', action: { kind: 'prompt', value: `Qual o estado atual de ${t} e o que muda para a minha empresa?` } },
+    { iconKey: 'trajectory', title: `Trajetória de ${t}`,   description: 'Como evoluiu e para onde aponta',       action: { kind: 'prompt', value: `Como ${t} evoluiu ao longo do tempo e qual o NEXT?` } },
+    { iconKey: 'focus',      title: `Onde focar em ${t}`,   description: 'Prioridade de investimento agora',      action: { kind: 'prompt', value: `Onde devo focar meu investimento em ${t} agora?` } },
+    { iconKey: 'risk',       title: `Riscos em ${t}`,       description: 'O que a maioria das empresas ignora',   action: { kind: 'prompt', value: `Quais riscos de ${t} a maioria das empresas ignora?` } },
+  ]
+  return [
+    { iconKey: 'map',        title: `Where ${t} stands now`, description: 'The current state and what needs a decision', action: { kind: 'prompt', value: `What is the current state of ${t} and what changes for my company?` } },
+    { iconKey: 'trajectory', title: `Trajectory of ${t}`,    description: 'How it evolved and where it points',          action: { kind: 'prompt', value: `How has ${t} evolved over time and what is the NEXT?` } },
+    { iconKey: 'focus',      title: `Where to focus on ${t}`, description: 'Investment priority right now',              action: { kind: 'prompt', value: `Where should I focus my investment in ${t} now?` } },
+    { iconKey: 'risk',       title: `Risks in ${t}`,          description: 'What most companies overlook',               action: { kind: 'prompt', value: `Which risks in ${t} do most companies overlook?` } },
+  ]
+}
+
 // "há 3 dias", "há 2h", "agora": formato compacto pt-BR.
 function timeAgoPt(iso: string): string {
   const diffMs  = Date.now() - new Date(iso).getTime()
@@ -176,8 +196,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   // ── Workspace: sidebar colapsavel + painel de contexto direito ──────────────
   const [collapsed,    setCollapsed]    = useState(true)    // sidebar colapsada por padrao no desktop
   const [latestPanel,  setLatestPanel]  = useState<PanelTurn | null>(null) // "Nesta resposta" do ultimo turno
-  const [fixedContext, setFixedContext] = useState<FixedContext | null>(null) // perfil + temas (fixo)
+  const [fixedContext, setFixedContext] = useState<FixedContext | null>(null) // perfil + temas + arquivo + home
   const [panelOpen,    setPanelOpen]    = useState(false)   // folha do painel no mobile
+  const [view,         setView]         = useState<'home' | 'chat'>('home') // aba Inicio vs conversa
 
   // ── Abertura proativa: sugestão de partida + chips, ancorada em trends reais.
   // Iniciativa do Advisor, fora da cota (nunca passa pelo /chat). Ver
@@ -215,21 +236,38 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   // Clique num tema do painel: pre-preenche o composer com uma pergunta de
   // trajetoria daquele tema e foca (sem enviar: nao consome cota sem intencao).
   function handlePickTheme(label: string) {
+    setView('chat')
     setInput(isPt ? `Como evoluiu ${label} ao longo do tempo?` : `How has ${label} evolved over time?`)
     setPanelOpen(false)
     setTimeout(() => inputRef.current?.focus(), 0)
   }
 
+  // Cards da tela de chegada (aba Inicio). Vem do /api/advisor/context (home);
+  // fallback client generico se ainda nao carregou ou se a montagem falhou.
+  const arrivalCards: ArrivalCard[] = (fixedContext?.home?.cards && fixedContext.home.cards.length > 0
+    ? fixedContext.home.cards
+    : fallbackHomeCards(isPt)
+  ).map(c => ({
+    iconKey:     c.iconKey,
+    title:       c.title,
+    description: c.description,
+    onClick: () => {
+      setView('chat')
+      if (c.action.kind === 'session') selectSession(c.action.value)
+      else handleSend(c.action.value)
+    },
+  }))
+
   // Contexto fixo do painel (perfil + temas). Uma vez, no mount. Fail-safe: se
   // falhar, o painel fixo fica vazio e a conversa segue normal.
   useEffect(() => {
     let cancelled = false
-    fetch('/api/advisor/context')
+    fetch(`/api/advisor/context?lang=${isPt ? 'pt' : 'en'}`)
       .then(r => r.ok ? r.json() : null)
       .then(j => { if (!cancelled && j) setFixedContext(j as FixedContext) })
       .catch(() => { /* silencioso */ })
     return () => { cancelled = true }
-  }, [])
+  }, [isPt])
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -434,6 +472,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   async function handleSend(textArg?: string) {
     const text = (textArg ?? input).trim()
     if (!text || loading || blocked) return
+    if (view !== 'chat') setView('chat')   // enviar sempre leva a conversa
 
     // Chip ou envio real: a abertura sai de cena (a conversa começou).
     clearIdle()
@@ -755,8 +794,33 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           </div>
         </div>
 
+        {/* Alternancia Inicio / Conversa (discreta, no topo da area central). */}
+        <div className="flex items-center gap-1 px-4 py-1.5 border-b border-zinc-100 bg-white">
+          {(['home', 'chat'] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors
+                ${view === v ? 'bg-taime-50 text-taime-700' : 'text-zinc-400 hover:text-zinc-700'}`}>
+              {v === 'home' ? (isPt ? 'Início' : 'Home') : (isPt ? 'Conversa' : 'Conversation')}
+            </button>
+          ))}
+        </div>
+
+        {/* Tela de chegada (aba Inicio). */}
+        <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
+          <AdvisorArrival
+            subtitle={isPt
+              ? 'Inteligência estratégica do arquivo TAIME aplicada à sua empresa'
+              : 'Strategic intelligence from the TAIME archive applied to your company'}
+            stats={fixedContext?.archive ?? null}
+            cards={arrivalCards}
+            isPt={isPt}
+          />
+        </div>
+
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-zinc-50">
+        <div className={`flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-zinc-50 ${view === 'chat' ? '' : 'hidden'}`}>
 
           {/* Abertura proativa ancorada no arquivo (sugestão + chips). Some ao
               começar a digitar; nunca conta contra a cota de mensagens. */}
@@ -896,8 +960,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           </div>
         )}
 
-        {/* Input (ou CTA de upgrade quando a cota esgota) */}
-        <div className="border-t border-zinc-100 bg-white px-4 py-3">
+        {/* Input (ou CTA de upgrade quando a cota esgota). Some na aba Inicio. */}
+        <div className={`border-t border-zinc-100 bg-white px-4 py-3 ${view === 'chat' ? '' : 'hidden'}`}>
           {blocked ? (
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between
                             rounded-xl bg-taime-50 border border-taime-100 px-4 py-3">

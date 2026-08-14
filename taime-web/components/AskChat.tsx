@@ -6,6 +6,7 @@ import { useLocale } from '@/lib/useLocale'
 import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
+import AdvisorArrival, { type ArrivalStats, type ArrivalCard } from '@/components/AdvisorArrival'
 
 interface Message {
   id:      string
@@ -69,10 +70,14 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   const [email,       setEmail]       = useState('')
   const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
   const [website,     setWebsite]     = useState('') // honeypot
+  // Tela de chegada (aba Inicio) + numeros do arquivo (publico, sem vazar conteudo).
+  const [view,         setView]         = useState<'home' | 'chat'>('home')
+  const [archiveStats, setArchiveStats] = useState<ArrivalStats | null>(null)
 
   const captchaRef = useRef<HTMLDivElement>(null)
   const widgetRendered = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Captcha so na 1a interacao do visitante (tech ou meta). Depois de provado
   // humano, nao repete, mesmo que a pergunta meta nao avance o contador de 3.
@@ -121,6 +126,25 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading, blocked])
+
+  // Numeros do arquivo para a linha de credibilidade. Publico, fail-safe.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/archive/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (!cancelled && j?.stats) setArchiveStats(j.stats as ArrivalStats) })
+      .catch(() => { /* linha some */ })
+    return () => { cancelled = true }
+  }, [])
+
+  // Cards da chegada: prefilla o composer e vai para a conversa (nao envia direto,
+  // respeitando o captcha da 1a pergunta do anonimo).
+  const arrivalCards: ArrivalCard[] = (L.cards ?? []).map(c => ({
+    iconKey:     c.iconKey,
+    title:       c.title,
+    description: c.description,
+    onClick: () => { setView('chat'); setInput(c.prompt); setTimeout(() => textareaRef.current?.focus(), 0) },
+  }))
 
   async function handleSend(textArg?: string) {
     const text = (textArg ?? input).trim()
@@ -224,15 +248,33 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
 
   return (
     <div className="max-w-3xl mx-auto">
-    <div className="mb-6 text-center">
+    <div className={`mb-6 text-center ${view === 'chat' ? '' : 'hidden'}`}>
       <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 mb-2 leading-snug">{L.title}</h1>
       <p className="text-sm text-zinc-500 max-w-xl mx-auto leading-relaxed">{L.subtitle}</p>
     </div>
     <div className="flex flex-col h-[calc(100vh-260px)] min-h-[480px]
                     border border-zinc-200 rounded-2xl overflow-hidden bg-white">
 
+      {/* Alternancia Inicio / Conversa */}
+      <div className="flex items-center gap-1 px-4 py-1.5 border-b border-zinc-100 bg-white">
+        {(['home', 'chat'] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors
+              ${view === v ? 'bg-taime-50 text-taime-700' : 'text-zinc-400 hover:text-zinc-700'}`}>
+            {v === 'home' ? L.tabHome : L.tabChat}
+          </button>
+        ))}
+      </div>
+
+      {/* Tela de chegada (aba Inicio): mesma primeira impressao, sem dados do arquivo. */}
+      <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
+        <AdvisorArrival subtitle={L.arrivalSubtitle} stats={archiveStats} cards={arrivalCards} isPt={isPt} />
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-100 bg-white">
+      <div className={`items-center justify-between px-5 py-3 border-b border-zinc-100 bg-white ${view === 'chat' ? 'flex' : 'hidden'}`}>
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-7 h-7 rounded-full bg-taime-600 flex items-center justify-center
                           text-xs font-bold text-white shrink-0">T</div>
@@ -244,7 +286,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4 bg-zinc-50">
+      <div className={`flex-1 overflow-y-auto px-5 py-6 space-y-4 bg-zinc-50 ${view === 'chat' ? '' : 'hidden'}`}>
         {messages.length === 0 && !loading && (
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-taime-600 flex items-center justify-center
@@ -256,23 +298,15 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
           </div>
         )}
 
-        {/* PART 5: chips de perguntas fortes. So antes da 1a pergunta; somem depois. */}
+        {/* Sugestoes fortes: agora vivem como cards na aba Inicio; no chat vazio um
+            atalho discreto de volta a chegada evita duplicar a grade aqui. */}
         {messages.length === 0 && !loading && !blocked && (
-          <div className="flex flex-col items-start gap-2 pl-10">
-            {L.chips.map((chip, i) => (
-              <button
-                key={i}
-                onClick={() => handleSend(chip)}
-                disabled={loading}
-                className="text-xs font-medium text-taime-700 bg-taime-50 hover:bg-taime-100
-                           border border-taime-100 rounded-full px-3 py-1.5 text-left transition-colors
-                           disabled:opacity-50 disabled:cursor-not-allowed">
-                {chip}
-              </button>
-            ))}
+          <div className="pl-10">
+            <button onClick={() => setView('home')} className="text-xs font-medium text-taime-700 hover:text-taime-800 hover:underline">
+              {isPt ? 'Ver sugestões de perguntas →' : 'See suggested questions →'}
+            </button>
           </div>
         )}
-
         {messages.map((msg, i) => (
           <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
             <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold
@@ -317,8 +351,8 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer / bloqueio */}
-      <div className="border-t border-zinc-100 bg-white px-5 py-4">
+      {/* Composer / bloqueio (some na aba Inicio) */}
+      <div className={`border-t border-zinc-100 bg-white px-5 py-4 ${view === 'chat' ? '' : 'hidden'}`}>
         {blocked ? (
           <div className="rounded-xl bg-taime-50 border border-taime-100 px-4 py-4 text-center">
             {/* PART 3: bloqueio personalizado citando os temas das perguntas (fallback generico). */}
@@ -387,6 +421,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
             {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
             <div className="flex gap-2 items-end">
               <textarea
+                ref={textareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}

@@ -23,9 +23,17 @@ export interface PanelTurn {
   yearFrom: string | null
   yearTo:   string | null
 }
+export interface HomeCardData {
+  iconKey:     string
+  title:       string
+  description: string
+  action:      { kind: 'prompt' | 'session'; value: string }
+}
 export interface FixedContext {
   profile: Record<string, string>
   themes:  Array<{ slug: string; label: string; startYear: string | null; endYear: string | null }>
+  archive?: { editions: number; trends: number; startYear: string | null; endYear: string | null } | null
+  home?:    { isReturning: boolean; cards: HomeCardData[] } | null
 }
 
 const MONTHS = {
