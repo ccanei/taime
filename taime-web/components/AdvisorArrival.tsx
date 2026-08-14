@@ -55,12 +55,11 @@ export default function AdvisorArrival({
         </div>
         <p className="text-sm text-zinc-500 max-w-md mx-auto leading-relaxed">{subtitle}</p>
 
-        {/* Linha de credibilidade (some se os numeros falharem) */}
-        {stats && stats.editions > 0 && (
+        {/* Linha de credibilidade (some se os numeros falharem). Sem "edições":
+            fala de tendências analisadas e cobertura temporal. */}
+        {stats && stats.trends > 0 && (
           <p className="mt-4 inline-flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px] font-medium text-zinc-400 tabular-nums">
-            <span>{n(stats.editions)} {isPt ? 'edições' : 'editions'}</span>
-            <span className="text-zinc-300">·</span>
-            <span>{n(stats.trends)} trends</span>
+            <span>{n(stats.trends)} {isPt ? 'tendências analisadas' : 'trends analyzed'}</span>
             {stats.startYear && stats.endYear && (
               <>
                 <span className="text-zinc-300">·</span>

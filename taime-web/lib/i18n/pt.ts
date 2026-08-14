@@ -114,7 +114,7 @@ export const pt = {
         'Minha empresa está atrasada em prontidão pós-quântica?',
         'O que a soberania de dados muda na minha decisão de arquitetura de cloud?',
       ],
-      metaLimit:        'Você já explorou bastante sobre o TAIME. Para continuar e colocar o Advisor para trabalhar de verdade, crie sua conta gratuita: são 2 relatórios completos por mês e mensagens de teste do Advisor com a mesma profundidade do plano pago.',
+      metaLimit:        'Você já explorou bastante sobre o TAIME. Para continuar e colocar o Advisor para trabalhar de verdade, crie sua conta gratuita: são 2 análises completas por mês e mensagens de teste do Advisor com a mesma profundidade do plano pago.',
       arrivalSubtitle:  'Inteligência estratégica do arquivo TAIME, sem cadastro',
       tabHome:          'Início',
       tabChat:          'Conversa',

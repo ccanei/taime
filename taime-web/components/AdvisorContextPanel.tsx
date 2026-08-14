@@ -101,8 +101,8 @@ export default function AdvisorContextPanel({
           <>
             <p className="text-[11px] text-zinc-400 mb-2 tabular-nums">
               {isPt
-                ? `${turn.count} ${turn.count === 1 ? 'análise' : 'análises'}`
-                : `${turn.count} ${turn.count === 1 ? 'analysis' : 'analyses'}`}
+                ? `${turn.count} ${turn.count === 1 ? 'tendência' : 'tendências'}`
+                : `${turn.count} ${turn.count === 1 ? 'trend' : 'trends'}`}
               {turn.yearFrom && turn.yearTo && (
                 <span> · {turn.yearFrom === turn.yearTo ? turn.yearFrom : `${turn.yearFrom} ${isPt ? 'a' : 'to'} ${turn.yearTo}`}</span>
               )}
@@ -140,8 +140,8 @@ export default function AdvisorContextPanel({
         ) : (
           <p className="text-xs text-zinc-400 leading-relaxed">
             {isPt
-              ? 'As análises que eu consultar aparecem aqui a cada resposta.'
-              : 'The analyses I consult appear here with each answer.'}
+              ? 'As tendências que eu consultar aparecem aqui a cada resposta.'
+              : 'The trends I consult appear here with each answer.'}
           </p>
         )}
       </Section>

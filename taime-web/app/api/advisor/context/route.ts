@@ -199,7 +199,7 @@ export async function GET(req: NextRequest) {
           cards.push({
             iconKey: 'new',
             title:   lang === 'en' ? 'New in your theme' : 'Novidade no seu tema',
-            description: lang === 'en' ? `${slugLabel}, latest analysis ${mmm}` : `${slugLabel}, análise mais recente de ${mmm}`,
+            description: lang === 'en' ? `${slugLabel}, latest trend ${mmm}` : `${slugLabel}, tendência mais recente de ${mmm}`,
             action:  { kind: 'prompt', value: lang === 'en' ? `What is the most recent development on ${slugLabel} in the archive?` : `O que há de mais recente sobre ${slugLabel} no arquivo?` },
           })
         }

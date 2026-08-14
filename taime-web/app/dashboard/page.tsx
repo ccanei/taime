@@ -133,7 +133,7 @@ export default async function DashboardPage() {
               <span className="flex-1 min-w-0 text-sm font-semibold text-zinc-900 group-hover:text-taime-600 transition-colors line-clamp-1">
                 {p.title}
               </span>
-              <span className="text-[11px] text-zinc-400 shrink-0 hidden sm:block">{p.nTrends} trends</span>
+              <span className="text-[11px] text-zinc-400 shrink-0 hidden sm:block">{p.nTrends} {isEn ? 'trends' : 'tendências'}</span>
               <div className={`shrink-0 w-9 h-9 rounded-lg ring-2 ${scoreRing(p.score)} flex items-center justify-center`}>
                 <span className={`text-sm font-bold tabular-nums ${scoreColor(p.score)}`}>{p.score}</span>
               </div>
@@ -216,7 +216,7 @@ export default async function DashboardPage() {
       <main className="max-w-6xl mx-auto px-6 py-10">
         {editions.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
-            <p className="text-zinc-400">{isEn ? 'No published reports yet.' : 'Nenhum relatório publicado ainda.'}</p>
+            <p className="text-zinc-400">{isEn ? 'No published analyses yet.' : 'Nenhuma análise publicada ainda.'}</p>
           </div>
         ) : (
           <DashboardLibrary
