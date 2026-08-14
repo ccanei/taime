@@ -57,10 +57,13 @@ const PROFILE_LABELS: Record<string, { pt: string; en: string }> = {
 }
 const PROFILE_ORDER = ['sector', 'company_size', 'maturity_level', 'strategic_objective', 'current_infrastructure']
 
+// Cada bloco do painel e um CARD proprio (superficie branca sobre o fundo tonal),
+// mesmos tokens de borda/raio/sombra dos cards da aba Inicio e do dashboard. O
+// titulo de seccao tem peso e cor mais fortes que o corpo (hierarquia clara).
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section>
-      <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-2">{title}</h3>
+    <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-600 mb-2.5">{title}</h3>
       {children}
     </section>
   )
@@ -82,7 +85,7 @@ export default function AdvisorContextPanel({
   const themes = fixed?.themes ?? []
 
   return (
-    <div className="flex flex-col gap-6 p-4 text-sm">
+    <div className="flex flex-col gap-3 p-3 text-sm">
 
       {/* ── VIVA: Nesta resposta ─────────────────────────────────────── */}
       <Section title={isPt ? 'Nesta resposta' : 'In this answer'}>
@@ -95,11 +98,11 @@ export default function AdvisorContextPanel({
               </svg>
               {isPt ? 'Consultando o arquivo...' : 'Searching the archive...'}
             </p>
-            {[0, 1, 2].map(i => <div key={i} className="h-12 rounded-lg bg-zinc-100 animate-pulse" />)}
+            {[0, 1, 2].map(i => <div key={i} className="h-11 rounded-lg bg-zinc-100 animate-pulse" />)}
           </div>
         ) : turn && turn.trends.length > 0 ? (
           <>
-            <p className="text-[11px] text-zinc-400 mb-2 tabular-nums">
+            <p className="text-[11px] text-zinc-400 mb-1 tabular-nums">
               {isPt
                 ? `${turn.count} ${turn.count === 1 ? 'tendência' : 'tendências'}`
                 : `${turn.count} ${turn.count === 1 ? 'trend' : 'trends'}`}
@@ -107,7 +110,8 @@ export default function AdvisorContextPanel({
                 <span> · {turn.yearFrom === turn.yearTo ? turn.yearFrom : `${turn.yearFrom} ${isPt ? 'a' : 'to'} ${turn.yearTo}`}</span>
               )}
             </p>
-            <div className="space-y-2">
+            {/* Linhas (sem borda propria) para nao aninhar card dentro de card. */}
+            <div className="divide-y divide-zinc-100">
               {turn.trends.map((c, i) => (
                 <a
                   key={`${c.reportId}-${c.rank}-${i}`}
@@ -115,8 +119,7 @@ export default function AdvisorContextPanel({
                   target="_blank"
                   rel="noopener noreferrer"
                   title={c.title || undefined}
-                  className="group flex items-start gap-2.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-2
-                             hover:border-taime-200 hover:shadow-sm transition-all"
+                  className="group flex items-start gap-2.5 py-2 -mx-1.5 px-1.5 rounded-lg hover:bg-zinc-50 transition-colors"
                 >
                   {c.score !== null && (
                     <span className={`shrink-0 w-8 h-8 rounded-md ring-1 ${scoreRing(c.score)} flex items-center justify-center`}>
@@ -124,8 +127,8 @@ export default function AdvisorContextPanel({
                     </span>
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-medium text-zinc-800 group-hover:text-taime-700 transition-colors line-clamp-2 leading-snug">
-                      {c.title || (isPt ? 'Análise' : 'Analysis')}
+                    <span className="block text-xs font-semibold text-zinc-800 group-hover:text-taime-700 transition-colors line-clamp-2 leading-snug">
+                      {c.title || (isPt ? 'Tendência' : 'Trend')}
                     </span>
                     <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-zinc-400 tabular-nums">
                       <span>{shortPeriod(c.period, isPt)}</span>
@@ -149,35 +152,37 @@ export default function AdvisorContextPanel({
       {/* ── FIXA: Sua empresa ────────────────────────────────────────── */}
       {hasCompanyBlock ? (
         <Section title={isPt ? 'Sua empresa' : 'Your company'}>
-          {companyName && <p className="text-sm font-semibold text-zinc-900 mb-2">{companyName}</p>}
+          {companyName && <p className="text-sm font-bold text-zinc-900 mb-2.5 leading-snug">{companyName}</p>}
           {profileEntries.length > 0 && (
-            <dl className="space-y-1.5">
+            <dl className="flex flex-col gap-2">
               {profileEntries.map(k => (
-                <div key={k} className="flex flex-col">
-                  <dt className="text-[10px] uppercase tracking-wide text-zinc-400">{isPt ? PROFILE_LABELS[k].pt : PROFILE_LABELS[k].en}</dt>
-                  <dd className="text-xs text-zinc-700 leading-snug">{fixed!.profile[k]}</dd>
+                <div key={k} className="flex flex-col gap-0.5">
+                  <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{isPt ? PROFILE_LABELS[k].pt : PROFILE_LABELS[k].en}</dt>
+                  <dd className="text-[13px] text-zinc-800 leading-relaxed">{fixed!.profile[k]}</dd>
                 </div>
               ))}
             </dl>
           )}
         </Section>
       ) : fixed && onOpenProfile ? (
-        <button onClick={onOpenProfile} className="text-xs font-medium text-taime-600 hover:text-taime-800 text-left">
-          {isPt ? 'Completar meu perfil →' : 'Complete my profile →'}
-        </button>
+        <Section title={isPt ? 'Sua empresa' : 'Your company'}>
+          <button onClick={onOpenProfile} className="text-xs font-medium text-taime-600 hover:text-taime-800 text-left">
+            {isPt ? 'Completar meu perfil →' : 'Complete my profile →'}
+          </button>
+        </Section>
       ) : null}
 
       {/* ── FIXA: Temas que voce acompanha ───────────────────────────── */}
       {themes.length > 0 && (
         <Section title={isPt ? 'Temas que você acompanha' : 'Themes you follow'}>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5 -mx-1.5">
             {themes.map(t => (
               <button
                 key={t.slug}
                 onClick={() => onPickTheme(t.label)}
-                className="group flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-zinc-50 transition-colors"
+                className="group flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-zinc-50 transition-colors"
               >
-                <span className="text-xs font-medium text-zinc-700 group-hover:text-taime-700 truncate">{t.label}</span>
+                <span className="text-[13px] font-medium text-zinc-800 group-hover:text-taime-700 truncate">{t.label}</span>
                 {t.startYear && (
                   <span className="shrink-0 flex items-center gap-1 text-[10px] tabular-nums text-zinc-400">
                     <span>{t.startYear}</span>

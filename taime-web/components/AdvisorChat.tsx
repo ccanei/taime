@@ -1006,8 +1006,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         </div>
       </div>
 
-      {/* Painel de contexto (workspace): fixo a direita no desktop (>= lg). */}
-      <aside className="hidden lg:flex lg:flex-col w-[320px] shrink-0 border-l border-zinc-200 bg-white overflow-y-auto">
+      {/* Painel de contexto (workspace): fixo a direita no desktop (>= lg).
+          Fundo tonal para os cards brancos do painel se destacarem como camadas. */}
+      <aside className="hidden lg:flex lg:flex-col w-[320px] shrink-0 border-l border-zinc-200 bg-zinc-50 overflow-y-auto">
         <AdvisorContextPanel
           turn={latestPanel}
           loading={loading || recovering}
@@ -1022,7 +1023,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
       {panelOpen && (
         <div className="lg:hidden fixed inset-0 z-30 flex">
           <button onClick={() => setPanelOpen(false)} className="flex-1 bg-black/40" aria-label={isPt ? 'Fechar' : 'Close'} />
-          <aside className="flex flex-col w-80 max-w-[85%] bg-white border-l border-zinc-200 shadow-xl overflow-y-auto">
+          <aside className="flex flex-col w-80 max-w-[85%] bg-zinc-50 border-l border-zinc-200 shadow-xl overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-100 sticky top-0 bg-white">
               <span className="text-xs font-bold text-zinc-700">{isPt ? 'Contexto' : 'Context'}</span>
               <button onClick={() => setPanelOpen(false)} className="text-zinc-400 hover:text-zinc-700 p-1" aria-label={isPt ? 'Fechar' : 'Close'}>
