@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+
+const INFRA_MARKER = 'Tecnologias em uso:'
 
 const SECTORS = [
   'Tecnologia', 'Financeiro', 'Saúde', 'Varejo',
@@ -43,6 +45,7 @@ interface Props {
 export default function AdvisorOnboarding({ userId, onComplete }: Props) {
   const [step, setStep]       = useState(1)
   const [saving, setSaving]   = useState(false)
+  const [loading, setLoading] = useState(true)   // carrega o perfil atual ao abrir
   const [error, setError]     = useState('')
 
   // Step 1
@@ -60,6 +63,46 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
   // Step 4
   const [maturity, setMaturity] = useState('')
 
+  // Ao ABRIR: carrega o perfil ja salvo e pre-preenche os campos (o formulario e
+  // EDICAO, nao cadastro do zero). RLS permite o usuario ler o proprio perfil.
+  // Fail-safe: se a busca falhar, o form abre com o que tiver.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const supabase = createSupabaseBrowser()
+        const { data } = await supabase
+          .from('advisor_profiles')
+          .select('company_name, sector, company_size, current_infrastructure, strategic_objective, maturity_level')
+          .eq('user_id', userId)
+          .maybeSingle()
+        if (cancelled || !data) return
+        if (data.company_name)        setCompanyName(data.company_name)
+        if (data.sector)              setSector(data.sector)
+        if (data.company_size)        setCompanySize(data.company_size)
+        if (data.maturity_level)      setMaturity(data.maturity_level)
+        if (data.strategic_objective) setObjective(data.strategic_objective)
+        if (data.current_infrastructure) {
+          // Desmonta o campo combinado de volta em texto livre + chips marcados.
+          const infra = data.current_infrastructure as string
+          const idx = infra.indexOf(INFRA_MARKER)
+          if (idx >= 0) {
+            setInfraText(infra.slice(0, idx).trim())
+            const tail = infra.slice(idx + INFRA_MARKER.length).replace(/\.\s*$/, '').trim()
+            setInfraChecks(tail.split(',').map(x => x.trim()).filter(x => INFRA_OPTIONS.includes(x)))
+          } else {
+            setInfraText(infra)
+          }
+        }
+      } catch {
+        /* fail-safe: abre com o estado atual */
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [userId])
+
   function toggleInfra(opt: string) {
     setInfraChecks(prev =>
       prev.includes(opt) ? prev.filter(x => x !== opt) : [...prev, opt]
@@ -76,19 +119,25 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
 
     const infraFull = [
       infraText.trim(),
-      infraChecks.length ? `Tecnologias em uso: ${infraChecks.join(', ')}.` : '',
+      infraChecks.length ? `${INFRA_MARKER} ${infraChecks.join(', ')}.` : '',
     ].filter(Boolean).join(' ')
 
-    const supabase = createSupabaseBrowser()
-    const { error: err } = await supabase.from('advisor_profiles').upsert({
-      user_id:                userId,
-      company_name:           companyName.trim(),
+    // Update PARCIAL: os obrigatorios (sempre validados) vao sempre; os opcionais
+    // (infra, objetivo) SO entram quando preenchidos. Assim um campo em branco nunca
+    // sobrescreve um valor existente com vazio. Upsert em cima do user_id: numa linha
+    // ja existente, so as chaves enviadas sao atualizadas; as demais ficam intactas.
+    const payload: Record<string, unknown> = {
+      user_id:        userId,
+      company_name:   companyName.trim(),
       sector,
-      company_size:           companySize,
-      current_infrastructure: infraFull || null,
-      strategic_objective:    objective.trim() || null,
-      maturity_level:         maturity,
-    }, { onConflict: 'user_id' })
+      company_size:   companySize,
+      maturity_level: maturity,
+    }
+    if (infraFull)         payload.current_infrastructure = infraFull
+    if (objective.trim())  payload.strategic_objective    = objective.trim()
+
+    const supabase = createSupabaseBrowser()
+    const { error: err } = await supabase.from('advisor_profiles').upsert(payload, { onConflict: 'user_id' })
 
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -121,8 +170,19 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
 
         <div className="bg-white rounded-2xl border border-zinc-200 p-8 shadow-sm">
 
+          {/* Estado de carregamento discreto enquanto busca o perfil salvo. */}
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-zinc-400" aria-live="polite">
+              <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Carregando seu perfil...
+            </div>
+          )}
+
           {/* ── STEP 1 — Empresa ─────────────────────────────────────── */}
-          {step === 1 && (
+          {!loading && step === 1 && (
             <>
               <h2 className="text-xl font-bold text-zinc-900 mb-1">Sua empresa</h2>
               <p className="text-sm text-zinc-500 mb-6">Contexto organizacional para personalizar a análise.</p>
