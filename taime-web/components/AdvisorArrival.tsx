@@ -16,6 +16,53 @@ export interface ArrivalStats {
   trends:    number
   startYear: string | null
   endYear:   string | null
+  byYear?:   Record<string, number>   // tendencias por ano, para a timeline de densidade
+}
+
+// Faixa de densidade do acervo: uma barra por ano (2015..2026), altura + opacidade
+// pela densidade de tendencias analisadas. Hover mostra a contagem do ano. Fail-safe:
+// sem dados suficientes, nao renderiza. Respeita prefers-reduced-motion (sem transicao
+// obrigatoria; e estatico).
+function ArchiveDensity({ byYear, isPt }: { byYear: Record<string, number>; isPt: boolean }) {
+  const years = Object.keys(byYear).map(Number).filter(y => y >= 2000 && y <= 2100).sort((a, b) => a - b)
+  if (years.length < 2) return null
+  const start = years[0]
+  const end = years[years.length - 1]
+  const span: number[] = []
+  for (let y = start; y <= end; y++) span.push(y)
+  const max = Math.max(...span.map(y => byYear[String(y)] ?? 0), 1)
+  const locale = isPt ? 'pt-BR' : 'en-US'
+
+  return (
+    <div className="mt-8 max-w-2xl mx-auto">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-2 text-center">
+        {isPt ? 'Cobertura do acervo' : 'Archive coverage'}
+      </p>
+      <div className="flex items-end justify-between gap-[3px] h-16">
+        {span.map(y => {
+          const c = byYear[String(y)] ?? 0
+          const ratio = c / max
+          const h = Math.max(6, Math.round(ratio * 100))       // % da altura
+          const op = 0.28 + ratio * 0.62                        // opacidade por densidade
+          return (
+            <div key={y} className="group relative flex-1 flex items-end h-full" title={`${y}: ${c.toLocaleString(locale)} ${isPt ? 'tendências' : 'trends'}`}>
+              <div className="w-full rounded-t-sm bg-taime-600 transition-[height]" style={{ height: `${h}%`, opacity: op }} />
+              {/* Tooltip discreto no hover */}
+              <span className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity tabular-nums z-10">
+                {y} · {c.toLocaleString(locale)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      {/* Anos nas extremidades e no meio, sem poluir */}
+      <div className="mt-1.5 flex justify-between text-[10px] text-zinc-400 tabular-nums">
+        <span>{start}</span>
+        {end - start >= 6 && <span>{Math.round((start + end) / 2)}</span>}
+        <span>{end}</span>
+      </div>
+    </div>
+  )
 }
 export interface ArrivalCard {
   iconKey:     string
@@ -58,7 +105,7 @@ export default function AdvisorArrival({
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-2 py-8 sm:py-12">
+    <div className="max-w-3xl mx-auto px-2 py-8 sm:py-10">
       {/* Cabecalho de apresentacao */}
       <div className="text-center mb-6">
         <div className="inline-flex items-center gap-2 mb-3">
@@ -115,8 +162,8 @@ export default function AdvisorArrival({
             <button
               key={i}
               onClick={c.onClick}
-              className="group flex items-start gap-3 text-left rounded-xl border border-zinc-200 bg-white p-4
-                         shadow-sm hover:border-taime-300 hover:shadow transition-all"
+              className="group flex items-start gap-3 text-left rounded-xl border border-zinc-200 border-t-2 border-t-taime-400 bg-white p-4
+                         shadow-sm hover:border-taime-300 hover:border-t-taime-500 hover:shadow-md transition-all"
             >
               <span className="shrink-0 w-9 h-9 rounded-lg bg-taime-50 ring-1 ring-taime-100 flex items-center justify-center text-taime-600 group-hover:bg-taime-100 transition-colors">
                 <Icon size={17} strokeWidth={2} />
@@ -131,6 +178,9 @@ export default function AdvisorArrival({
           )
         })}
       </div>
+
+      {/* Timeline de densidade do acervo (dado agregado, publico). Fail-safe. */}
+      {stats?.byYear && <ArchiveDensity byYear={stats.byYear} isPt={isPt} />}
     </div>
   )
 }

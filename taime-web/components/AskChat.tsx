@@ -268,8 +268,9 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
         ))}
       </div>
 
-      {/* Tela de chegada (aba Inicio): mesma primeira impressao, sem dados do arquivo. */}
+      {/* Tela de chegada (aba Inicio): mesma primeira impressao, dado agregado publico. */}
       <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
+        <div className="min-h-full flex flex-col justify-center">
         <AdvisorArrival
           subtitle={L.arrivalSubtitle}
           stats={archiveStats}
@@ -285,6 +286,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
             else { handleSend(t) }
           }}
         />
+        </div>
       </div>
 
       {/* Header */}

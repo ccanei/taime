@@ -9,6 +9,7 @@ import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
+import { LineChart, Target, MessageSquareText, MessageCircle, type LucideIcon } from 'lucide-react'
 
 // Intencao de contato humano: pedir para falar com alguem/equipe/suporte/comercial.
 const HANDOFF_RE = /\b(falar|conversar|contat\w+)\b[^.?!]{0,40}\b(algu[eé]m|uma pessoa|humano|pessoa real|equipe|time|suporte|comercial|vendas|atendimento|respons[aá]vel)\b|\b(talk|speak|connect|get in touch)\b[^.?!]{0,40}\b(someone|a (human|person|rep)|the team|sales|support|a human)\b|\b(human (support|agent|being)|real person|contact (the )?(team|support|sales))\b/i
@@ -68,6 +69,38 @@ interface SessionRow {
   message_count:    number
   archived_at:      string | null
   created_at:       string
+  type?:            'trajectory' | 'decision' | 'tactical' | null
+}
+
+// Icone por tipo de conversa (do context_metadata da 1a resposta). Sem tipo -> neutro.
+const SESSION_TYPE_ICON: Record<string, LucideIcon> = {
+  trajectory: LineChart,        // trajetoria: linha temporal
+  decision:   Target,           // prospectiva/decisao: alvo
+  tactical:   MessageSquareText, // tatica/factual: conversa
+}
+function sessionIcon(type: SessionRow['type']): LucideIcon {
+  return (type && SESSION_TYPE_ICON[type]) || MessageCircle
+}
+
+// Agrupa conversas por recencia, preservando a ordem (ja vem desc por atividade).
+function groupSessions(
+  sessions: SessionRow[],
+  labels: { today: string; week: string; month: string; older: string },
+): Array<{ key: string; label: string; items: SessionRow[] }> {
+  const now = Date.now()
+  const DAY = 86_400_000
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+  const b: Record<string, SessionRow[]> = { today: [], week: [], month: [], older: [] }
+  for (const s of sessions) {
+    const t = new Date(s.last_activity_at).getTime()
+    if (t >= startOfToday.getTime()) b.today.push(s)
+    else if (now - t < 7 * DAY)  b.week.push(s)
+    else if (now - t < 30 * DAY) b.month.push(s)
+    else b.older.push(s)
+  }
+  return (['today', 'week', 'month', 'older'] as const)
+    .filter(k => b[k].length > 0)
+    .map(k => ({ key: k, label: labels[k], items: b[k] }))
 }
 
 interface Props {
@@ -637,9 +670,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="flex-1 overflow-y-auto px-2 py-2">
         {visibleSessions.length === 0 ? (
-          <p className="px-3 py-6 text-xs text-zinc-400 text-center">
+          <p className="px-1 py-6 text-xs text-zinc-400 text-center">
             {sessionQ
               ? (isPt ? 'Nenhuma conversa encontrada.' : 'No conversation found.')
               : viewArchived
@@ -647,25 +680,42 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 : (isPt ? 'Nenhuma sessão anterior ainda.' : 'No previous sessions yet.')}
           </p>
         ) : (
-          visibleSessions.map(s => {
-            const isActive = s.session_id === sessionId
-            return (
-              <button
-                key={s.session_id}
-                onClick={() => selectSession(s.session_id)}
-                className={`w-full text-left px-3 py-2 border-l-2 transition-colors
-                  ${isActive
-                    ? 'border-taime-600 bg-taime-50/50'
-                    : 'border-transparent hover:bg-zinc-50'}`}>
-                <p className={`text-xs truncate ${isActive ? 'font-semibold text-zinc-900' : 'text-zinc-700'}`}>
-                  {s.title ?? (isPt ? 'Sem título' : 'Untitled')}
-                </p>
-                <p className="text-[10px] text-zinc-400 mt-0.5">
-                  {timeAgo(s.last_activity_at)} · {s.message_count} {isPt ? 'msgs' : 'msgs'}
-                </p>
-              </button>
-            )
-          })
+          groupSessions(visibleSessions, isPt
+            ? { today: 'Hoje', week: 'Esta semana', month: 'Este mês', older: 'Anteriores' }
+            : { today: 'Today', week: 'This week', month: 'This month', older: 'Earlier' },
+          ).map(group => (
+            <div key={group.key} className="mb-3 last:mb-0">
+              <p className="px-1.5 mb-1 text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400">{group.label}</p>
+              <div className="flex flex-col gap-1">
+                {group.items.map(s => {
+                  const isActive = s.session_id === sessionId
+                  const Icon = sessionIcon(s.type)
+                  return (
+                    <button
+                      key={s.session_id}
+                      onClick={() => selectSession(s.session_id)}
+                      className={`w-full text-left rounded-lg border-l-2 pl-2 pr-2.5 py-2 flex items-start gap-2.5 transition-colors
+                        ${isActive
+                          ? 'border-taime-600 bg-taime-50/70'
+                          : 'border-transparent hover:bg-white hover:shadow-sm'}`}>
+                      <span className={`shrink-0 w-6 h-6 rounded-md flex items-center justify-center mt-0.5
+                        ${isActive ? 'bg-taime-100 text-taime-700' : 'bg-zinc-100 text-zinc-500'}`}>
+                        <Icon size={14} strokeWidth={2} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-xs leading-snug line-clamp-2 ${isActive ? 'font-semibold text-zinc-900' : 'font-medium text-zinc-700'}`}>
+                          {s.title ?? (isPt ? 'Sem título' : 'Untitled')}
+                        </span>
+                        <span className="mt-1 block text-[10px] text-zinc-400 tabular-nums">
+                          {timeAgo(s.last_activity_at)} · {s.message_count} {isPt ? 'msgs' : 'msgs'}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </>
@@ -674,17 +724,17 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-[calc(100vh-140px)] min-h-[500px] border border-zinc-200 rounded-2xl overflow-hidden bg-white">
+    <div className="flex h-[calc(100vh-140px)] min-h-[500px] border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
 
       {/* Sidebar desktop: colapsa em barra de icones; expande ao clicar (persiste). */}
       <aside className={`hidden md:flex md:flex-col bg-zinc-50 border-r border-zinc-200 shrink-0 transition-[width] duration-150 ${collapsed ? 'w-14' : 'w-60'}`}>
         {collapsed ? (
-          <div className="flex flex-col items-center gap-1 py-3">
+          <div className="flex flex-col items-center gap-1 py-3 overflow-y-auto">
             <button
               onClick={() => persistCollapsed(false)}
               title={isPt ? 'Expandir conversas' : 'Expand conversations'}
               aria-label={isPt ? 'Expandir conversas' : 'Expand conversations'}
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-zinc-500 hover:bg-zinc-200/60 hover:text-zinc-800 transition-colors">
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-zinc-500 hover:bg-zinc-200/60 hover:text-zinc-800 transition-colors shrink-0">
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
               </svg>
@@ -693,11 +743,28 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
               onClick={newSession}
               title={isPt ? 'Novo contexto' : 'New chat'}
               aria-label={isPt ? 'Novo contexto' : 'New chat'}
-              className="w-9 h-9 rounded-lg flex items-center justify-center bg-taime-600 text-white hover:bg-taime-700 transition-colors">
+              className="w-9 h-9 rounded-lg flex items-center justify-center bg-taime-600 text-white hover:bg-taime-700 transition-colors shrink-0">
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14"/>
               </svg>
             </button>
+            {/* Icones de tipo das conversas: dao sentido visual a barra colapsada. */}
+            {visibleSessions.length > 0 && <div className="w-6 h-px bg-zinc-200 my-1 shrink-0" />}
+            {visibleSessions.slice(0, 14).map(s => {
+              const isActive = s.session_id === sessionId
+              const Icon = sessionIcon(s.type)
+              return (
+                <button
+                  key={s.session_id}
+                  onClick={() => selectSession(s.session_id)}
+                  title={s.title ?? (isPt ? 'Sem título' : 'Untitled')}
+                  aria-label={s.title ?? (isPt ? 'Sem título' : 'Untitled')}
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0
+                    ${isActive ? 'bg-taime-50 text-taime-700 ring-1 ring-taime-200' : 'text-zinc-400 hover:bg-zinc-200/60 hover:text-zinc-700'}`}>
+                  <Icon size={16} strokeWidth={2} />
+                </button>
+              )
+            })}
           </div>
         ) : (
           <>
@@ -807,20 +874,23 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           ))}
         </div>
 
-        {/* Tela de chegada (aba Inicio). */}
+        {/* Tela de chegada (aba Inicio). Centraliza verticalmente quando sobra
+            espaco; em telas curtas cresce e rola sem cortar o topo. */}
         <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
-          <AdvisorArrival
-            subtitle={isPt
-              ? 'Inteligência estratégica aplicada à realidade da sua empresa'
-              : 'Strategic intelligence applied to your company reality'}
-            stats={fixedContext?.archive ?? null}
-            cards={arrivalCards}
-            isPt={isPt}
-            placeholder={isPt
-              ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas...'
-              : 'Ask about trends, strategy or technology decisions...'}
-            onSubmit={(t) => handleSend(t)}
-          />
+          <div className="min-h-full flex flex-col justify-center">
+            <AdvisorArrival
+              subtitle={isPt
+                ? 'Inteligência estratégica aplicada à realidade da sua empresa'
+                : 'Strategic intelligence applied to your company reality'}
+              stats={fixedContext?.archive ?? null}
+              cards={arrivalCards}
+              isPt={isPt}
+              placeholder={isPt
+                ? 'Pergunte sobre tendências, estratégia ou decisões tecnológicas...'
+                : 'Ask about trends, strategy or technology decisions...'}
+              onSubmit={(t) => handleSend(t)}
+            />
+          </div>
         </div>
 
         {/* Messages */}

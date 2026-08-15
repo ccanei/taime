@@ -32,7 +32,7 @@ export interface HomeCardData {
 export interface FixedContext {
   profile: Record<string, string>
   themes:  Array<{ slug: string; label: string; startYear: string | null; endYear: string | null }>
-  archive?: { editions: number; trends: number; startYear: string | null; endYear: string | null } | null
+  archive?: { editions: number; trends: number; startYear: string | null; endYear: string | null; byYear?: Record<string, number> } | null
   home?:    { isReturning: boolean; cards: HomeCardData[] } | null
 }
 
@@ -119,7 +119,8 @@ export default function AdvisorContextPanel({
                   target="_blank"
                   rel="noopener noreferrer"
                   title={c.title || undefined}
-                  className="group flex items-start gap-2.5 py-2 -mx-1.5 px-1.5 rounded-lg hover:bg-zinc-50 transition-colors"
+                  style={{ animationDelay: `${i * 100}ms` }}
+                  className="advisor-panel-item group flex items-start gap-2.5 py-2 -mx-1.5 px-1.5 rounded-lg hover:bg-zinc-50 transition-colors"
                 >
                   {c.score !== null && (
                     <span className={`shrink-0 w-8 h-8 rounded-md ring-1 ${scoreRing(c.score)} flex items-center justify-center`}>

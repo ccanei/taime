@@ -37,9 +37,19 @@
   .advisor-dot {
     animation: taimeTypingDot 1.2s ease-in-out infinite;
   }
+  /* Painel "Nesta resposta": entrada escalonada dos itens (fade + leve deslocamento).
+     O atraso por item vem via style inline (animationDelay). */
+  @keyframes taimePanelItemIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .advisor-panel-item {
+    animation: taimePanelItemIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
   @media (prefers-reduced-motion: reduce) {
-    .advisor-bubble-in { animation: none; }
-    .advisor-dot       { animation: none; opacity: 0.5; }
+    .advisor-bubble-in  { animation: none; }
+    .advisor-dot        { animation: none; opacity: 0.5; }
+    .advisor-panel-item { animation: none; }
   }
 }
 
