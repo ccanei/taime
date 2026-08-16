@@ -2,40 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { useLocale } from '@/lib/useLocale'
+import { tidyProfileText } from '@/lib/strip-markdown'
 
 const INFRA_MARKER = 'Tecnologias em uso:'
 
-const SECTORS = [
-  'Tecnologia', 'Financeiro', 'Saúde', 'Varejo',
-  'Indústria', 'Serviços', 'Educação', 'Outro',
-]
-
-const SIZES = [
-  '1-10 funcionários',
-  '11-50 funcionários',
-  '51-200 funcionários',
-  '201-1000 funcionários',
-  '1000+ funcionários',
-]
-
-const INFRA_OPTIONS = [
-  'On-premise', 'Cloud pública', 'Cloud híbrida',
-  'SaaS', 'Legacy systems', 'IA em uso',
-]
-
-const OBJECTIVE_CHIPS = [
-  'Migrar para cloud',
-  'Implementar IA agêntica',
-  'Modernizar infraestrutura',
-  'Reduzir custos operacionais',
-  'Expandir para novos mercados',
-]
-
-const MATURITY_OPTIONS = [
-  { value: 'inicial',       label: 'Inicial',        desc: 'Ainda explorando as possibilidades tecnológicas' },
-  { value: 'intermediário', label: 'Intermediário',   desc: 'Alguns projetos em andamento, base estabelecida' },
-  { value: 'avançado',      label: 'Avançado',        desc: 'Operações digitais maduras e times especializados' },
-]
+// Valores CANONICOS gravados no banco (nunca mudam com o idioma). O rotulo exibido
+// e traduzido via i18n (t.advisorOnboarding.*), mapeado por estes valores.
+const SECTORS = ['Tecnologia', 'Financeiro', 'Saúde', 'Varejo', 'Indústria', 'Serviços', 'Educação', 'Outro']
+const SIZES = ['1-10 funcionários', '11-50 funcionários', '51-200 funcionários', '201-1000 funcionários', '1000+ funcionários']
+const INFRA_OPTIONS = ['On-premise', 'Cloud pública', 'Cloud híbrida', 'SaaS', 'Legacy systems', 'IA em uso']
+const MATURITY_VALUES = ['inicial', 'intermediário', 'avançado'] as const
 
 interface Props {
   userId: string
@@ -43,6 +20,9 @@ interface Props {
 }
 
 export default function AdvisorOnboarding({ userId, onComplete }: Props) {
+  const { t } = useLocale()
+  const L = t.advisorOnboarding
+
   const [step, setStep]       = useState(1)
   const [saving, setSaving]   = useState(false)
   const [loading, setLoading] = useState(true)   // carrega o perfil atual ao abrir
@@ -54,8 +34,8 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
   const [companySize, setCompanySize] = useState('')
 
   // Step 2
-  const [infraText, setInfraText]         = useState('')
-  const [infraChecks, setInfraChecks]     = useState<string[]>([])
+  const [infraText, setInfraText]     = useState('')
+  const [infraChecks, setInfraChecks] = useState<string[]>([])
 
   // Step 3
   const [objective, setObjective] = useState('')
@@ -81,7 +61,7 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
         if (data.sector)              setSector(data.sector)
         if (data.company_size)        setCompanySize(data.company_size)
         if (data.maturity_level)      setMaturity(data.maturity_level)
-        if (data.strategic_objective) setObjective(data.strategic_objective)
+        if (data.strategic_objective) setObjective(tidyProfileText(data.strategic_objective))
         if (data.current_infrastructure) {
           // Desmonta o campo combinado de volta em texto livre + chips marcados.
           const infra = data.current_infrastructure as string
@@ -110,7 +90,7 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
   }
 
   function appendChip(chip: string) {
-    setObjective(prev => prev ? `${prev}. ${chip}` : chip)
+    setObjective(prev => tidyProfileText(prev ? `${prev}. ${chip}` : chip))
   }
 
   async function handleSubmit() {
@@ -133,8 +113,8 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
       company_size:   companySize,
       maturity_level: maturity,
     }
-    if (infraFull)         payload.current_infrastructure = infraFull
-    if (objective.trim())  payload.strategic_objective    = objective.trim()
+    if (infraFull)        payload.current_infrastructure = infraFull
+    if (objective.trim()) payload.strategic_objective    = tidyProfileText(objective)
 
     const supabase = createSupabaseBrowser()
     const { error: err } = await supabase.from('advisor_profiles').upsert(payload, { onConflict: 'user_id' })
@@ -177,38 +157,38 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
                 <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
               </svg>
-              Carregando seu perfil...
+              {L.loading}
             </div>
           )}
 
           {/* ── STEP 1 — Empresa ─────────────────────────────────────── */}
           {!loading && step === 1 && (
             <>
-              <h2 className="text-xl font-bold text-zinc-900 mb-1">Sua empresa</h2>
-              <p className="text-sm text-zinc-500 mb-6">Contexto organizacional para personalizar a análise.</p>
+              <h2 className="text-xl font-bold text-zinc-900 mb-1">{L.s1Title}</h2>
+              <p className="text-sm text-zinc-500 mb-6">{L.s1Desc}</p>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-1.5">
-                    Nome da empresa <span className="text-red-400">*</span>
+                    {L.companyLabel} <span className="text-red-400">*</span>
                   </label>
                   <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
-                    placeholder="Ex: Acme Corp" className={inputCls} />
+                    placeholder={L.companyPh} className={inputCls} />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-1.5">
-                    Setor <span className="text-red-400">*</span>
+                    {L.sectorLabel} <span className="text-red-400">*</span>
                   </label>
                   <select value={sector} onChange={e => setSector(e.target.value)} className={inputCls}>
-                    <option value="" disabled>Selecione o setor</option>
-                    {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                    <option value="" disabled>{L.sectorPh}</option>
+                    {SECTORS.map(s => <option key={s} value={s}>{L.sectors[s as keyof typeof L.sectors] ?? s}</option>)}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-1.5">
-                    Tamanho <span className="text-red-400">*</span>
+                    {L.sizeLabel} <span className="text-red-400">*</span>
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     {SIZES.map(sz => (
@@ -217,7 +197,7 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
                           ${companySize === sz
                             ? 'border-taime-600 bg-taime-50 text-taime-700 font-medium'
                             : 'border-zinc-200 text-zinc-600 hover:border-zinc-300'}`}>
-                        {sz}
+                        {L.sizes[sz as keyof typeof L.sizes] ?? sz}
                       </button>
                     ))}
                   </div>
@@ -228,30 +208,28 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
                 onClick={() => setStep(2)}
                 disabled={!companyName.trim() || !sector || !companySize}
                 className="w-full btn-primary justify-center py-3 mt-6 disabled:opacity-60">
-                Próximo →
+                {L.next}
               </button>
             </>
           )}
 
           {/* ── STEP 2 — Infraestrutura ──────────────────────────────── */}
-          {step === 2 && (
+          {!loading && step === 2 && (
             <>
-              <h2 className="text-xl font-bold text-zinc-900 mb-1">Infraestrutura atual</h2>
-              <p className="text-sm text-zinc-500 mb-6">Como está hoje o seu ambiente tecnológico?</p>
+              <h2 className="text-xl font-bold text-zinc-900 mb-1">{L.s2Title}</h2>
+              <p className="text-sm text-zinc-500 mb-6">{L.s2Desc}</p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1.5">
-                    Descreva sua infraestrutura tecnológica atual
-                  </label>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1.5">{L.infraLabel}</label>
                   <textarea rows={3} value={infraText} onChange={e => setInfraText(e.target.value)}
-                    placeholder="Ex: Usamos Azure para cloud, SQL Server on-premise para sistemas legados, Salesforce para CRM..."
+                    placeholder={L.infraPh}
                     className={`${inputCls} resize-none`} />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-2">
-                    Tecnologias em uso <span className="text-zinc-400 text-xs">(marque todas que se aplicam)</span>
+                    {L.techLabel} <span className="text-zinc-400 text-xs">{L.techHint}</span>
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {INFRA_OPTIONS.map(opt => (
@@ -260,7 +238,7 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
                           ${infraChecks.includes(opt)
                             ? 'border-taime-600 bg-taime-50 text-taime-700 font-medium'
                             : 'border-zinc-200 text-zinc-600 hover:border-zinc-300'}`}>
-                        {opt}
+                        {L.infra[opt as keyof typeof L.infra] ?? opt}
                       </button>
                     ))}
                   </div>
@@ -268,36 +246,30 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
               </div>
 
               <div className="flex gap-3 mt-6">
-                <button onClick={() => setStep(1)} className="btn-secondary flex-1 justify-center py-3">
-                  ← Voltar
-                </button>
-                <button onClick={() => setStep(3)} className="btn-primary flex-1 justify-center py-3">
-                  Próximo →
-                </button>
+                <button onClick={() => setStep(1)} className="btn-secondary flex-1 justify-center py-3">{L.back}</button>
+                <button onClick={() => setStep(3)} className="btn-primary flex-1 justify-center py-3">{L.next}</button>
               </div>
             </>
           )}
 
           {/* ── STEP 3 — Objetivo estratégico ───────────────────────── */}
-          {step === 3 && (
+          {!loading && step === 3 && (
             <>
-              <h2 className="text-xl font-bold text-zinc-900 mb-1">Objetivo estratégico</h2>
-              <p className="text-sm text-zinc-500 mb-6">Qual é o foco principal para os próximos 12-18 meses?</p>
+              <h2 className="text-xl font-bold text-zinc-900 mb-1">{L.s3Title}</h2>
+              <p className="text-sm text-zinc-500 mb-6">{L.s3Desc}</p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1.5">
-                    Descreva seu objetivo estratégico
-                  </label>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1.5">{L.objLabel}</label>
                   <textarea rows={3} value={objective} onChange={e => setObjective(e.target.value)}
-                    placeholder="Ex: Modernizar a infraestrutura de dados e implementar capacidades de IA para otimizar operações..."
+                    placeholder={L.objPh}
                     className={`${inputCls} resize-none`} />
                 </div>
 
                 <div>
-                  <p className="text-xs text-zinc-400 mb-2">Sugestões:</p>
+                  <p className="text-xs text-zinc-400 mb-2">{L.suggestions}</p>
                   <div className="flex flex-wrap gap-2">
-                    {OBJECTIVE_CHIPS.map(chip => (
+                    {L.objectiveChips.map(chip => (
                       <button key={chip} type="button" onClick={() => appendChip(chip)}
                         className="px-3 py-1.5 rounded-lg border border-zinc-200 text-xs text-zinc-600
                                    hover:border-taime-300 hover:text-taime-700 transition-colors">
@@ -309,48 +281,45 @@ export default function AdvisorOnboarding({ userId, onComplete }: Props) {
               </div>
 
               <div className="flex gap-3 mt-6">
-                <button onClick={() => setStep(2)} className="btn-secondary flex-1 justify-center py-3">
-                  ← Voltar
-                </button>
-                <button onClick={() => setStep(4)} className="btn-primary flex-1 justify-center py-3">
-                  Próximo →
-                </button>
+                <button onClick={() => setStep(2)} className="btn-secondary flex-1 justify-center py-3">{L.back}</button>
+                <button onClick={() => setStep(4)} className="btn-primary flex-1 justify-center py-3">{L.next}</button>
               </div>
             </>
           )}
 
           {/* ── STEP 4 — Maturidade ──────────────────────────────────── */}
-          {step === 4 && (
+          {!loading && step === 4 && (
             <>
-              <h2 className="text-xl font-bold text-zinc-900 mb-1">Maturidade tecnológica</h2>
-              <p className="text-sm text-zinc-500 mb-6">Como você avalia o nível atual da sua empresa?</p>
+              <h2 className="text-xl font-bold text-zinc-900 mb-1">{L.s4Title}</h2>
+              <p className="text-sm text-zinc-500 mb-6">{L.s4Desc}</p>
 
               <div className="space-y-3">
-                {MATURITY_OPTIONS.map(opt => (
-                  <button key={opt.value} type="button" onClick={() => setMaturity(opt.value)}
-                    className={`w-full text-left px-5 py-4 rounded-xl border transition-colors
-                      ${maturity === opt.value
-                        ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600'
-                        : 'border-zinc-200 hover:border-zinc-300'}`}>
-                    <p className={`text-sm font-semibold mb-0.5 ${maturity === opt.value ? 'text-taime-700' : 'text-zinc-900'}`}>
-                      {opt.label}
-                    </p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
-                  </button>
-                ))}
+                {MATURITY_VALUES.map(value => {
+                  const opt = L.maturity[value]
+                  return (
+                    <button key={value} type="button" onClick={() => setMaturity(value)}
+                      className={`w-full text-left px-5 py-4 rounded-xl border transition-colors
+                        ${maturity === value
+                          ? 'border-taime-600 bg-taime-50 ring-1 ring-taime-600'
+                          : 'border-zinc-200 hover:border-zinc-300'}`}>
+                      <p className={`text-sm font-semibold mb-0.5 ${maturity === value ? 'text-taime-700' : 'text-zinc-900'}`}>
+                        {opt.label}
+                      </p>
+                      <p className="text-xs text-zinc-500">{opt.desc}</p>
+                    </button>
+                  )
+                })}
               </div>
 
               {error && <p className="text-sm text-red-600 mt-4">{error}</p>}
 
               <div className="flex gap-3 mt-6">
-                <button onClick={() => setStep(3)} className="btn-secondary flex-1 justify-center py-3">
-                  ← Voltar
-                </button>
+                <button onClick={() => setStep(3)} className="btn-secondary flex-1 justify-center py-3">{L.back}</button>
                 <button
                   onClick={handleSubmit}
                   disabled={saving || !maturity}
                   className="btn-primary flex-1 justify-center py-3 disabled:opacity-60">
-                  {saving ? 'Salvando...' : 'Iniciar conversa →'}
+                  {saving ? L.saving : L.submit}
                 </button>
               </div>
             </>

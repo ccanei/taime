@@ -31,6 +31,20 @@ export function stripEmDash(input: string): string {
     .replace(/,\s*([.;:!?])/g, '$1')  // limpa ", ." acidental em fim de oracao
 }
 
+// Normaliza texto livre do perfil montado por concatenacao de campos: colapsa
+// espacos, junta pontuacao duplicada ("Reduzir custos. . Implementar" -> "Reduzir
+// custos. Implementar"), remove espaco antes de pontuacao e ponto final orfao.
+export function tidyProfileText(s: string | null | undefined): string {
+  if (!s) return ''
+  return s
+    .replace(/\s+/g, ' ')                  // colapsa espacos e quebras
+    .replace(/(?:\s*\.\s*){2,}/g, '. ')    // ". ." / ".." / ". . " -> ". "
+    .replace(/\s+([,;:.!?])/g, '$1')       // remove espaco antes de pontuacao
+    .replace(/([,;:])\1+/g, '$1')          // pontuacao repetida (,, ;;) -> uma
+    .replace(/\s*\.\s*$/, '.')             // final: um ponto sem espaco sobrando
+    .trim()
+}
+
 // Trunca em `max` caracteres sem cortar palavra no meio, adicionando reticencias.
 export function truncateWords(s: string, max: number): string {
   if (s.length <= max) return s

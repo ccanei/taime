@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import { getArchiveNumbers } from '@/lib/archive-stats'
+import { tidyProfileText } from '@/lib/strip-markdown'
+import { getTranslations } from '@/lib/i18n'
 
 type Lang = 'pt' | 'en'
 
@@ -80,8 +82,16 @@ export async function GET(req: NextRequest) {
       .maybeSingle()
     const row = (data ?? null) as ProfileRow | null
     if (row) {
+      // Valores canonicos (setor, porte, maturidade) sao TRADUZIDOS para o rotulo do
+      // idioma; campos livres (empresa, objetivo, infra) so tem a pontuacao normalizada
+      // (dado digitado pelo usuario, nunca traduzido).
+      const OB = getTranslations(lang).advisorOnboarding
       for (const [k, v] of Object.entries(row)) {
-        if (typeof v === 'string' && v.trim()) profile[k] = v.trim()
+        if (typeof v !== 'string' || !v.trim()) continue
+        if (k === 'sector')            profile[k] = OB.sectors[v as keyof typeof OB.sectors] ?? v
+        else if (k === 'company_size') profile[k] = OB.sizes[v as keyof typeof OB.sizes] ?? v
+        else if (k === 'maturity_level') profile[k] = OB.maturity[v as keyof typeof OB.maturity]?.label ?? v
+        else profile[k] = tidyProfileText(v)
       }
     }
   } catch (e) {

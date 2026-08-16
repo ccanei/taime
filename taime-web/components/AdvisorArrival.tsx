@@ -19,41 +19,57 @@ export interface ArrivalStats {
   byYear?:   Record<string, number>   // tendencias por ano, para a timeline de densidade
 }
 
-// Faixa de densidade do acervo: uma barra por ano (2015..2026), altura + opacidade
-// pela densidade de tendencias analisadas. Hover mostra a contagem do ano. Fail-safe:
-// sem dados suficientes, nao renderiza. Respeita prefers-reduced-motion (sem transicao
-// obrigatoria; e estatico).
+// Timeline do acervo: soma ACUMULADA de tendencias analisadas ate cada ano (curva
+// ascendente = acervo em construcao continua, nao densidade que "cai"). Area+linha na
+// cor da marca. Titulo com N anos calculado do primeiro ano do acervo. Valor final
+// marcado na ponta direita. Hover mostra o acumulado do ano. Fail-safe: sem dados
+// suficientes, nao renderiza.
 function ArchiveDensity({ byYear, isPt }: { byYear: Record<string, number>; isPt: boolean }) {
   const years = Object.keys(byYear).map(Number).filter(y => y >= 2000 && y <= 2100).sort((a, b) => a - b)
   if (years.length < 2) return null
   const start = years[0]
   const end = years[years.length - 1]
-  const span: number[] = []
-  for (let y = start; y <= end; y++) span.push(y)
-  const max = Math.max(...span.map(y => byYear[String(y)] ?? 0), 1)
   const locale = isPt ? 'pt-BR' : 'en-US'
 
+  // Acumulado por ano (anos sem dado carregam o total anterior).
+  const span: Array<{ y: number; cum: number }> = []
+  let run = 0
+  for (let y = start; y <= end; y++) { run += byYear[String(y)] ?? 0; span.push({ y, cum: run }) }
+  const total = run || 1
+  const N = end - start + 1
+
+  const W = 300, H = 60, PAD = 4
+  const x = (i: number) => PAD + (i / (span.length - 1)) * (W - 2 * PAD)
+  const yc = (cum: number) => (H - PAD) - (cum / total) * (H - 2 * PAD)
+  const line = span.map((p, i) => `${x(i).toFixed(1)},${yc(p.cum).toFixed(1)}`).join(' ')
+  const area = `${x(0).toFixed(1)},${H - PAD} ${line} ${x(span.length - 1).toFixed(1)},${H - PAD}`
+  const lastI = span.length - 1
+
   return (
-    <div className="mt-8 max-w-2xl mx-auto">
+    <div className="mt-8 max-w-xl mx-auto">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-2 text-center">
-        {isPt ? 'Cobertura do acervo' : 'Archive coverage'}
+        {isPt ? `${N} anos de sinais acumulados` : `${N} years of accumulated signals`}
       </p>
-      <div className="flex items-end justify-between gap-[3px] h-16">
-        {span.map(y => {
-          const c = byYear[String(y)] ?? 0
-          const ratio = c / max
-          const h = Math.max(6, Math.round(ratio * 100))       // % da altura
-          const op = 0.28 + ratio * 0.62                        // opacidade por densidade
-          return (
-            <div key={y} className="group relative flex-1 flex items-end h-full" title={`${y}: ${c.toLocaleString(locale)} ${isPt ? 'tendências' : 'trends'}`}>
-              <div className="w-full rounded-t-sm bg-taime-600 transition-[height]" style={{ height: `${h}%`, opacity: op }} />
-              {/* Tooltip discreto no hover */}
+      <div className="relative h-[60px]">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full block" aria-hidden>
+          <polygon points={area} className="fill-taime-500" opacity="0.13" />
+          <polyline points={line} fill="none" className="stroke-taime-500" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          <circle cx={x(lastI)} cy={yc(span[lastI].cum)} r="2.6" className="fill-taime-600" vectorEffect="non-scaling-stroke" />
+        </svg>
+        {/* Valor final na ponta direita, no ponto onde a linha termina (topo). */}
+        <span className="absolute right-0 -top-1 text-[10px] font-bold text-taime-700 tabular-nums bg-white/70 rounded px-1">
+          {run.toLocaleString(locale)}
+        </span>
+        {/* Colunas transparentes por ano para o tooltip de acumulado no hover. */}
+        <div className="absolute inset-0 flex">
+          {span.map(p => (
+            <div key={p.y} className="group relative flex-1" title={`${p.y}: ${p.cum.toLocaleString(locale)}`}>
               <span className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity tabular-nums z-10">
-                {y} · {c.toLocaleString(locale)}
+                {p.y} · {p.cum.toLocaleString(locale)}
               </span>
             </div>
-          )
-        })}
+          ))}
+        </div>
       </div>
       {/* Anos nas extremidades e no meio, sem poluir */}
       <div className="mt-1.5 flex justify-between text-[10px] text-zinc-400 tabular-nums">
