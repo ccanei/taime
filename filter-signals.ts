@@ -93,6 +93,25 @@ async function dbGet<T>(path: string): Promise<T[]> {
   return res.json() as Promise<T[]>;
 }
 
+// Leitura paginada: o PostgREST corta em 1000 linhas por resposta (Max rows do
+// painel). Percorre em paginas de 1000 via limit/offset ate a pagina voltar com
+// menos de 1000, acumulando tudo. O path DEVE conter um order estavel (id.asc)
+// para o offset ser deterministico.
+const PAGE_SIZE = 1000;
+async function dbGetAll<T>(path: string): Promise<T[]> {
+  const all: T[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const sep      = path.includes('?') ? '&' : '?';
+    const pagePath = `${path}${sep}limit=${PAGE_SIZE}&offset=${offset}`;
+    const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${pagePath}`, { headers: dbHeaders(true) });
+    if (!res.ok) throw new Error(`DB GET /${pagePath}: ${await res.text()}`);
+    const rows = await res.json() as T[];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
 async function dbPatch(id: string, isNoise: boolean): Promise<void> {
   const res = await fetch(`${cfg.supabaseUrl}/rest/v1/signals?id=eq.${id}`, {
     method: 'PATCH',
@@ -240,10 +259,10 @@ async function main(): Promise<void> {
 
   // Carrega TODOS os sinais do período (inclusive já marcados — re-rodável).
   process.stdout.write('Carregando sinais... ');
-  const signals = await dbGet<SignalRow>(
+  const signals = await dbGetAll<SignalRow>(
     `signals?period=eq.${PERIOD}&select=id,title,metadata,sources(name,category)&order=id.asc`,
   );
-  console.log(`${signals.length} encontrado(s).`);
+  console.log(`${signals.length} encontrado(s) [total real, paginado].`);
 
   if (signals.length === 0) {
     console.error('\n✗ Nenhum sinal. Rode collect-signals.ts antes.\n'); process.exit(1);

@@ -79,6 +79,25 @@ async function dbGet<T>(path: string): Promise<T[]> {
   return res.json() as Promise<T[]>;
 }
 
+// Leitura paginada: o PostgREST corta em 1000 linhas por resposta (Max rows do
+// painel). Percorre em paginas de 1000 via limit/offset ate a pagina voltar com
+// menos de 1000, acumulando tudo. O path DEVE conter um order estavel (id.asc)
+// para o offset ser deterministico.
+const PAGE_SIZE = 1000;
+async function dbGetAll<T>(path: string): Promise<T[]> {
+  const all: T[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const sep      = path.includes('?') ? '&' : '?';
+    const pagePath = `${path}${sep}limit=${PAGE_SIZE}&offset=${offset}`;
+    const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${pagePath}`, { headers: dbHeaders(true) });
+    if (!res.ok) throw new Error(`DB GET /${pagePath}: ${await res.text()}`);
+    const rows = await res.json() as T[];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
 async function dbPost(table: string, row: unknown): Promise<void> {
   const res = await fetch(`${cfg.supabaseUrl}/rest/v1/${table}`, {
     method: 'POST', headers: dbHeaders(), body: JSON.stringify(row),
@@ -292,10 +311,10 @@ async function main(): Promise<void> {
   // Carrega sinais — ignora os marcados como ruído pelo filter-signals.ts.
   // is_noise default=false, então períodos nunca filtrados continuam vindo inteiros.
   process.stdout.write('Carregando sinais (is_noise=false)... ');
-  const signals = await dbGet<SignalWithSource>(
-    `signals?period=eq.${PERIOD}&is_noise=eq.false&select=id,title,content,metadata,sources(name,category)`,
+  const signals = await dbGetAll<SignalWithSource>(
+    `signals?period=eq.${PERIOD}&is_noise=eq.false&select=id,title,content,metadata,sources(name,category)&order=id.asc`,
   );
-  console.log(`${signals.length} encontrado(s).`);
+  console.log(`${signals.length} encontrado(s) [total real, paginado].`);
 
   if (signals.length < 5) {
     console.error(`\n✗ Sinais insuficientes (${signals.length}). Execute collect-signals.ts.\n`);
