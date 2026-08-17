@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import AdminNav from '@/components/AdminNav'
+import { AdminHeader, StatCard, fmtInt } from '@/components/admin/kit'
+import ReloadButton from '@/components/admin/ReloadButton'
 import PostsAdmin, { type MarketingPost } from './PostsAdmin'
 
 async function getPosts(): Promise<{ rows: MarketingPost[]; missing: boolean }> {
@@ -28,31 +28,33 @@ export default async function AdminPostsPage() {
 
   const { rows, missing } = await getPosts()
 
+  const draft     = rows.filter(r => r.status === 'draft').length
+  const approved  = rows.filter(r => r.status === 'approved').length
+  const published = rows.filter(r => r.status === 'published').length
+
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
-              ← Dashboard
-            </Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Posts</span>
-            <AdminNav active="/admin/posts" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
-            Admin
-          </span>
-        </div>
-      </header>
+      <AdminHeader title="Posts" active="/admin/posts" />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900 mb-1">Rascunhos de LinkedIn</h1>
-          <p className="text-sm text-zinc-500">
-            Gerados pelo script scripts/generate-advisor-post.ts a partir do uso do Executive Advisor sobre as trends do último período publicado.
-          </p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900 mb-1">Rascunhos de LinkedIn</h1>
+            <p className="text-sm text-zinc-500">
+              Gerados pelo script scripts/generate-advisor-post.ts a partir do uso do Executive Advisor sobre as trends do último período publicado.
+            </p>
+          </div>
+          <ReloadButton />
         </div>
+
+        {!missing && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <StatCard label="Total" value={fmtInt(rows.length)} />
+            <StatCard label="Rascunhos" value={fmtInt(draft)} tone={draft ? 'warn' : undefined} />
+            <StatCard label="Aprovados" value={fmtInt(approved)} />
+            <StatCard label="Publicados" value={fmtInt(published)} tone="good" />
+          </div>
+        )}
 
         {missing ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">

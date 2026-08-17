@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
 import { looksRandom } from '@/lib/anti-abuse'
-import AdminNav from '@/components/AdminNav'
+import { seriesByDay, cumulative, countInWindow, windowDelta } from '@/lib/admin-agg'
+import { AdminHeader, Section, StatCard, TrendLine, StackBar, fmtInt } from '@/components/admin/kit'
+import ReloadButton from '@/components/admin/ReloadButton'
 import UsersAdmin from './UsersAdmin'
 import type { UserRow } from './UsersAdmin'
 
@@ -123,34 +124,60 @@ export default async function AdminUsersPage() {
 
   const rows = await getUsers()
 
+  // Resumo executivo (server-side): janelas de crescimento, curva acumulada de
+  // signups e distribuicao por plano. A tabela densa (com acoes) segue intacta.
+  const dates = rows.map(r => r.created_at)
+  const new7d  = countInWindow(dates, 7)
+  const new30d = countInWindow(dates, 30)
+  const delta7 = windowDelta(dates, 7)
+  const signupSeries = cumulative(seriesByDay(dates, 30), rows.length - new30d)
+
+  const planCount = new Map<string, number>()
+  for (const r of rows) {
+    const p = r.plan ?? 'sem plano'
+    planCount.set(p, (planCount.get(p) ?? 0) + 1)
+  }
+  const planSegments = [...planCount.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, value]) => ({ label, value }))
+
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
-              ← Dashboard
-            </Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Usuários</span>
-            <AdminNav active="/admin/users" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
-            Admin
-          </span>
-        </div>
-      </header>
+      <AdminHeader title="Usuários" active="/admin/users" />
 
       <main className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Usuários</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Todas as contas de public.users, origem, plano, atividade e sinalização de suspeita.
-            Decisão sempre humana: suspender e reativar são manuais, com confirmação.
-          </p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Usuários</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              Todas as contas de public.users, origem, plano, atividade e sinalização de suspeita.
+              Decisão sempre humana: suspender e reativar são manuais, com confirmação.
+            </p>
+          </div>
+          <ReloadButton />
         </div>
 
-        <UsersAdmin rows={rows} />
+        {/* Resumo executivo */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard label="Total de contas" value={fmtInt(rows.length)} />
+          <StatCard label="Novos 7d" value={fmtInt(new7d)} delta={delta7} />
+          <StatCard label="Novos 30d" value={fmtInt(new30d)} />
+          <StatCard label="Planos ativos" value={fmtInt(planSegments.filter(p => p.label !== 'sem plano' && p.label !== 'free').reduce((s, p) => s + p.value, 0))}
+            hint="pagos (fora free)" />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 mt-6">
+          <Section title="Crescimento acumulado" note="Base total ao longo dos últimos 30 dias" className="mt-0">
+            <TrendLine data={signupSeries} unit=" contas" />
+          </Section>
+          <Section title="Distribuição por plano" note="Contas por plano" className="mt-0">
+            <StackBar segments={planSegments} />
+          </Section>
+        </div>
+
+        <div className="mt-10">
+          <UsersAdmin rows={rows} />
+        </div>
       </main>
     </div>
   )

@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import AdminNav from '@/components/AdminNav'
+import { seriesByDay, countInWindow } from '@/lib/admin-agg'
+import { AdminHeader, Section, StatCard, TrendLine, fmtInt, fmtPct } from '@/components/admin/kit'
+import ReloadButton from '@/components/admin/ReloadButton'
 import WaitlistAdmin from './WaitlistAdmin'
 import type { WaitlistRecord } from './WaitlistAdmin'
 
@@ -19,7 +20,7 @@ async function getWaitlist(): Promise<WaitlistRecord[]> {
 
 /**
  * Mapa email → plano aprovado (somente subscriptions ativas).
- * Faz 2 GETs: subscriptions e users — cruza por id (mais previsível que
+ * Faz 2 GETs: subscriptions e users, cruza por id (mais previsível que
  * depender de relação nomeada no PostgREST).
  */
 async function getApprovedPlansByEmail(): Promise<Record<string, string>> {
@@ -58,33 +59,48 @@ export default async function AdminWaitlistPage() {
     getApprovedPlansByEmail(),
   ])
 
+  // Resumo executivo (server-side): funil de status, taxa de aprovacao e entradas
+  // por dia. A tabela com as acoes (aprovar/rejeitar) segue intacta abaixo.
+  const pending  = records.filter(r => (r.status ?? 'pending') === 'pending').length
+  const approved = records.filter(r => r.status === 'approved').length
+  const rejected = records.filter(r => r.status === 'rejected').length
+  const decided  = approved + rejected
+  const approvalRate = decided ? (approved / decided) * 100 : 0
+  const entrySeries = seriesByDay(records.map(r => r.created_at), 30)
+  const new7d = countInWindow(records.map(r => r.created_at), 7)
+
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
-              ← Dashboard
-            </Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Waitlist</span>
-            <AdminNav active="/admin/waitlist" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
-            Admin
-          </span>
-        </div>
-      </header>
+      <AdminHeader title="Waitlist" active="/admin/waitlist" />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Lista de espera</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Gerencie os pedidos de acesso ao TAIME. Aprovação libera acesso por link seguro.
-          </p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Lista de espera</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              Gerencie os pedidos de acesso ao TAIME. Aprovação libera acesso por link seguro.
+            </p>
+          </div>
+          <ReloadButton />
         </div>
 
-        <WaitlistAdmin initialRecords={records} approvedPlanByEmail={approvedPlanByEmail} />
+        {/* Resumo executivo */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard label="Pendentes" value={fmtInt(pending)} tone={pending ? 'warn' : undefined}
+            hint={pending ? 'aguardando decisão' : 'fila limpa'} />
+          <StatCard label="Aprovados" value={fmtInt(approved)} tone="good" />
+          <StatCard label="Taxa de aprovação" value={decided ? fmtPct(approvalRate) : 'n/d'}
+            hint={`${fmtInt(rejected)} rejeitados`} />
+          <StatCard label="Entradas 7d" value={fmtInt(new7d)} />
+        </div>
+
+        <Section title="Entradas por dia" note="Últimos 30 dias">
+          <TrendLine data={entrySeries} unit=" pedidos" />
+        </Section>
+
+        <div className="mt-10">
+          <WaitlistAdmin initialRecords={records} approvedPlanByEmail={approvedPlanByEmail} />
+        </div>
       </main>
     </div>
   )

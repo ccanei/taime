@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import AdminNav from '@/components/AdminNav'
+import { AdminHeader, StatCard, fmtInt } from '@/components/admin/kit'
+import ReloadButton from '@/components/admin/ReloadButton'
 import EngagementAdmin from './EngagementAdmin'
 import type { EngagementRow } from './EngagementAdmin'
 import AnonAdvisorSection from './AnonAdvisorSection'
@@ -201,30 +201,30 @@ export default async function AdminEngagementPage() {
   const anon = await getAnonAdvisor()
   const contact = await getContactRequests()
 
+  const activeUsers = new Set(rows.map(r => r.user_id)).size
+  const openContacts = contact.rows.filter(r => (r.status ?? 'open') === 'open' || r.status === 'pending').length
+
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
-              ← Dashboard
-            </Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Engajamento</span>
-            <AdminNav active="/admin/engagement" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
-            Admin
-          </span>
-        </div>
-      </header>
+      <AdminHeader title="Engajamento" active="/admin/engagement" />
 
       <main className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Engajamento por usuário</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Atividade mensal por usuário para detectar queda de uso e medir o custo do Advisor.
-          </p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Engajamento por usuário</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              Atividade mensal por usuário para detectar queda de uso e medir o custo do Advisor.
+            </p>
+          </div>
+          <ReloadButton />
+        </div>
+
+        {/* Resumo executivo */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <StatCard label="Usuários com atividade" value={fmtInt(activeUsers)} hint="na view mensal" />
+          <StatCard label="Perguntas /ask (mês)" value={fmtInt(anon.month.questions)} hint={anon.month.label || 'mês atual'} />
+          <StatCard label="Perguntas /ask (total)" value={fmtInt(anon.allTime.questions)} hint={`${fmtInt(anon.allTime.visitors)} visitantes`} />
+          <StatCard label="Pedidos de contato" value={fmtInt(openContacts)} tone={openContacts ? 'warn' : undefined} hint="em aberto" />
         </div>
 
         {viewMissing ? (

@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import AdminNav from '@/components/AdminNav'
+import { seriesByDay, countInWindow, windowDelta } from '@/lib/admin-agg'
+import { AdminHeader, Section, StatCard, TrendLine, fmtInt } from '@/components/admin/kit'
+import ReloadButton from '@/components/admin/ReloadButton'
 import FeedbackAdmin from './FeedbackAdmin'
 import type { FeedbackRecord } from './FeedbackAdmin'
 
@@ -33,33 +34,41 @@ export default async function AdminFeedbackPage() {
 
   const records = await getFeedback()
 
+  // Resumo executivo (server-side): volume, janela recente e tendencia.
+  const dates = records.map(r => r.created_at)
+  const open  = records.filter(r => (r.status ?? 'open') === 'open' || r.status === 'pending').length
+  const series = seriesByDay(dates, 30)
+
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
-              ← Dashboard
-            </Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Feedback</span>
-            <AdminNav active="/admin/feedback" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
-            Admin
-          </span>
-        </div>
-      </header>
+      <AdminHeader title="Feedback" active="/admin/feedback" />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Feedback dos usuários</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Sugestões, problemas e elogios enviados pelo dashboard.
-          </p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Feedback dos usuários</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              Sugestões, problemas e elogios enviados pelo dashboard.
+            </p>
+          </div>
+          <ReloadButton />
         </div>
 
-        <FeedbackAdmin initialRecords={records} />
+        {/* Resumo executivo */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard label="Total" value={fmtInt(records.length)} />
+          <StatCard label="Em aberto" value={fmtInt(open)} tone={open ? 'warn' : undefined} />
+          <StatCard label="Novos 7d" value={fmtInt(countInWindow(dates, 7))} delta={windowDelta(dates, 7)} />
+          <StatCard label="Novos 30d" value={fmtInt(countInWindow(dates, 30))} />
+        </div>
+
+        <Section title="Feedback por dia" note="Últimos 30 dias">
+          <TrendLine data={series} unit=" mensagens" />
+        </Section>
+
+        <div className="mt-10">
+          <FeedbackAdmin initialRecords={records} />
+        </div>
       </main>
     </div>
   )

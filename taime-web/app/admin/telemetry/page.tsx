@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import AdminNav from '@/components/AdminNav'
+import { AdminHeader } from '@/components/admin/kit'
 import ReloadButton from './ReloadButton'
 import { aggregate, type LlmCallRow, type TelemetryAgg } from '@/lib/telemetry-agg'
 
@@ -100,17 +99,7 @@ export default async function AdminTelemetryPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">← Dashboard</Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Telemetria</span>
-            <AdminNav active="/admin/telemetry" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">Admin</span>
-        </div>
-      </header>
+      <AdminHeader title="Telemetria" active="/admin/telemetry" />
 
       <main className="max-w-7xl mx-auto px-6 py-10">
         <div className="mb-8 flex items-start justify-between gap-4">

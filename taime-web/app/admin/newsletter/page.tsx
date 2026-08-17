@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
-import AdminNav from '@/components/AdminNav'
+import { seriesByDay, countInWindow } from '@/lib/admin-agg'
+import { AdminHeader, Section, StatCard, TrendLine, fmtInt } from '@/components/admin/kit'
+import ReloadButton from '@/components/admin/ReloadButton'
 import NewsletterAdmin from './NewsletterAdmin'
 import type { SubscriberRow, SendRow } from './NewsletterAdmin'
 
@@ -60,31 +61,42 @@ export default async function AdminNewsletterPage() {
 
   const tablesMissing = subResult.missing || sendResult.missing
 
+  // Resumo executivo (server-side): so quando as tabelas existem.
+  const subs = subResult.rows
+  const activeSubs  = subs.filter(s => (s.status ?? 'active') === 'active').length
+  const blockedSubs = subs.filter(s => s.status === 'blocked').length
+  const subDates = subs.map(s => s.created_at)
+  const subSeries = seriesByDay(subDates, 30)
+
   return (
     <div className="min-h-screen bg-zinc-50">
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-600 transition-colors text-sm">
-              ← Dashboard
-            </Link>
-            <span className="text-zinc-200">/</span>
-            <span className="text-sm font-semibold text-zinc-900">Newsletter</span>
-            <AdminNav active="/admin/newsletter" />
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-taime-50 text-taime-700 font-semibold border border-taime-100">
-            Admin
-          </span>
-        </div>
-      </header>
+      <AdminHeader title="Newsletter" active="/admin/newsletter" />
 
       <main className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Newsletter do Radar</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Inscritos e histórico de envios. Inscrição já entra como ativa; este painel é para verificar e, se preciso, bloquear ou remover. Não é uma fila de aprovação.
-          </p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Newsletter do Radar</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              Inscritos e histórico de envios. Inscrição já entra como ativa; este painel é para verificar e, se preciso, bloquear ou remover. Não é uma fila de aprovação.
+            </p>
+          </div>
+          <ReloadButton />
         </div>
+
+        {!tablesMissing && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard label="Inscritos" value={fmtInt(subs.length)} />
+              <StatCard label="Ativos" value={fmtInt(activeSubs)} tone="good" />
+              <StatCard label="Bloqueados" value={fmtInt(blockedSubs)} tone={blockedSubs ? 'warn' : undefined} />
+              <StatCard label="Novos 7d" value={fmtInt(countInWindow(subDates, 7))} />
+            </div>
+            <Section title="Novas inscrições por dia" note="Últimos 30 dias">
+              <TrendLine data={subSeries} unit=" inscritos" />
+            </Section>
+            <div className="mt-10" />
+          </>
+        )}
 
         {tablesMissing ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-8 text-sm text-amber-900">
