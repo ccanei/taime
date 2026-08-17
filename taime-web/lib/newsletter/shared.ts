@@ -42,8 +42,8 @@ export type DeliverResult =
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
-const SITE_URL = 'https://www.taime.tech'
-const FROM     = 'TAIME Radar <noreply@taime.tech>'
+export const SITE_URL = 'https://www.taime.tech'
+export const FROM      = 'TAIME Radar <noreply@taime.tech>'
 
 // Tamanho máximo aceito pelo endpoint de batch do Resend.
 const RESEND_BATCH_SIZE = 100
@@ -67,7 +67,7 @@ export function stripFences(raw: string): string {
     .trim()
 }
 
-function escapeHtml(s: string | null | undefined): string {
+export function escapeHtml(s: string | null | undefined): string {
   if (!s) return ''
   return String(s)
     .replace(/&/g, '&amp;')
@@ -255,7 +255,17 @@ async function sendBatch(args: {
 // semanal).
 export async function deliverNewsletter(
   content: NewsletterContent,
-  opts: { briefingDate: string; briefingId?: string | null },
+  opts: {
+    briefingDate: string
+    briefingId?:  string | null
+    // Renderizador de HTML por destinatario. Quando presente, substitui o template
+    // padrao (usado pelo semanal para o layout editorial). Recebe locale + link de
+    // unsub e devolve o HTML completo. Ausente: usa buildEmailHtml (diario).
+    buildHtml?:   (ctx: { isPtLocale: boolean; unsubscribeUrl: string }) => string
+    // Snapshot estruturado (jsonb) do que foi enviado. Gravado em newsletter_sends
+    // quando a coluna existir; resiliente se a migration ainda nao foi aplicada.
+    structured?:  unknown
+  },
 ): Promise<DeliverResult> {
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
     .replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
@@ -277,6 +287,21 @@ export async function deliverNewsletter(
     apikey:         serviceKey,
     Authorization:  `Bearer ${serviceKey}`,
     'Content-Type': 'application/json',
+  }
+
+  // Insere em newsletter_sends. Se `structured` estiver presente e a coluna ainda
+  // nao existir (migration nao aplicada), o PostgREST rejeita: nesse caso reenvia
+  // SEM o campo `structured`, para o envio nunca quebrar por conta do snapshot.
+  async function insertSendRow(row: Record<string, unknown>, prefer: string): Promise<Response> {
+    const url = `${supabaseUrl}/rest/v1/newsletter_sends`
+    let res = await fetch(url, { method: 'POST', headers: { ...headersWrite, Prefer: prefer }, body: JSON.stringify(row) })
+    if (!res.ok && 'structured' in row) {
+      const { structured: _drop, ...rest } = row
+      void _drop
+      console.error('newsletter_sends insert with structured failed; retrying without it (migration pending?).')
+      res = await fetch(url, { method: 'POST', headers: { ...headersWrite, Prefer: prefer }, body: JSON.stringify(rest) })
+    }
+    return res
   }
 
   try {
@@ -319,24 +344,21 @@ export async function deliverNewsletter(
     const bodyEn    = content.body_en  ?? bodyPt
 
     if (subscribers.length === 0) {
-      const skipInsert = await fetch(
-        `${supabaseUrl}/rest/v1/newsletter_sends`,
+      const skipInsert = await insertSendRow(
         {
-          method: 'POST',
-          headers: { ...headersWrite, Prefer: 'return=minimal' },
-          body: JSON.stringify({
-            briefing_id:     briefingId,
-            briefing_date:   briefingDate,
-            subject_pt:      subjectPt,
-            subject_en:      subjectEn,
-            body_pt:         bodyPt,
-            body_en:         bodyEn,
-            recipient_count: 0,
-            sent_count:      0,
-            failed_count:    0,
-            status:          'skipped',
-          }),
+          briefing_id:     briefingId,
+          briefing_date:   briefingDate,
+          subject_pt:      subjectPt,
+          subject_en:      subjectEn,
+          body_pt:         bodyPt,
+          body_en:         bodyEn,
+          recipient_count: 0,
+          sent_count:      0,
+          failed_count:    0,
+          status:          'skipped',
+          ...(opts.structured !== undefined ? { structured: opts.structured } : {}),
         },
+        'return=minimal',
       )
       if (!skipInsert.ok) {
         const t = await skipInsert.text()
@@ -352,12 +374,14 @@ export async function deliverNewsletter(
       const titleHtml   = pt ? subjectPt : subjectEn
       const bodyText    = pt ? bodyPt : bodyEn
       const unsubUrl    = `${SITE_URL}/api/newsletter/unsubscribe?token=${encodeURIComponent(s.unsubscribe_token ?? '')}`
-      const html = buildEmailHtml({
-        title:          titleHtml,
-        bodyParagraphs: paragraphs(bodyText),
-        unsubscribeUrl: unsubUrl,
-        isPtLocale:     pt,
-      })
+      const html = opts.buildHtml
+        ? opts.buildHtml({ isPtLocale: pt, unsubscribeUrl: unsubUrl })
+        : buildEmailHtml({
+            title:          titleHtml,
+            bodyParagraphs: paragraphs(bodyText),
+            unsubscribeUrl: unsubUrl,
+            isPtLocale:     pt,
+          })
       return { subscriber: s, to: s.email, subject, html }
     })
 
@@ -381,25 +405,22 @@ export async function deliverNewsletter(
     const resendRef     = results.find(r => r.ok && r.resend_id)?.resend_id ?? null
 
     // ── 5a. Insere row em newsletter_sends e captura o id ───────────────────
-    const insertRes = await fetch(
-      `${supabaseUrl}/rest/v1/newsletter_sends`,
+    const insertRes = await insertSendRow(
       {
-        method:  'POST',
-        headers: { ...headersWrite, Prefer: 'return=representation' },
-        body: JSON.stringify({
-          briefing_id:      briefingId,
-          briefing_date:    briefingDate,
-          subject_pt:       subjectPt,
-          subject_en:       subjectEn,
-          body_pt:          bodyPt,
-          body_en:          bodyEn,
-          recipient_count:  subscribers.length,
-          sent_count:       sentCount,
-          failed_count:     failedCount,
-          status,
-          resend_reference: resendRef,
-        }),
+        briefing_id:      briefingId,
+        briefing_date:    briefingDate,
+        subject_pt:       subjectPt,
+        subject_en:       subjectEn,
+        body_pt:          bodyPt,
+        body_en:          bodyEn,
+        recipient_count:  subscribers.length,
+        sent_count:       sentCount,
+        failed_count:     failedCount,
+        status,
+        resend_reference: resendRef,
+        ...(opts.structured !== undefined ? { structured: opts.structured } : {}),
       },
+      'return=representation',
     )
     if (!insertRes.ok) {
       const t = await insertRes.text()

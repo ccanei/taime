@@ -2,6 +2,131 @@
 
 ---
 
+## [2026-08-17] - Producao ago/2026 (A) + experimento de coleta hibrida (B), paginacao PostgREST
+
+Rodada da 1a quinzena de agosto/2026 em producao e, sobre a mesma janela 1-15,
+um experimento de metodo de coleta hibrido num periodo-sombra. Ambos os runs sem
+publicar (NO_AUTO_PUBLISH=1, tudo pending_review, published_at=null). Geracao em
+Sonnet 4.6 (periodo presente, sem risco de hindsight).
+
+- **PERIODO-EXPERIMENTO A LIMPAR: `2026-08-08`** (run B, sombra). NAO e producao.
+  Foi gravado com STORE_KEY cru `2026-08-08` (janela normalizada 1-15 de agosto),
+  isolado de `2026-08-01`. Limpar signals, signal_clusters e reports desse periodo
+  quando o experimento for concluido. NAO tocar em `2026-08-01` (producao A) depois
+  de gerado.
+- **A (producao):** `PERIOD=2026-08-01`, modo full (site:dominio + TOPIC_BY_CATEGORY),
+  pipeline completo collect, filter, analyze, generate, validate.
+- **B (sombra):** `PERIOD=2026-08-08 COLLECT_MODE=hybrid`, mesmo pipeline. Modo hybrid
+  novo no collect-signals: 2 passadas Serper por fonte (topic = full; open = site:dominio
+  puro), uniao com dedup por URL, metadata grava a passada de origem (pass/passes).
+  Default full segue byte-identico ao de hoje.
+- **Paginacao PostgREST (remove o cap de 1000):** filter-signals e analyze-signals
+  passam a ler os signals do periodo via dbGetAll (paginas de 1000 por limit/offset
+  com order=id.asc estavel, acumulando ate a pagina < 1000). generate-report e
+  validate-report ja liam signals por chunks de 100 ids (cap-safe); signal_clusters
+  por periodo e estruturalmente pequeno (corte de 18 no analyze).
+
+## [2026-08-10] - Newsletter semanal com layout editorial diagramado (lead + grafico por tema + chips/pull quotes)
+
+Redesenho do formato de saida da newsletter SEMANAL do Radar (segunda 09h BRT,
+`sendWeeklyNewsletter` em `lib/newsletter/send-weekly.ts`). Envio/cron/historico/
+lista de ativos intactos; mudou o prompt e o template. `sendDailyNewsletter` (diario)
+segue com o template classico, sem tocar.
+
+- SINTESE ESTRUTURADA: o system prompt do Sonnet 4.6 passa a devolver JSON por idioma
+  `{pt,en}` com `{titulo, lead, temas:[{numero,titulo,corpo,pull_quote,chips,signal_count}],
+  total_signals}`. O modelo agrupa em 3-5 temas e ATRIBUI cada sinal a um tema
+  (signal_count por tema; soma = total real). pull_quote max 2 por edicao; chips so
+  lugares/fatos contaveis citados no corpo. Base estrita nos briefings, fontes por
+  categoria, sem travessao, sem valores monetarios, PT/EN nativos.
+- REGRA INVIOLAVEL: o grafico "OS SINAIS DA SEMANA" so exibe contagens REAIS de sinais
+  por tema. O TOTAL vem dos `radar_briefings` (soma de `signal_count` da semana coberta).
+  Nenhum numero sem base nos sinais: se as contagens nao vierem validas, o grafico e
+  OMITIDO (degradacao segura) e o e-mail sai sem ele.
+- TEMPLATE HTML table-based (Outlook), dark #0F172A, serif nos titulos/lead: cabecalho
+  TAIME RADAR + "SEMANA DE {seg} A {dom} {mes}"; titulo; kicker + lead; bloco do grafico
+  (barras proporcionais, tema dominante em #3B82F6, demais #60A5FA, trilho #1E293B);
+  temas com numero serif azul, corpo, chips (pills #93C5FD sobre #1E293B) e pull quote
+  (borda-esquerda azul, italico); CTA Abrir o Radar; rodape com unsubscribe por token.
+  escapeHtml em todo campo dinamico.
+- JANELA CORRIGIDA: a leitura dos briefings agora e a semana coberta exata
+  `[currentMonday-7, currentMonday-1]` (segunda a domingo anterior), batendo com o
+  cabecalho. Antes lia `>= hoje-7d` sem teto e podia incluir a segunda do envio.
+- shared.ts: `deliverNewsletter` ganhou `buildHtml` (renderizador custom por
+  destinatario; o diario usa o default) e `structured` (snapshot jsonb, insert
+  resiliente se a coluna faltar). `escapeHtml`/`SITE_URL`/`FROM` exportados.
+- Snapshot: coluna `newsletter_sends.structured` (jsonb) via `add-newsletter-structured.sql`
+  (opcional; insert resiliente). Guarda a estrutura editorial exata do envio.
+- PREVIEW: `/api/cron/newsletter-weekly?preview={email}&lang=pt|en` envia so para 1
+  endereco, sem historico nem idempotencia, para conferir o layout antes do deploy. O
+  caminho agendado (sem preview) e byte-a-byte o mesmo.
+
+Validacao local (modelo + briefings reais, sem enviar): janela 2026-08-03..2026-08-09 =
+cabecalho "SEMANA DE 3 A 9 DE AGO"; total real 45 = header = soma dos temas [18,16,11];
+1 barra dominante + 2 secundarias; chips e pull quote presentes; PT/EN em paridade;
+zero travessao. Build 0 erros TS.
+
+---
+
+## [2026-08-02] - Geracao do periodo PRESENTE 2026-07-16 (2a quinzena julho) em Sonnet, sem publicar
+
+### LEMBRETE DE MODELO (CRITICO)
+Apos esta geracao o GENERATION_MODEL em generate-report.ts esta em 'claude-sonnet-4-6'
+e os dois `temperature: 0.1` estao DESCOMENTADOS. ANTES de qualquer batch HISTORICO
+(2017, 2016, 2015), REVERTER para 'claude-opus-4-8' e RECOMENTAR os dois temperature
+(o Opus deprecou temperature; o batch historico depende de Opus p/ evitar hindsight).
+As mudancas em generate-report.ts e o gen-2026-07-16.sh NAO foram commitados (instrucao).
+
+### Pre-voo (tudo limpo)
+- 2026-07-16 resolve como biweekly, "2a Quinzena de Julho de 2026", janela 16-31/jul. OK.
+- 0 signals / 0 signal_clusters / 0 reports para 2026-07-16 antes de rodar. Nenhum processo.
+- GUARDA DE CONTAMINACAO (content-extract.ts): JA e RELATIVA a janela. scanFutureYears
+  usa periodEndYear (= periodInfo.end, 2026) -> so flaga anos > 2026; mencoes a 2026 sao
+  legitimas e passam limpas. O fallback p/ snippet e gated por isHistorical, e
+  isHistorical(2026-07-16)=false (fim 31/jul nao e < hoje-45d=18/jun). Logo o conteudo
+  presente NUNCA e descartado/substituido. NENHUM ajuste necessario (nao e hardcoded).
+
+### Execucao (gen-2026-07-16.log): collect -> filter -> analyze -> generate -> validate
+Modelo de geracao: claude-sonnet-4-6, temperature 0.1, PERIOD=2026-07-16, NO_AUTO_PUBLISH=1.
+
+- COLETA: 873 sinais brutos; 94 duplicatas; 15 fora do periodo (skip correto, ex: sinal 2025);
+  1 erro. Uteis (is_noise=false): 645 (vs jul/H1: 478). Ruido: 228 = 26.1% (jul/H1 ~27%).
+- EXTRATOR NOVO (content_source em metadata): readability 599, stripHtml 19, empty 255,
+  snippet 0. content_flags em 51 sinais (future_years 46, symptoms 6). snippet fallback = 0
+  e content substituido = 0 -> a guarda foi SO visibilidade no presente, exatamente como
+  esperado (isHistorical=false). Um exemplo tipico: future_years:2030 flagado numa
+  projecao legitima de 2026, sem descartar o sinal.
+- ANALISE: 15 signal_clusters.
+- GERACAO: 15 trends (PT=EN em todas), 3 relatorios [5,5,5]. TAIME Scores media 80
+  (89,91,84,82,82,79,82,84,82,62,72,62,87,79,87).
+- VALIDACAO (judge): os 3 relatorios FAIL/pending_review. Verdicts persistidos:
+  R1=stale (judge inconclusivo -> segura p/ revisao), R2=fail, R3=fail. 64 flags
+  persistidas (49 warning, 15 blocking): partially_supported 47, unsupported_claim 10
+  (blocking), source_name 5 (blocking), monetary 2. temporal_breach: 0.
+
+### Comparativo de flags vs jul/H1 (2026-07-01, gerado SEM o prompt de prevencao)
+Base apples-to-apples = flags inline no momento da geracao (impressas pelo generate):
+- TOTAL: jul/H1 74 (R1 30, R2 14, R3 30) -> jul/H2 48 (R1 23, R2 13, R3 12). -35%.
+- temporal_breach (lastro temporal): jul/H1 3 (sinal Torvalds datado 1 dia apos o fim do
+  periodo vazou) -> jul/H2 0. ELIMINADO. Sinal mais forte da prevencao no presente.
+- source_name: jul/H1 6 (amostra) -> jul/H2 5 persistidas (2 na amostra do log). Reduziu,
+  NAO eliminou (ex: IEA nomeada em confidence_basis de 1 trend). O judge pega o resto.
+- monetary: jul/H1 4 -> jul/H2 2.
+- Ressalva: as validation_flags persistidas de jul/H1 = 0 (foram curadas/publicadas), entao
+  o comparativo por TIPO usa a amostra do log de jul/H1 (truncada em "+N flags") vs os
+  totais persistidos de jul/H2. A leitura direcional (menos flags, zero temporal_breach)
+  e solida; contagens exatas por tipo do jul/H1 nao sao 100% recuperaveis pos-curadoria.
+
+### Custo (Sonnet, bem abaixo dos ~$7 do Opus)
+- Geracao (Sonnet 4.6): ~US$ 2.61 (input fresco $0.69 + output $1.12 + cache_read $0.81;
+  calls=36, in=230258, out=74358, cache_read=2.7M). Validacao/judge: calls=85 in=687550 out=29361.
+
+### Confirmacao final
+- 2026-07-16: 3 relatorios, todos status=pending_review, published_at=null. Publicados=0.
+  NAO foi publicado. Curadoria pendente em /admin/reports (source_name IEA + grounding).
+
+---
+
 ## [2026-07-28] - Ajuste fino pos-6dc9272: classificador UNICO (NEXT/investimento ativa recencia)
 
 ### Defeito
