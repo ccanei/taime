@@ -20,6 +20,7 @@ const ADMIN_LINKS: AdminLink[] = [
   { href: '/admin/newsletter', label: 'Newsletter' },
   { href: '/admin/engagement', label: 'Engagement' },
   { href: '/admin/telemetry',  label: 'Telemetry'  },
+  { href: '/admin/posts',      label: 'Posts'      },
 ]
 
 export default function AdminNav({ active }: { active?: string }) {
