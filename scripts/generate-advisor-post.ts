@@ -229,7 +229,14 @@ ${HARD_RULES}`
   if (!advisorResponse) { console.error('Advisor nao respondeu.'); process.exit(1) }
 
   // ── PASSO C: dois corpos de post, PT nativo e EN nativo ────────────────────
-  const composeSystem = `You turn a strategic advisor answer into the BODY of a LinkedIn post, written NATIVELY in two languages (the EN body is NOT a translation of the PT body). For EACH language: 3 to 5 SHORT paragraphs (one to two sentences each), condensing the advisor read for a busy C-level reader, business implication first, cost of inaction explicit, decision window named. Do NOT include the intro line, the closing line, hashtags or the question: only the body paragraphs. Return PURE JSON only: {"body_pt":"...","body_en":"..."} with paragraphs separated by \\n\\n.
+  const composeSystem = `You turn a strategic advisor answer into the BODY of a LinkedIn post, written NATIVELY in two languages (the EN body is NOT a translation of the PT body). For EACH language: 3 to 5 SHORT paragraphs (one to two sentences each), condensing the advisor read for a busy C-level reader, business implication first, cost of inaction explicit, decision window named. Do NOT include the intro line, the closing line, hashtags or the question: only the body paragraphs, separated by a blank line.
+
+Return EXACTLY this structure and nothing else (no preamble, no code fences):
+<<<PT>>>
+[the Portuguese body paragraphs]
+<<<EN>>>
+[the English body paragraphs]
+<<<END>>>
 
 ${HARD_RULES}`
   const composeRaw = await callModel({
@@ -237,8 +244,15 @@ ${HARD_RULES}`
     system: composeSystem,
     user: `TREND THEME: ${titleEn} (${trend.category ?? 'technology'})\n\nADVISOR ANSWER TO CONDENSE:\n${advisorResponse}`,
   })
-  const bodies = parseJson<{ body_pt: string; body_en: string }>(composeRaw)
-  if (!bodies?.body_pt || !bodies?.body_en) { console.error('Falha ao compor os corpos.', composeRaw.slice(0, 200)); process.exit(1) }
+  const between = (raw: string, a: string, b: string): string => {
+    const i = raw.indexOf(a); const j = raw.indexOf(b, i + a.length)
+    return (i < 0 || j < 0) ? '' : raw.slice(i + a.length, j).trim()
+  }
+  const bodies = {
+    body_pt: between(composeRaw, '<<<PT>>>', '<<<EN>>>'),
+    body_en: between(composeRaw, '<<<EN>>>', '<<<END>>>'),
+  }
+  if (!bodies.body_pt || !bodies.body_en) { console.error('Falha ao compor os corpos.', composeRaw.slice(0, 200)); process.exit(1) }
 
   // ── Montagem final (partes fixas deterministicas) + stripEmDash ───────────
   const tag = themeHashtag(trend.category, trend.theme_slug)
