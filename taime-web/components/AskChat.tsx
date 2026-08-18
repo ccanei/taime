@@ -263,20 +263,20 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   // Desktop (lg+) na aba Inicio: tres colunas. Fora disso (mobile/tablet, ou aba
   // Conversa) fica na largura de leitura centralizada, como hoje.
   return (
-    <div className={`mx-auto ${view === 'home' ? 'max-w-3xl lg:max-w-[1436px]' : 'max-w-3xl'}`}>
+    <div className={`mx-auto ${view === 'home' ? 'max-w-3xl xl:max-w-[1436px]' : 'max-w-3xl'}`}>
     <div className={`mb-6 text-center ${view === 'chat' ? '' : 'hidden'}`}>
       <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 mb-2 leading-snug">{L.title}</h1>
       <p className="text-sm text-zinc-500 max-w-xl mx-auto leading-relaxed">{L.subtitle}</p>
     </div>
     <div className={view === 'home'
-      ? 'lg:grid lg:grid-cols-[minmax(0,300px)_minmax(0,768px)_minmax(0,320px)] lg:gap-6 lg:justify-center lg:items-stretch'
+      ? 'xl:grid xl:grid-cols-[minmax(0,300px)_minmax(0,768px)_minmax(0,320px)] xl:gap-6 xl:justify-center xl:items-stretch'
       : ''}>
 
     {/* ── COLUNA ESQUERDA (so home + desktop): "o acervo" ──────────────────────
         So agregados: temas por categoria (contagem) + curva de sinais acumulados.
         Sem titulos, periodos, scores ou links. Fail-safe por bloco. */}
     {view === 'home' && (byCategory?.length || archiveStats?.byYear) && (
-      <aside className="hidden lg:flex lg:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">
+      <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">
         {byCategory && byCategory.length > 0 && (
           <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">{C.archiveTitle}</p>
@@ -514,7 +514,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
         Institucional: o que o Advisor entrega e nao faz, perguntas fortes de
         exemplo (prefillam o composer), e conversao discreta. Sem dado do acervo. */}
     {view === 'home' && (
-      <aside className="hidden lg:flex lg:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pl-1">
+      <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pl-1">
         <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
           <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">{C.howTitle}</p>
           <p className="text-xs font-semibold text-zinc-700">{C.deliversTitle}</p>

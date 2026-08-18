@@ -26,7 +26,7 @@ export default async function PublicAdvisorGate() {
       {/* Desktop (lg+): libera a largura para as tres colunas do /ask anonimo. O
           AskChat controla a largura interna (centro em leitura; laterais so na home).
           Mobile e tablet ficam inalterados (max-w-5xl so tem efeito acima de 1024px). */}
-      <main className="flex-1 max-w-5xl lg:max-w-[1480px] w-full mx-auto px-6 py-10">
+      <main className="flex-1 max-w-5xl xl:max-w-[1480px] w-full mx-auto px-6 py-10">
         <AskChat siteKey={siteKey} />
       </main>
       <Footer />

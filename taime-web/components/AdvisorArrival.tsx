@@ -201,7 +201,7 @@ export default function AdvisorArrival({
           hideTimeline: no /ask desktop a curva vive na coluna esquerda ("o acervo"),
           entao some SO no desktop (lg+); no mobile continua aqui, como hoje. */}
       {stats?.byYear && (
-        <div className={hideTimeline ? 'lg:hidden' : ''}>
+        <div className={hideTimeline ? 'xl:hidden' : ''}>
           <ArchiveDensity byYear={stats.byYear} isPt={isPt} />
         </div>
       )}
