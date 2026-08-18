@@ -11,11 +11,34 @@ export const dynamic = 'force-dynamic'
 // período tem auto-split, ordenadas por taime_score desc. O shape do JSON é
 // idêntico ao anterior (mesmos campos), então app/page.tsx e HomeSearch seguem
 // sem alteração.
+//
+// CURADORIA: se houver uma trend com is_hero = true num report PUBLISHED, ela vira
+// o elemento [0] (a firstTrend do hero da home). Se houver mais de uma, a de
+// created_at mais recente. Sem nenhuma marcada (ou antes da migration is_hero),
+// cai no comportamento acima. Superfície pública: sempre só reports published.
 const TREND_FIELDS =
   'id,report_id,rank,title_pt_br,title_en,taime_score,' +
   'taime_framework_pt_br,taime_framework_en,' +
   'then_now_next_pt_br,then_now_next_en,' +
   'reports!inner(period)'
+
+// A trend marcada como hero (report published), mais recente primeiro. Retorna
+// null se nada marcado OU se a coluna is_hero ainda nao existe (pre-migration):
+// nesse caso o handler cai no fallback por score, sem quebrar.
+async function fetchHeroTrend(supabaseUrl: string, headers: Record<string, string>): Promise<unknown | null> {
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/report_trends` +
+      `?is_hero=eq.true` +
+      `&reports.status=eq.published` +
+      `&order=created_at.desc` +
+      `&limit=1` +
+      `&select=${TREND_FIELDS}`,
+    { headers, cache: 'no-store' },
+  )
+  if (!res.ok) return null // 42703 (coluna ausente) ou qualquer erro -> fallback
+  const rows = await res.json() as Array<{ id: string }>
+  return rows[0] ?? null
+}
 
 export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -50,6 +73,14 @@ export async function GET() {
     { headers, cache: 'no-store' },
   )
   if (!trendsRes.ok) return NextResponse.json([])
-  const data = await trendsRes.json()
+  const data = await trendsRes.json() as Array<{ id: string }>
+
+  // 3) Curadoria: se uma trend estiver marcada como hero (report published), ela
+  //    assume o elemento [0]. Deduplica caso ja esteja na lista do período.
+  const hero = await fetchHeroTrend(supabaseUrl, headers) as { id: string } | null
+  if (hero) {
+    const rest = data.filter(t => t.id !== hero.id)
+    return NextResponse.json([hero, ...rest])
+  }
   return NextResponse.json(data)
 }

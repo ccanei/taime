@@ -64,6 +64,7 @@ export default async function AdminReportDetail({ params }: Props) {
           flags={flags}
           signalCount={signalCount}
           trends={trends as unknown as Record<string, unknown>[]}
+          isPublic={(report as unknown as { is_public?: boolean }).is_public === true}
         />
 
         {/* Viewer real, exatamente como o usuário veria */}

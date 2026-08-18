@@ -167,6 +167,15 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
   } catch { return [] }
 }
 
+// Período da trend em pastilha compacta "mmm/aaaa" (ex.: ago/2026, Aug/2026),
+// no idioma da home. period vem como "YYYY-MM-DD".
+function formatMonthYear(period: string, isEn: boolean): string {
+  const d = new Date(period + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return ''
+  const mon = d.toLocaleDateString(isEn ? 'en-US' : 'pt-BR', { month: 'short' }).replace(/\.$/, '')
+  return `${mon}/${d.getFullYear()}`
+}
+
 // Deriva um rótulo curto de tópico a partir do título da trend (parte antes do
 // dois-pontos quando faz sentido, senão as primeiras palavras). Fica no idioma
 // do título recebido.
@@ -321,6 +330,10 @@ export default async function LandingPage() {
   const heroReportHref = firstTrend
     ? `/reports/${firstTrend.report_id}#trend-${firstTrend.rank}`
     : null
+  // Período da análise exibida no hero, para a pastilha "mmm/aaaa".
+  const heroPeriod = firstTrend?.reports?.period
+    ? formatMonthYear(firstTrend.reports.period, isEn)
+    : null
   const fwMockup      = isEn ? firstTrend?.taime_framework_en   : firstTrend?.taime_framework_pt_br
   const mockupScore   = firstTrend?.taime_score ?? 87
   const mockupTitle   = firstTrend
@@ -458,9 +471,17 @@ export default async function LandingPage() {
                 <div className="border-t border-white/10 pt-5">
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div className="min-w-0">
-                      <p className="text-[9px] font-bold tracking-widest text-zinc-500 mb-1.5">
-                        {isEn ? 'LATEST ANALYSIS' : 'ÚLTIMA ANÁLISE'}
-                      </p>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <p className="text-[9px] font-bold tracking-widest text-zinc-500">
+                          {isEn ? 'LATEST ANALYSIS' : 'ÚLTIMA ANÁLISE'}
+                        </p>
+                        {heroPeriod && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold
+                                           tracking-wide tabular-nums bg-taime-500/15 text-taime-200 ring-1 ring-taime-400/25">
+                            {heroPeriod}
+                          </span>
+                        )}
+                      </div>
                       <h3 className="text-sm font-bold text-white leading-snug line-clamp-2">{mockupTitle}</h3>
                     </div>
                     <span className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl

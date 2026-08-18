@@ -272,10 +272,93 @@ function FlagEditor({
   )
 }
 
+// ─── Curadoria da home (só reports published) ─────────────────────────────────
+// Escolhe manualmente a amostra pública (reports.is_public) e a trend do hero
+// (report_trends.is_hero). Exclusividade garantida no servidor (marcar um limpa o
+// anterior). Cada acao revalida as superficies publicas na hora.
+function HomeCuration({
+  reportId, isPublic, trends,
+}: {
+  reportId: string
+  isPublic: boolean
+  trends: Record<string, unknown>[]
+}) {
+  const router = useRouter()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function call(url: string, payload: Record<string, unknown>, key: string) {
+    setBusy(key); setErr(null)
+    try {
+      const res = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const json = await res.json() as { success?: boolean; error?: string }
+      if (!res.ok || !json.success) { setErr(json.error ?? 'Erro'); return }
+      router.refresh()
+    } catch (e) { setErr(String(e)) }
+    finally { setBusy(null) }
+  }
+
+  return (
+    <div className="mb-5 rounded-xl border border-taime-200 bg-taime-50/50 p-4">
+      <p className="text-[11px] font-bold text-taime-800 uppercase tracking-wider mb-3">Curadoria da home</p>
+
+      {/* Amostra pública (is_public no report) */}
+      <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-taime-100">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-zinc-800">
+            Amostra pública {isPublic && <span className="text-emerald-600">· ativa</span>}
+          </p>
+          <p className="text-xs text-zinc-500 leading-snug">Governa a rota /r/[id] e o showcase da home. Uma por vez.</p>
+        </div>
+        <button
+          onClick={() => call('/api/admin/report-public', { id: reportId, isPublic: !isPublic }, 'public')}
+          disabled={busy !== null}
+          className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50
+            ${isPublic ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-white text-zinc-700 border border-zinc-300 hover:border-taime-300'}`}
+        >
+          {busy === 'public' ? '...' : isPublic ? 'É a amostra ✓' : 'Tornar amostra'}
+        </button>
+      </div>
+
+      {/* Hero por trend (is_hero na trend) */}
+      <div>
+        <p className="text-sm font-semibold text-zinc-800 mb-2">Destacar no hero</p>
+        <div className="space-y-1.5">
+          {trends.map(t => {
+            const id = (t as { id?: string }).id ?? ''
+            const rank = (t as { rank?: number }).rank
+            const title = (t as { title_pt_br?: string }).title_pt_br ?? '(sem título)'
+            const heroed = (t as { is_hero?: boolean }).is_hero === true
+            return (
+              <div key={id} className="flex items-center justify-between gap-3">
+                <span className="text-xs text-zinc-600 truncate min-w-0">
+                  <span className="font-semibold text-zinc-500">Trend {rank}:</span> {title}
+                </span>
+                <button
+                  onClick={() => call('/api/admin/trend-hero', { trendId: id, isHero: !heroed }, `hero-${id}`)}
+                  disabled={busy !== null}
+                  className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-50
+                    ${heroed ? 'bg-taime-600 text-white hover:bg-taime-700' : 'bg-white text-zinc-600 border border-zinc-300 hover:border-taime-300'}`}
+                >
+                  {busy === `hero-${id}` ? '...' : heroed ? 'No hero ✓' : 'Destacar'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
+    </div>
+  )
+}
+
 // ─── Painel principal ───────────────────────────────────────────────────────
 
 export default function ReviewPanel({
-  reportId, status, verdict, flags, signalCount, trends,
+  reportId, status, verdict, flags, signalCount, trends, isPublic,
 }: {
   reportId: string
   status: string
@@ -283,6 +366,7 @@ export default function ReviewPanel({
   flags: ValidationFlag[]
   signalCount: number | null
   trends: Record<string, unknown>[]
+  isPublic: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState<Action | null>(null)
@@ -325,6 +409,11 @@ export default function ReviewPanel({
         {blocking.length > 0 && <span className="text-sm text-red-600 font-medium">{blocking.length} bloqueante{blocking.length > 1 ? 's' : ''}</span>}
         {warning.length > 0 && <span className="text-sm text-amber-600 font-medium">{warning.length} aviso{warning.length > 1 ? 's' : ''}</span>}
       </div>
+
+      {/* Curadoria da home: só faz sentido em report publicado */}
+      {status === 'published' && (
+        <HomeCuration reportId={reportId} isPublic={isPublic} trends={trends} />
+      )}
 
       {/* Aviso de revalidação pendente */}
       {verdict === 'stale' && (
