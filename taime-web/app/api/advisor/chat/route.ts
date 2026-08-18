@@ -9,6 +9,7 @@ import {
 } from '@/lib/plan'
 import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-grounding'
 import { embedQuery } from '@/lib/embeddings'
+import { detectLanguage } from '@/lib/detect-language'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
@@ -167,14 +168,9 @@ function normalizeUsage(u: Partial<Usage> | undefined): Usage {
   }
 }
 
-// Heurística leve de idioma (fallback quando o router falha).
-function detectLanguage(text: string): Lang {
-  const t = text.toLowerCase()
-  if (/[ãõçáàâéêíóôúäü]/.test(t)) return 'pt'
-  const ptHits = (t.match(/\b(você|voce|não|nao|está|esta|que|qual|como|para|com|empresa|estratégia|relatório|posso|quero|fazer|sobre|isso|porque)\b/g) ?? []).length
-  const enHits = (t.match(/\b(the|what|how|should|company|strategy|report|can|want|please|which|with|about|this|why|do|does)\b/g) ?? []).length
-  return ptHits > enHits ? 'pt' : 'en'
-}
+// Deteccao de idioma agora vive em lib/detect-language.ts (stoplist de nomes
+// proprios/termos consagrados + vies configuravel). No chat logado ela e apenas o
+// FALLBACK: a preferencia do usuario (cookie taime-locale) prevalece (ver handleChat).
 
 // Heurística de max_tokens: teto por padrão, folga MAIOR para perguntas densas.
 //
@@ -1322,7 +1318,18 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   // que limita o Free e a cota de reports (free_report_unlocks), nao o Advisor.
   const periodFloor = ADVISOR_PERMISSIVE_FLOOR
 
-  const preferLang = detectLanguage(userMessage)
+  // Idioma: a PREFERENCIA do usuario logado (cookie taime-locale, a lingua que ele
+  // escolheu na interface) PREVALECE sobre a heuristica de texto. A deteccao so
+  // decide quando NAO ha preferencia definida (cookie ausente/invalido).
+  const cookieLang = req.cookies.get('taime-locale')?.value
+  const userPref: Lang | null = cookieLang === 'pt' || cookieLang === 'en' ? cookieLang : null
+  const detectedLang = detectLanguage(userMessage)
+  const preferLang: Lang = userPref ?? detectedLang
+  // Reporta quando a pergunta esta claramente noutro idioma que nao a preferencia.
+  const langOverride = userPref != null && detectedLang !== userPref
+  if (langOverride) {
+    console.warn(`[advisor-lang] preferencia=${userPref} mas pergunta detectada=${detectedLang}; respondendo na preferencia. msg="${userMessage.slice(0, 120)}"`)
+  }
 
   // v4.6: intencao de periodo. Se a pergunta cita um periodo explicito, a busca e
   // limitada aquele intervalo. O floor efetivo e o MAIS restritivo entre o periodo
@@ -1468,7 +1475,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     }
 
     selectionSource = 'vector'
-    lang            = refined.language ?? preferLang
+    lang            = userPref ?? refined.language ?? preferLang
     reportIdsUsed   = [...new Set(selected.map(c => c.report_id))]
     trendIdsUsed    = selected.map(c => c.trend_id)
     similarities    = selected.map(c => Number(c.similarity.toFixed(4)))
@@ -1610,7 +1617,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     }
 
     selectionSource = 'router_fallback'
-    lang            = routed?.language ?? preferLang
+    lang            = userPref ?? routed?.language ?? preferLang
     contextBlock    = buildReportsBlock(reports)
     reportIdsUsed   = selectedIds
   }
@@ -1792,6 +1799,9 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     citations,
     truncated,
     language:             lang,
+    // Auditoria da decisao de idioma: preferencia do usuario (cookie), o que a
+    // heuristica detectou, e se a preferencia sobrepos uma pergunta noutro idioma.
+    lang_decision:        { preference: userPref, detected: detectedLang, used: lang, override: langOverride },
     usage:                mainUsage,
     router_usage:         routerUsage,
     profile_snapshot:     profile ? {

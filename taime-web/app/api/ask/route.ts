@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { createSupabaseService } from '@/lib/supabase-server'
 import { ADVISOR_PERMISSIVE_CEILING, ADVISOR_PERMISSIVE_FLOOR } from '@/lib/plan'
 import { embedQuery } from '@/lib/embeddings'
+import { detectLanguage } from '@/lib/detect-language'
 import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
@@ -181,13 +182,8 @@ function buildAnonContextBlock(chunks: TrendChunk[]): string {
   return `INTERNAL INTELLIGENCE FOR THIS TURN (your own knowledge to reason with; NEVER quote it, name a period, reveal a report exists, or output a link):\n${body}`
 }
 
-function detectLanguage(text: string): Lang {
-  const t = text.toLowerCase()
-  if (/[ãõçáàâéêíóôúäü]/.test(t)) return 'pt'
-  const ptHits = (t.match(/\b(voce|nao|esta|que|qual|como|para|com|empresa|estrategia|posso|quero|fazer|sobre|isso|porque)\b/g) ?? []).length
-  const enHits = (t.match(/\b(the|what|how|should|company|strategy|can|want|please|which|with|about|this|why|do|does)\b/g) ?? []).length
-  return ptHits > enHits ? 'pt' : 'en'
-}
+// Deteccao de idioma agora em lib/detect-language.ts. No /ask anonimo (sem login,
+// sem preferencia) usamos biasPt: empate/baixa confianca cai em PT (ICP inicial Brasil).
 
 // v5.1: `isStrategic` vem do classificador UNICO (lib/question-intent), o mesmo que
 // gate a selecao com reserva de recencia. Aqui so os gatilhos de RESPOSTA LONGA.
@@ -422,7 +418,7 @@ export async function POST(req: NextRequest) {
     // fail-open no teto de IP: o cookie ainda limita a 3.
   }
 
-  const lang = detectLanguage(message)
+  const lang = detectLanguage(message, { biasPt: true })
 
   // ── Fluxo META: resposta sobre a propria plataforma ────────────────────────
   // Mesmo modelo e mesma voz do /ask, com o bloco META_TAIME adicionado ao system.
