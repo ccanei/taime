@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
+import { revalidateReportSurfaces } from '@/lib/revalidate-reports'
 import { parseField, twin, buildPatch, type ParsedField } from '@/lib/reportFieldPath'
 
 /**
@@ -103,6 +104,10 @@ export async function POST(req: Request) {
     status:             'pending_review',
     updated_at:         new Date().toISOString(),
   }).eq('id', reportId)
+
+  // Editar volta o report para pending_review (sai do ar): invalida as
+  // superficies publicas para remove-lo na hora.
+  revalidateReportSurfaces(reportId)
 
   return NextResponse.json({ success: true, remainingFlags: remaining.length })
 }

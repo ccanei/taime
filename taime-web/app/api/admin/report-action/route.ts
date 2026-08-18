@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/isAdmin'
+import { revalidateReportSurfaces } from '@/lib/revalidate-reports'
 
 /**
  * POST /api/admin/report-action
@@ -76,6 +77,10 @@ export async function POST(req: Request) {
   if (updErr) {
     return NextResponse.json({ error: updErr.message }, { status: 500 })
   }
+
+  // Qualquer transicao muda a visibilidade publica do report (publish/unpublish/
+  // reject/archive/reopen/restore): invalida as superficies publicas na hora.
+  revalidateReportSurfaces(id)
 
   return NextResponse.json({ success: true, status: newStatus })
 }

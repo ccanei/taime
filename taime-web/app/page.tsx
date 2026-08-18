@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   },
 }
 import { getTranslations, detectLocale } from '@/lib/i18n'
+import { REPORTS_TAG, REPORTS_REVALIDATE_SECONDS } from '@/lib/revalidate-reports'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
@@ -54,7 +55,12 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
 async function getTopTrends(): Promise<TopTrend[]> {
   try {
-    const res = await fetch(`${SITE_URL}/api/trends/top`, { cache: 'no-store' })
+    // Cache sob demanda: a resposta fica no Data Cache com a tag REPORTS_TAG e
+    // revalidate periodico. Publicar/editar um report chama revalidateTag e
+    // atualiza o hero "Ultima analise" na hora.
+    const res = await fetch(`${SITE_URL}/api/trends/top`, {
+      next: { revalidate: REPORTS_REVALIDATE_SECONDS, tags: [REPORTS_TAG] },
+    })
     return await res.json()
   } catch { return [] }
 }
@@ -83,10 +89,12 @@ async function getLatestBriefing(): Promise<RadarBriefing | null> {
 }
 
 // ─── Dados reais da home reformulada (Server Component, service key) ─────────
-// Todas as queries usam a service key só no server (nunca exposta ao browser) e
-// cache no-store para a home refletir o banco. Falha silenciosa: cada helper
-// devolve vazio/null em erro, e a salvaguarda de deploy valida não-vazio antes
-// do push.
+// Todas as queries usam a service key só no server (nunca exposta ao browser).
+// As leituras de REPORT (top trends, tendencias recentes, contagens) usam Data
+// Cache com a tag REPORTS_TAG + revalidate periodico: o admin invalida na hora ao
+// publicar/editar (revalidateReportSurfaces) e o revalidate cobre mudancas fora
+// do app. Falha silenciosa: cada helper devolve vazio/null em erro, e a
+// salvaguarda de deploy valida não-vazio antes do push.
 
 function supaCreds(): { url: string; key: string } | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '')
@@ -103,6 +111,9 @@ async function getProofCounts(): Promise<ProofCounts> {
   if (!c) return { signals: 0, trends: 0 }
   const headCount = async (table: string): Promise<number> => {
     try {
+      // no-store: esta contagem depende do header content-range da resposta, que
+      // pode nao sobreviver ao Data Cache. E so a faixa de prova (nao e superficie
+      // de report critica), entao fica sempre fresca sem cache.
       const res = await fetch(`${c.url}/rest/v1/${table}?select=id`, {
         headers: { apikey: c.key, Authorization: `Bearer ${c.key}`, Prefer: 'count=exact', Range: '0-0' },
         cache: 'no-store',
@@ -138,7 +149,7 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
   try {
     const perRes = await fetch(
       `${c.url}/rest/v1/reports?status=eq.published&order=period.desc&limit=20&select=period`,
-      { headers: h, cache: 'no-store' },
+      { headers: h, next: { revalidate: REPORTS_REVALIDATE_SECONDS, tags: [REPORTS_TAG] } },
     )
     if (!perRes.ok) return []
     const periods = [...new Set((await perRes.json() as Array<{ period: string }>).map(r => r.period))].slice(0, 5)
@@ -149,14 +160,13 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
     const res = await fetch(
       `${c.url}/rest/v1/report_trends?reports.status=eq.published&reports.period=in.(${inList})` +
         `&order=taime_score.desc&limit=40&select=${fields}`,
-      { headers: h, cache: 'no-store' },
+      { headers: h, next: { revalidate: REPORTS_REVALIDATE_SECONDS, tags: [REPORTS_TAG] } },
     )
     if (!res.ok) return []
     return await res.json() as RecentTrendRow[]
   } catch { return [] }
 }
 
-// Amostra pública mais recente: report status='published' E is_public=true, do
 // Deriva um rótulo curto de tópico a partir do título da trend (parte antes do
 // dois-pontos quando faz sentido, senão as primeiras palavras). Fica no idioma
 // do título recebido.
