@@ -1114,7 +1114,7 @@ export default async function LandingPage() {
           <h2 className="text-3xl font-bold text-zinc-900 mb-3">{h.plansTitle}</h2>
           <p className="text-sm text-zinc-400 mb-12">{h.plansSub}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            {h.plans.map(({ name, price, priceOriginal, priceNote, freeNote, badge, desc, features, cta, href, highlight }, idx) => {
+            {h.plans.map(({ name, price, priceOriginal, priceNote, freeNote, badge, desc, features, trustNote, finePrint, cta, href, highlight }, idx) => {
               // Os planCards do i18n vêm na ordem Free / Essential / Strategic.
               // Mapeamos o índice para a chave usada pelo /login?plan=...
               const planKey  = (['free', 'essential', 'strategic'] as const)[idx] ?? 'free'
@@ -1150,10 +1150,18 @@ export default async function LandingPage() {
                       </li>
                     ))}
                   </ul>
+                  {/* Linha de confiança abaixo dos beneficios (pre-Stripe). */}
+                  {trustNote && (
+                    <p className="text-xs text-zinc-500 leading-snug">{trustNote}</p>
+                  )}
                   {ctaHref.startsWith('#') ? (
                     <a    href={ctaHref} className={ctaClass}>{cta}</a>
                   ) : (
                     <Link href={ctaHref} className={ctaClass}>{cta}</Link>
+                  )}
+                  {/* Fine print: ancora de valor futuro, discreta. */}
+                  {finePrint && (
+                    <p className="text-[11px] text-zinc-400 leading-snug -mt-2">{finePrint}</p>
                   )}
                 </div>
               )

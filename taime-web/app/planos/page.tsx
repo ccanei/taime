@@ -44,7 +44,7 @@ export default function PlanosPage() {
       {/* ── CARDS DE PLANOS ──────────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-6 pb-16">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
-          {p.planCards.map(({ name, price, priceOriginal, priceNote, freeNote, desc, badge, highlight, cta }, idx) => {
+          {p.planCards.map(({ name, price, priceOriginal, priceNote, freeNote, desc, badge, highlight, trustNote, finePrint, cta }, idx) => {
             const planKey = PLAN_KEYS[idx] ?? 'free'
             return (
               <div
@@ -75,7 +75,11 @@ export default function PlanosPage() {
                 {freeNote && (
                   <p className="text-xs text-zinc-400 mb-4 leading-snug">{freeNote}</p>
                 )}
-                {!freeNote && <div className="mb-4" />}
+                {/* Linha de confiança (pre-Stripe). */}
+                {trustNote && (
+                  <p className="text-xs text-zinc-500 mb-4 leading-snug">{trustNote}</p>
+                )}
+                {!freeNote && !trustNote && <div className="mb-4" />}
                 <Link href={`/login?plan=${planKey}`}
                   className={highlight
                     ? 'btn-primary w-full justify-center py-3'
@@ -83,6 +87,10 @@ export default function PlanosPage() {
                   }>
                   {cta}
                 </Link>
+                {/* Fine print: ancora de valor futuro, discreta. */}
+                {finePrint && (
+                  <p className="text-[11px] text-zinc-400 mt-2 leading-snug">{finePrint}</p>
+                )}
               </div>
             )
           })}
