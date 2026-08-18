@@ -167,6 +167,43 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
   } catch { return [] }
 }
 
+// Amostra publica ("E assim que a resposta se parece"): a trend LIBERADA do report
+// marcado is_public=true (a mesma que /r/[id] abre). A curadoria da home mora aqui:
+// o admin escolhe o report pelo toggle "Amostra publica" (grava reports.is_public).
+//
+// DINAMICO (no-store), nao sob a tag: a home ja e renderizada por request (le
+// cookies), entao esta leitura curta (2 queries com limit 1) reflete a troca de
+// is_public NA HORA, sem depender do stale-while-revalidate da tag. As demais
+// superficies de report (hero, tendencias recentes) seguem sob a tag REPORTS_TAG,
+// que o admin invalida no publish/edit; o teto de 300s nunca se aplica aqui.
+// `order=period.desc` e o desempate deterministico caso algum residuo (SQL manual
+// fora do admin) deixe mais de um is_public=true.
+async function getPublicSample(): Promise<RecentTrendRow | null> {
+  const c = supaCreds()
+  if (!c) return null
+  const h = { apikey: c.key, Authorization: `Bearer ${c.key}` }
+  try {
+    const repRes = await fetch(
+      `${c.url}/rest/v1/reports?is_public=eq.true&status=eq.published&order=period.desc&limit=1&select=id,public_unlocked_rank`,
+      { headers: h, cache: 'no-store' },
+    )
+    if (!repRes.ok) return null
+    const reps = await repRes.json() as Array<{ id: string; public_unlocked_rank: number | null }>
+    const rep = reps[0]
+    if (!rep) return null
+    const rank = rep.public_unlocked_rank ?? 1
+    const fields = 'title_pt_br,title_en,taime_score,category,theme_slug,report_id,' +
+      'then_now_next_pt_br,then_now_next_en,taime_framework_pt_br,taime_framework_en,reports!inner(period)'
+    const trRes = await fetch(
+      `${c.url}/rest/v1/report_trends?report_id=eq.${rep.id}&rank=eq.${rank}&limit=1&select=${fields}`,
+      { headers: h, cache: 'no-store' },
+    )
+    if (!trRes.ok) return null
+    const rows = await trRes.json() as RecentTrendRow[]
+    return rows[0] ?? null
+  } catch { return null }
+}
+
 // Período da trend em pastilha compacta "mmm/aaaa" (ex.: ago/2026, Aug/2026),
 // no idioma da home. period vem como "YYYY-MM-DD".
 function formatMonthYear(period: string, isEn: boolean): string {
@@ -220,8 +257,8 @@ export default async function LandingPage() {
     isLoggedIn = false
   }
 
-  const [topTrends, latestBriefing, proof, recentRows] = await Promise.all([
-    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(),
+  const [topTrends, latestBriefing, proof, recentRows, publicSample] = await Promise.all([
+    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(), getPublicSample(),
   ])
   const isEn = locale === 'en'
 
@@ -280,12 +317,11 @@ export default async function LandingPage() {
   // ── Tópicos em pauta: 3 temas reais dos últimos reports (rótulo do título). ──
   const topicLabels = trendCardRows.slice(0, 3).map(r => topicLabel(isEn ? r.title_en : r.title_pt_br))
 
-  // ── Showcase: trend CURADA de tema NAO-IA-centrico (infraestrutura de data
-  //    centers: energia, localizacao, escala e geopolitica), para diversificar a
-  //    vitrine hoje dominada por IA. Conteudo vem do banco (recentRows) pelo
-  //    theme_slug; usa o ciclo mais recente com dados completos. Fallback: a trend
-  //    de maior score com dados completos (comportamento antigo), para a secao
-  //    nunca ficar vazia se o tema curado sair do arquivo recente.
+  // ── Showcase "É assim que a resposta se parece": a AMOSTRA PUBLICA curada pelo
+  //    admin (report is_public=true, trend liberada) e a fonte PRIMARIA, para o
+  //    toggle "Amostra publica" governar a vitrine em segundos. Fallbacks (secao
+  //    nunca vazia): trend do tema curado NAO-IA-centrico e, por fim, a de maior
+  //    score. Todos com dados completos.
   const SHOWCASE_THEME_SLUG = 'ia-energia-infraestrutura-sustentavel'
   const hasFull = (r: RecentTrendRow): boolean => {
     const fw  = isEn ? r.taime_framework_en : r.taime_framework_pt_br
@@ -293,7 +329,8 @@ export default async function LandingPage() {
     return !!fw?.score_dimensions && !!tnn?.then && !!tnn?.now && !!tnn?.next && !!r.reports?.period
   }
   const showcase: RecentTrendRow | null =
-    recentRows.find(r => r.theme_slug === SHOWCASE_THEME_SLUG && hasFull(r))
+    (publicSample && hasFull(publicSample) ? publicSample : null)
+    ?? recentRows.find(r => r.theme_slug === SHOWCASE_THEME_SLUG && hasFull(r))
     ?? recentRows.find(hasFull)
     ?? null
   const showcaseFw     = showcase ? (isEn ? showcase.taime_framework_en : showcase.taime_framework_pt_br) : null
