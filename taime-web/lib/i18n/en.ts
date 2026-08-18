@@ -117,6 +117,34 @@ export const en: Translations = {
       ],
       metaLimit:        'You have explored TAIME quite a bit. To continue and put the Advisor to real work, create your free account: two full analyses per month and Advisor test messages with the same depth as the paid plan.',
       arrivalSubtitle:  'Strategic intelligence applied to your company reality, no sign up',
+      // /ask desktop: side-column content (aggregates and institutional only).
+      columns: {
+        archiveTitle:    'The archive',
+        archiveSubtitle: 'Themes covered, in aggregate counts',
+        trendsWord:      'trends',
+        howTitle:        'How it works',
+        deliversTitle:   'What the Advisor delivers',
+        delivers: [
+          'A clear thesis and the recommended move',
+          'The temporal read: then, now, next',
+          'Prioritization for your decision',
+        ],
+        avoidsTitle:     'What it does not do',
+        avoids: [
+          'No raw reports and no sources',
+          'No made-up market benchmarks',
+          'No periods, scores or links here',
+        ],
+        examplesTitle:   'Strong questions',
+        examples: [
+          'Does zero trust still hold with AI agents in production?',
+          'How do I control AI cost without stalling innovation?',
+          'Is LLM observability worth investing in now?',
+        ],
+        convTitle:       'Free account',
+        convBody:        'Create your account for 10 questions, 2 full analyses per month, and the Advisor at the same depth as the paid plan.',
+        convCta:         'Create free account',
+      },
       tabHome:          'Home',
       tabChat:          'Conversation',
       cards: [

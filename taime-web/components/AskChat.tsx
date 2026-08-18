@@ -6,7 +6,8 @@ import { useLocale } from '@/lib/useLocale'
 import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
-import AdvisorArrival, { type ArrivalStats, type ArrivalCard } from '@/components/AdvisorArrival'
+import AdvisorArrival, { ArchiveDensity, type ArrivalStats, type ArrivalCard } from '@/components/AdvisorArrival'
+import type { CategoryCount } from '@/lib/archive-stats'
 
 interface Message {
   id:      string
@@ -54,7 +55,9 @@ declare global {
 export default function AskChat({ siteKey }: { siteKey: string | null }) {
   const { t, locale } = useLocale()
   const L = t.home.ask
+  const C = L.columns   // conteudo das colunas laterais do /ask desktop
   const isPt = locale === 'pt'
+  const numFmt = (n: number) => n.toLocaleString(isPt ? 'pt-BR' : 'en-US')
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input,    setInput]    = useState('')
@@ -73,6 +76,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
   // Tela de chegada (aba Inicio) + numeros do arquivo (publico, sem vazar conteudo).
   const [view,         setView]         = useState<'home' | 'chat'>('home')
   const [archiveStats, setArchiveStats] = useState<ArrivalStats | null>(null)
+  const [byCategory,   setByCategory]   = useState<CategoryCount[] | null>(null)  // "o acervo" (coluna esq.)
 
   const captchaRef = useRef<HTMLDivElement>(null)
   const widgetRendered = useRef(false)
@@ -132,10 +136,20 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
     let cancelled = false
     fetch('/api/archive/stats')
       .then(r => r.ok ? r.json() : null)
-      .then(j => { if (!cancelled && j?.stats) setArchiveStats(j.stats as ArrivalStats) })
-      .catch(() => { /* linha some */ })
+      .then(j => {
+        if (cancelled || !j) return
+        if (j.stats) setArchiveStats(j.stats as ArrivalStats)
+        if (Array.isArray(j.byCategory)) setByCategory(j.byCategory as CategoryCount[])
+      })
+      .catch(() => { /* blocos somem */ })
     return () => { cancelled = true }
   }, [])
+
+  // Prefilla o composer com uma pergunta de exemplo e vai para a conversa (mesma
+  // regra dos cards: nao envia direto, respeitando o captcha da 1a pergunta).
+  function askExample(q: string) {
+    setView('chat'); setInput(q); setTimeout(() => textareaRef.current?.focus(), 0)
+  }
 
   // Cards da chegada: prefilla o composer e vai para a conversa (nao envia direto,
   // respeitando o captcha da 1a pergunta do anonimo).
@@ -246,12 +260,45 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
     ? null
     : L.counter(Math.min(used, QUESTION_LIMIT), QUESTION_LIMIT)
 
+  // Desktop (lg+) na aba Inicio: tres colunas. Fora disso (mobile/tablet, ou aba
+  // Conversa) fica na largura de leitura centralizada, como hoje.
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className={`mx-auto ${view === 'home' ? 'max-w-3xl lg:max-w-[1436px]' : 'max-w-3xl'}`}>
     <div className={`mb-6 text-center ${view === 'chat' ? '' : 'hidden'}`}>
       <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 mb-2 leading-snug">{L.title}</h1>
       <p className="text-sm text-zinc-500 max-w-xl mx-auto leading-relaxed">{L.subtitle}</p>
     </div>
+    <div className={view === 'home'
+      ? 'lg:grid lg:grid-cols-[minmax(0,300px)_minmax(0,768px)_minmax(0,320px)] lg:gap-6 lg:justify-center lg:items-stretch'
+      : ''}>
+
+    {/* ── COLUNA ESQUERDA (so home + desktop): "o acervo" ──────────────────────
+        So agregados: temas por categoria (contagem) + curva de sinais acumulados.
+        Sem titulos, periodos, scores ou links. Fail-safe por bloco. */}
+    {view === 'home' && (byCategory?.length || archiveStats?.byYear) && (
+      <aside className="hidden lg:flex lg:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">
+        {byCategory && byCategory.length > 0 && (
+          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">{C.archiveTitle}</p>
+            <p className="text-xs text-zinc-400 mb-3">{C.archiveSubtitle}</p>
+            <ul className="space-y-1.5">
+              {byCategory.slice(0, 12).map(c => (
+                <li key={c.category} className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm text-zinc-700 truncate">{catLabel(c.category, isPt)}</span>
+                  <span className="text-xs text-zinc-400 tabular-nums shrink-0">{numFmt(c.count)} {C.trendsWord}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {archiveStats?.byYear && (
+          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
+            <ArchiveDensity byYear={archiveStats.byYear} isPt={isPt} />
+          </div>
+        )}
+      </aside>
+    )}
+
     <div className="flex flex-col h-[calc(100vh-260px)] min-h-[480px]
                     border border-zinc-200 rounded-2xl overflow-hidden bg-white">
 
@@ -276,6 +323,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
           stats={archiveStats}
           cards={arrivalCards}
           isPt={isPt}
+          hideTimeline
           placeholder={L.placeholder}
           onSubmit={(t) => {
             // Enviar da chegada inicia a conversa. Respeita o captcha da 1a
@@ -460,6 +508,58 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
           </>
         )}
       </div>
+    </div>
+
+    {/* ── COLUNA DIREITA (so home + desktop): "como funciona" ──────────────────
+        Institucional: o que o Advisor entrega e nao faz, perguntas fortes de
+        exemplo (prefillam o composer), e conversao discreta. Sem dado do acervo. */}
+    {view === 'home' && (
+      <aside className="hidden lg:flex lg:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pl-1">
+        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">{C.howTitle}</p>
+          <p className="text-xs font-semibold text-zinc-700">{C.deliversTitle}</p>
+          <ul className="mt-1.5 space-y-1">
+            {C.delivers.map((d, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-zinc-500 leading-snug">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-taime-500 shrink-0" />{d}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs font-semibold text-zinc-700">{C.avoidsTitle}</p>
+          <ul className="mt-1.5 space-y-1">
+            {C.avoids.map((d, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-zinc-500 leading-snug">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-zinc-300 shrink-0" />{d}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">{C.examplesTitle}</p>
+          <div className="flex flex-col gap-1.5">
+            {C.examples.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => askExample(q)}
+                className="text-left text-xs text-taime-700 bg-taime-50 hover:bg-taime-100 border border-taime-100
+                           rounded-lg px-2.5 py-1.5 leading-snug transition-colors">
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-taime-200 bg-taime-50/60 shadow-sm p-4">
+          <p className="text-sm font-bold text-zinc-800">{C.convTitle}</p>
+          <p className="mt-1 text-xs text-zinc-600 leading-relaxed">{C.convBody}</p>
+          <Link href="/login" className="btn-primary mt-3 w-full text-xs px-3 py-2 justify-center inline-flex">
+            {C.convCta} →
+          </Link>
+        </div>
+      </aside>
+    )}
+
     </div>
     </div>
   )

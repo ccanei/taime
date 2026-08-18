@@ -24,7 +24,7 @@ export interface ArrivalStats {
 // cor da marca. Titulo com N anos calculado do primeiro ano do acervo. Valor final
 // marcado na ponta direita. Hover mostra o acumulado do ano. Fail-safe: sem dados
 // suficientes, nao renderiza.
-function ArchiveDensity({ byYear, isPt }: { byYear: Record<string, number>; isPt: boolean }) {
+export function ArchiveDensity({ byYear, isPt }: { byYear: Record<string, number>; isPt: boolean }) {
   const years = Object.keys(byYear).map(Number).filter(y => y >= 2000 && y <= 2100).sort((a, b) => a - b)
   if (years.length < 2) return null
   const start = years[0]
@@ -99,7 +99,7 @@ const ICONS: Record<string, LucideIcon> = {
 }
 
 export default function AdvisorArrival({
-  subtitle, stats, cards, isPt, onSubmit, placeholder, wide = false,
+  subtitle, stats, cards, isPt, onSubmit, placeholder, wide = false, hideTimeline = false,
 }: {
   subtitle:    string
   stats:       ArrivalStats | null
@@ -108,6 +108,7 @@ export default function AdvisorArrival({
   onSubmit?:   (text: string) => void   // enviar dali inicia a conversa
   placeholder?: string
   wide?:       boolean                  // Advisor desktop full-width: bloco respira mais
+  hideTimeline?: boolean                // /ask 3-colunas: a curva migra para a coluna esquerda
 }) {
   const locale = isPt ? 'pt-BR' : 'en-US'
   const n = (v: number) => v.toLocaleString(locale)
@@ -196,8 +197,14 @@ export default function AdvisorArrival({
         })}
       </div>
 
-      {/* Timeline de densidade do acervo (dado agregado, publico). Fail-safe. */}
-      {stats?.byYear && <ArchiveDensity byYear={stats.byYear} isPt={isPt} />}
+      {/* Timeline de densidade do acervo (dado agregado, publico). Fail-safe.
+          hideTimeline: no /ask desktop a curva vive na coluna esquerda ("o acervo"),
+          entao some SO no desktop (lg+); no mobile continua aqui, como hoje. */}
+      {stats?.byYear && (
+        <div className={hideTimeline ? 'lg:hidden' : ''}>
+          <ArchiveDensity byYear={stats.byYear} isPt={isPt} />
+        </div>
+      )}
     </div>
   )
 }

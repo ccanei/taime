@@ -116,6 +116,34 @@ export const pt = {
       ],
       metaLimit:        'Você já explorou bastante sobre o TAIME. Para continuar e colocar o Advisor para trabalhar de verdade, crie sua conta gratuita: são 2 análises completas por mês e mensagens de teste do Advisor com a mesma profundidade do plano pago.',
       arrivalSubtitle:  'Inteligência estratégica aplicada à realidade da sua empresa, sem cadastro',
+      // /ask desktop: conteudo das colunas laterais (so agregados e institucional).
+      columns: {
+        archiveTitle:    'O acervo',
+        archiveSubtitle: 'Temas cobertos, em contagem agregada',
+        trendsWord:      'tendências',
+        howTitle:        'Como funciona',
+        deliversTitle:   'O que o Advisor entrega',
+        delivers: [
+          'Uma tese clara e o movimento recomendado',
+          'A leitura temporal: então, agora, próximo',
+          'Priorização para a sua decisão',
+        ],
+        avoidsTitle:     'O que ele não faz',
+        avoids: [
+          'Não entrega relatórios crus nem fontes',
+          'Não inventa benchmarks de mercado',
+          'Não expõe períodos, scores ou links aqui',
+        ],
+        examplesTitle:   'Perguntas fortes',
+        examples: [
+          'Zero trust ainda protege com agentes de IA em produção?',
+          'Como controlar o custo de IA sem travar a inovação?',
+          'Vale investir em observabilidade de LLM agora?',
+        ],
+        convTitle:       'Conta gratuita',
+        convBody:        'Crie sua conta e ganhe 10 perguntas, 2 análises completas por mês e o Advisor com a mesma profundidade do plano pago.',
+        convCta:         'Criar conta gratuita',
+      },
       tabHome:          'Início',
       tabChat:          'Conversa',
       cards: [

@@ -16,6 +16,41 @@ interface ReportCountRow {
   report_trends: Array<{ count: number }> | null
 }
 
+// Contagem agregada de trends por CATEGORIA (temas cobertos), so de reports
+// publicados. Apenas category + contagem: nunca titulo, periodo, score ou link,
+// entao e seguro para a coluna "o acervo" do /ask anonimo (anti-scraping preservado).
+export interface CategoryCount { category: string; count: number }
+
+export async function getArchiveByCategory(): Promise<CategoryCount[] | null> {
+  try {
+    const service = createSupabaseService()
+    const counts = new Map<string, number>()
+    const PAGE = 1000
+    // Paginado: report_trends de reports publicados, so a coluna category.
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await service
+        .from('report_trends')
+        .select('category, reports!inner(status)')
+        .eq('reports.status', 'published')
+        .range(from, from + PAGE - 1)
+      if (error) return null
+      const rows = (data ?? []) as Array<{ category: string | null }>
+      for (const r of rows) {
+        const c = (r.category ?? '').trim()
+        if (c) counts.set(c, (counts.get(c) ?? 0) + 1)
+      }
+      if (rows.length < PAGE) break
+    }
+    if (counts.size === 0) return null
+    return [...counts.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+  } catch (e) {
+    console.error('[archive-stats] agregacao por categoria falhou (ignorado):', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 export async function getArchiveNumbers(): Promise<ArchiveNumbers | null> {
   try {
     const service = createSupabaseService()
