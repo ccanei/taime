@@ -327,7 +327,7 @@ export const en: Translations = {
     items: [
       { q: 'Is TAIME just AI-generated content?', a: 'TAIME combines automated signal collection from validated global sources with AI-powered structured analysis and human editorial review. The output is not automatic content generation. It is curated intelligence with a proprietary methodology.' },
       { q: 'How often are reports published?', a: 'The frequency follows the historical pace of the market: monthly reports for the digital foundation era and biweekly for the current era. The full archive, since 2015, is available on every plan.' },
-      { q: 'Which sources does TAIME monitor?', a: 'TAIME continuously monitors more than 45 validated global sources, including research firms, strategic consultancies, big tech companies, financial publications, academic centers, and regulatory bodies. The full source list is not disclosed to preserve editorial independence.' },
+      { q: 'Which sources does TAIME monitor?', a: 'TAIME continuously monitors more than {sources} validated global sources, including research firms, strategic consultancies, big tech companies, financial publications, academic centers, and regulatory bodies. The full source list is not disclosed to preserve editorial independence.' },
       { q: 'Who is TAIME for?', a: 'For anyone who makes technology-based decisions: executives and C-suite, department managers, consultants, advisors, entrepreneurs, and professionals who need to understand the technology market with depth and historical context.' },
       { q: 'What is the TAIME Score?', a: 'The TAIME Score (0–100) measures the strategic convergence of a trend across 5 dimensions: market maturity, competitive pressure, strategic impact, execution complexity, and competitive lag risk. Scores above 80 indicate immediate executive priority.' },
       { q: 'What does TYPE → ACT → IMPACT → MOVE → EXIT mean?', a: "It is TAIME's proprietary decision framework. For each trend, it structures: the type of scenario (disruption, risk, opportunity), the urgency level for action, the dimensions of organizational impact, the rational recommended move, and the exit or scaling criteria." },
@@ -401,7 +401,7 @@ export const en: Translations = {
     methodLabel:  'How we work',
     methodTitle:  'Methodology, not automation.',
     methodCards: [
-      { title: 'Validated sources',    desc: 'We continuously monitor more than 45 global research, consulting, and innovation sources, without relying on a single platform or indexer.' },
+      { title: 'Validated sources',    desc: 'We continuously monitor more than {sources} global research, consulting, and innovation sources, without relying on a single platform or indexer.' },
       { title: 'Proprietary method',   desc: 'The TAIME scoring and decision framework is applied to every identified trend, with consistency, comparability, and historical depth.' },
       { title: 'Editorial review',     desc: 'Every analysis goes through human curation before publication. TAIME is not pure automation. It is structured intelligence with editorial responsibility.' },
     ],

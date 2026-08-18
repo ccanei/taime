@@ -325,7 +325,7 @@ export const pt = {
     items: [
       { q: 'O TAIME é apenas gerado por IA?', a: 'O TAIME combina coleta automatizada de sinais de fontes globais validadas com análise estruturada por IA e revisão editorial humana. O resultado não é geração automática de conteúdo. É inteligência curada com metodologia própria.' },
       { q: 'Com que frequência os relatórios são publicados?', a: 'A frequência acompanha a velocidade histórica do mercado: relatórios mensais para a era de fundação digital e quinzenais para a era atual. Todo o arquivo, desde 2015, está disponível em todos os planos.' },
-      { q: 'Quais fontes o TAIME monitora?', a: 'O TAIME monitora continuamente mais de 45 fontes globais validadas, incluindo firmas de pesquisa, consultorias estratégicas, big techs, publicações financeiras, centros acadêmicos e organismos regulatórios. A lista completa de fontes não é divulgada para preservar a independência editorial.' },
+      { q: 'Quais fontes o TAIME monitora?', a: 'O TAIME monitora continuamente mais de {sources} fontes globais validadas, incluindo firmas de pesquisa, consultorias estratégicas, big techs, publicações financeiras, centros acadêmicos e organismos regulatórios. A lista completa de fontes não é divulgada para preservar a independência editorial.' },
       { q: 'Para quem o TAIME é indicado?', a: 'Para qualquer pessoa que toma decisões baseadas em tecnologia: executivos e C-level, gestores de área, consultores, advisors, empreendedores e profissionais que precisam entender o mercado tecnológico com profundidade e contexto histórico.' },
       { q: 'O que é o TAIME Score?', a: 'O TAIME Score (0–100) mede a convergência estratégica de uma tendência em 5 dimensões: maturidade de mercado, pressão competitiva, impacto estratégico, complexidade de execução e risco de defasagem. Scores acima de 80 indicam prioridade executiva imediata.' },
       { q: 'O que significa TYPE → ACT → IMPACT → MOVE → EXIT?', a: 'É o framework decisório proprietário do TAIME. Para cada tendência, ele estrutura: o tipo de cenário (ruptura, risco, oportunidade), o nível de urgência de ação, as dimensões de impacto organizacional, o movimento racional recomendado e os critérios de saída ou escala.' },
@@ -399,7 +399,7 @@ export const pt = {
     methodLabel:  'Como trabalhamos',
     methodTitle:  'Metodologia, não automação.',
     methodCards: [
-      { title: 'Fontes validadas',   desc: 'Monitoramos continuamente mais de 45 fontes globais de pesquisa, consultoria e inovação, sem depender de uma única plataforma ou indexador.' },
+      { title: 'Fontes validadas',   desc: 'Monitoramos continuamente mais de {sources} fontes globais de pesquisa, consultoria e inovação, sem depender de uma única plataforma ou indexador.' },
       { title: 'Metodologia própria', desc: 'O framework TAIME de scoring e decisão é aplicado a cada tendência identificada, com consistência, comparabilidade e profundidade histórica.' },
       { title: 'Revisão editorial',  desc: 'Toda análise passa por curadoria humana antes de ser publicada. O TAIME não é automação pura. É inteligência estruturada com responsabilidade editorial.' },
     ],

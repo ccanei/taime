@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         <h1 className="text-3xl font-bold text-zinc-900 mb-3">
           How we protect your data
         </h1>
-        <p className="text-sm text-zinc-400 mb-12">Last updated: May 2026</p>
+        <p className="text-sm text-zinc-400 mb-12">Last updated: August 2026</p>
 
         <div className="prose prose-zinc max-w-none space-y-10 text-sm leading-relaxed text-zinc-600">
 
@@ -69,23 +69,28 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-bold text-zinc-900 mb-3">3. Data sharing</h2>
             <p className="mb-3 font-semibold text-zinc-800">We do not sell data to third parties. We do not share data with commercial partners.</p>
-            <p className="mb-3">Your data may be processed by the following essential service providers, only to the extent necessary for platform operation:</p>
+            <p className="mb-3">Your data may be processed by the following essential service providers, organized by service category (with current vendors as examples), only to the extent necessary for platform operation:</p>
             <div className="bg-zinc-50 rounded-xl border border-zinc-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-100">
                   <tr>
+                    <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Service category</th>
                     <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Provider</th>
                     <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Purpose</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {[
-                    ['Supabase', 'Data storage and authentication'],
-                    ['Anthropic', 'Natural language processing (Executive Advisor)'],
-                    ['Vercel', 'Application hosting'],
-                  ].map(([provider, purpose]) => (
-                    <tr key={provider}>
-                      <td className="px-4 py-2.5 font-medium text-zinc-800">{provider}</td>
+                    ['Cloud infrastructure and hosting', 'Vercel', 'Application hosting and delivery'],
+                    ['Database', 'Supabase', 'Data storage and authentication'],
+                    ['AI model providers for language processing', 'Anthropic, OpenAI', 'Executive Advisor responses (Anthropic) and semantic search via embeddings (OpenAI)'],
+                    ['Public content search and collection', 'Serper', 'Signal collection from public sources'],
+                    ['Transactional email', 'Resend', 'Login, notification and newsletter emails'],
+                    ['Anti-bot protection', 'Cloudflare Turnstile', 'Anti-abuse verification in the public Advisor'],
+                  ].map(([category, provider, purpose]) => (
+                    <tr key={category}>
+                      <td className="px-4 py-2.5 font-medium text-zinc-800">{category}</td>
+                      <td className="px-4 py-2.5 text-zinc-600">{provider}</td>
                       <td className="px-4 py-2.5 text-zinc-500">{purpose}</td>
                     </tr>
                   ))}

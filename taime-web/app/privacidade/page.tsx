@@ -24,7 +24,7 @@ export default function PrivacidadePage() {
         <h1 className="text-3xl font-bold text-zinc-900 mb-3">
           Como protegemos seus dados
         </h1>
-        <p className="text-sm text-zinc-400 mb-12">Última atualização: maio de 2026</p>
+        <p className="text-sm text-zinc-400 mb-12">Última atualização: agosto de 2026</p>
 
         <div className="prose prose-zinc max-w-none space-y-10 text-sm leading-relaxed text-zinc-600">
 
@@ -69,23 +69,28 @@ export default function PrivacidadePage() {
           <section>
             <h2 className="text-lg font-bold text-zinc-900 mb-3">3. Compartilhamento de dados</h2>
             <p className="mb-3 font-semibold text-zinc-800">Não vendemos dados para terceiros. Não compartilhamos dados com parceiros comerciais.</p>
-            <p className="mb-3">Seus dados podem ser processados pelos seguintes provedores de serviço essenciais, apenas na medida necessária para a operação da plataforma:</p>
+            <p className="mb-3">Seus dados podem ser processados pelos seguintes provedores de serviço essenciais, organizados por categoria de serviço (com os fornecedores atuais como exemplos), apenas na medida necessária para a operação da plataforma:</p>
             <div className="bg-zinc-50 rounded-xl border border-zinc-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-100">
                   <tr>
-                    <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Provedor</th>
+                    <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Categoria de serviço</th>
+                    <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Fornecedor</th>
                     <th className="text-left px-4 py-2.5 font-semibold text-zinc-700">Finalidade</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {[
-                    ['Supabase', 'Armazenamento de dados e autenticação'],
-                    ['Anthropic', 'Processamento de linguagem natural (Executive Advisor)'],
-                    ['Vercel', 'Hospedagem da aplicação'],
-                  ].map(([provider, purpose]) => (
-                    <tr key={provider}>
-                      <td className="px-4 py-2.5 font-medium text-zinc-800">{provider}</td>
+                    ['Infraestrutura de nuvem e hospedagem', 'Vercel', 'Hospedagem e entrega da aplicação'],
+                    ['Banco de dados', 'Supabase', 'Armazenamento de dados e autenticação'],
+                    ['Modelos de IA para processamento de linguagem', 'Anthropic, OpenAI', 'Respostas do Executive Advisor (Anthropic) e busca semântica por embeddings (OpenAI)'],
+                    ['Busca e coleta de conteúdo público', 'Serper', 'Coleta de sinais a partir de fontes públicas'],
+                    ['E-mail transacional', 'Resend', 'Envio de e-mails de login, notificações e newsletter'],
+                    ['Proteção anti-bot', 'Cloudflare Turnstile', 'Verificação anti-abuso no Advisor público'],
+                  ].map(([category, provider, purpose]) => (
+                    <tr key={category}>
+                      <td className="px-4 py-2.5 font-medium text-zinc-800">{category}</td>
+                      <td className="px-4 py-2.5 text-zinc-600">{provider}</td>
                       <td className="px-4 py-2.5 text-zinc-500">{purpose}</td>
                     </tr>
                   ))}

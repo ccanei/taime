@@ -3,6 +3,7 @@ import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import { getTranslations, detectLocale } from '@/lib/i18n'
+import { getActiveSourcesRounded, sourcesDisplay } from '@/lib/sources-count'
 
 export async function generateMetadata() {
   const locale = detectLocale((await cookies()).get('taime-locale')?.value)
@@ -20,6 +21,9 @@ export default async function SobrePage() {
   const locale = detectLocale((await cookies()).get('taime-locale')?.value)
   const t = getTranslations(locale)
   const s = t.sobre
+  // Contagem real de fontes ativas, arredondada p/ baixo a dezena (revalidacao diaria).
+  // Piso honesto se o dado falhar. Injetada no placeholder {sources} dos cards.
+  const sourcesN = sourcesDisplay(await getActiveSourcesRounded())
 
   return (
     <div className="min-h-screen bg-white">
@@ -86,7 +90,7 @@ export default async function SobrePage() {
                   <div className="w-2 h-2 rounded-full bg-taime-600" />
                 </div>
                 <h3 className="text-sm font-bold text-zinc-900 mb-2">{title}</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">{desc}</p>
+                <p className="text-sm text-zinc-500 leading-relaxed">{desc.replace('{sources}', String(sourcesN))}</p>
               </div>
             ))}
           </div>

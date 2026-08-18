@@ -6,6 +6,7 @@ import Footer from '@/components/Footer'
 import FaqAccordion from '@/components/FaqAccordion'
 import JsonLd from '@/components/JsonLd'
 import { faqNode } from '@/lib/structured-data'
+import { getActiveSourcesRounded, sourcesDisplay } from '@/lib/sources-count'
 
 export const metadata: Metadata = {
   alternates: { canonical: 'https://www.taime.tech/faq' },
@@ -16,7 +17,11 @@ export default async function FaqPage() {
   const locale = detectLocale((await cookies()).get('taime-locale')?.value)
   const t = getTranslations(locale)
   const h = t.home
-  const faqItems = t.faq.items as unknown as { q: string; a: string }[]
+  // Contagem real de fontes ativas (revalidacao diaria, piso honesto se falhar),
+  // injetada no placeholder {sources} da resposta "Quais fontes o TAIME monitora".
+  const sourcesN = sourcesDisplay(await getActiveSourcesRounded())
+  const faqItems = (t.faq.items as unknown as { q: string; a: string }[])
+    .map(item => ({ q: item.q, a: item.a.replace('{sources}', String(sourcesN)) }))
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
