@@ -1442,8 +1442,12 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     // v5.0 (defeito A): recencia INEGOCIAVEL end-to-end. O refinador (Haiku) pode
     // descartar o unico chunk do ano mais novo. Em pergunta estrategica, se o mais
     // recente do pool nao entrou no selecionado, injeta na frente (NOW no presente).
-    if (strategic) {
-      const newest = candidates.reduce((a, b) => (b.period > a.period ? b : a))
+    // Fix: o "mais recente" e computado sobre o POOL (deduped), nao sobre candidates
+    // (que ja passou pela espinha e pode ter parado num ano anterior). Antes usava
+    // candidates e uma trajetoria "de X ate hoje" nao alcancava o periodo publicado
+    // mais novo quando a espinha elegia um representante anterior daquele tema.
+    if (strategic && deduped.length > 0) {
+      const newest = deduped.reduce((a, b) => (b.period > a.period ? b : a))
       if (!selected.some(c => c.trend_id === newest.trend_id)) {
         selected = [newest, ...selected].slice(0, 8)
       }
