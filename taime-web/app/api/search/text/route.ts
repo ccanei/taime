@@ -57,6 +57,15 @@ export async function POST(req: Request) {
         `title_pt_br.ilike.${like},title_en.ilike.${like},` +
         `category.ilike.${like},theme_slug.ilike.${like}`,
       )
+      // Ordena por RECENCIA (created_at desc) e so depois por score. Antes ordenava
+      // so por taime_score desc com limit fixo: termos comuns do titulo (ex.:
+      // "Infraestrutura" casa centenas de trends de todos os periodos publicados)
+      // enchiam as 24 vagas com trends antigas de score alto, e uma trend recente
+      // de score moderado nunca aparecia, ficando NAO-encontravel por fragmento.
+      // Com recencia primeiro, as trends do periodo publicado mais recente (poucas
+      // por periodo) sempre cabem no limite e sao encontraveis por qualquer
+      // fragmento do titulo, em PT e EN.
+      .order('created_at', { ascending: false })
       .order('taime_score', { ascending: false })
       .limit(limit)
 

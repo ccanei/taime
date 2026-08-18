@@ -157,23 +157,6 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
 }
 
 // Amostra pública mais recente: report status='published' E is_public=true, do
-// PERÍODO mais novo (period desc). Dinamico e robusto: no dia em que a 2a
-// quinzena de junho/2026 (ou outra mais nova) for marcada como amostra publica
-// no admin, o exemplo passa a ser ela sozinha, sem editar codigo. Retorna null
-// se nao houver nenhuma amostra publica (o CTA de exemplo se esconde, nao quebra).
-async function getPublicSampleId(): Promise<string | null> {
-  const c = supaCreds()
-  if (!c) return null
-  try {
-    const res = await fetch(
-      `${c.url}/rest/v1/reports?status=eq.published&is_public=eq.true&order=period.desc&limit=1&select=id`,
-      { headers: { apikey: c.key, Authorization: `Bearer ${c.key}` }, cache: 'no-store' },
-    )
-    if (!res.ok) return null
-    return (await res.json() as Array<{ id: string }>)[0]?.id ?? null
-  } catch { return null }
-}
-
 // Deriva um rótulo curto de tópico a partir do título da trend (parte antes do
 // dois-pontos quando faz sentido, senão as primeiras palavras). Fica no idioma
 // do título recebido.
@@ -218,8 +201,8 @@ export default async function LandingPage() {
     isLoggedIn = false
   }
 
-  const [topTrends, latestBriefing, proof, recentRows, sampleId] = await Promise.all([
-    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(), getPublicSampleId(),
+  const [topTrends, latestBriefing, proof, recentRows] = await Promise.all([
+    getTopTrends(), getLatestBriefing(), getProofCounts(), getRecentTrendRows(),
   ])
   const isEn = locale === 'en'
 
@@ -322,6 +305,12 @@ export default async function LandingPage() {
 
   // Mockup data: top trend by score (rank 1 da query)
   const firstTrend    = topTrends[0] ?? null
+  // Link do card "Última análise": leva ao report REAL da trend exibida, com ancora
+  // da trend. Logado abre o report direto; anonimo cai no gate de login que a pagina
+  // de report ja aplica (funil de cadastro preservado, sem link hardcoded p/ /login).
+  const heroReportHref = firstTrend
+    ? `/reports/${firstTrend.report_id}#trend-${firstTrend.rank}`
+    : null
   const fwMockup      = isEn ? firstTrend?.taime_framework_en   : firstTrend?.taime_framework_pt_br
   const mockupScore   = firstTrend?.taime_score ?? 87
   const mockupTitle   = firstTrend
@@ -471,9 +460,9 @@ export default async function LandingPage() {
                     </span>
                   </div>
                   <ScoreBars dims={heroDims} variant="hero" />
-                  {sampleId && (
+                  {heroReportHref && (
                     <Link
-                      href="/login?from=report"
+                      href={heroReportHref}
                       className="mt-5 inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
                                  rounded-lg bg-taime-500 text-white text-xs font-semibold
                                  hover:bg-taime-400 transition-colors"
