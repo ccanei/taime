@@ -1377,6 +1377,20 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     const inWindow = await matchTrendChunks(service, emb.vector, effectiveFloor, matchCount, effectiveCeiling)
     vectorError = inWindow.error
     chunks       = inWindow.chunks
+
+    // Piso de recencia: numa pergunta ESTRATEGICA de teto ABERTO (trajetoria ou
+    // prospectiva "ate hoje"), garante que o periodo publicado MAIS NOVO esteja no
+    // pool, mesmo que seus chunks nao ranqueiem no top global por similaridade.
+    // Sem isto, uma trajetoria "de X ate hoje" parava no ano do representante mais
+    // similar (defasado) e nunca alcancava o presente. Busca os chunks mais similares
+    // DENTRO do periodo mais novo e mescla; o dedupe e a selecao cuidam do resto.
+    if (strategic && reqTo === null) {
+      const maxP = await maxPeriodInWindow(service, effectiveFloor)
+      if (maxP) {
+        const recent = await matchTrendChunks(service, emb.vector, maxP, VECTOR_MATCH_COUNT_NARROW, maxP)
+        if (recent.chunks.length > 0) chunks = [...chunks, ...recent.chunks]
+      }
+    }
   }
 
   // Fase 3: alem da ultima sessao (sempre presente), traz ate 2 resumos antigos
