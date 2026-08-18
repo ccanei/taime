@@ -99,7 +99,7 @@ const ICONS: Record<string, LucideIcon> = {
 }
 
 export default function AdvisorArrival({
-  subtitle, stats, cards, isPt, onSubmit, placeholder,
+  subtitle, stats, cards, isPt, onSubmit, placeholder, wide = false,
 }: {
   subtitle:    string
   stats:       ArrivalStats | null
@@ -107,6 +107,7 @@ export default function AdvisorArrival({
   isPt:        boolean
   onSubmit?:   (text: string) => void   // enviar dali inicia a conversa
   placeholder?: string
+  wide?:       boolean                  // Advisor desktop full-width: bloco respira mais
 }) {
   const locale = isPt ? 'pt-BR' : 'en-US'
   const n = (v: number) => v.toLocaleString(locale)
@@ -121,7 +122,7 @@ export default function AdvisorArrival({
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-2 py-8 sm:py-10">
+    <div className={`max-w-3xl mx-auto px-2 py-8 sm:py-10 ${wide ? 'lg:max-w-4xl' : ''}`}>
       {/* Cabecalho de apresentacao */}
       <div className="text-center mb-6">
         <div className="inline-flex items-center gap-2 mb-3">
@@ -171,7 +172,7 @@ export default function AdvisorArrival({
       )}
 
       {/* Grade de 4 cards (sugestões, abaixo do campo) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${wide ? 'lg:gap-4' : ''}`}>
         {cards.map((c, i) => {
           const Icon = ICONS[c.iconKey] ?? MessageSquareText
           return (

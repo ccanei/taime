@@ -727,7 +727,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     <div className="flex h-[calc(100vh-140px)] min-h-[500px] border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
 
       {/* Sidebar desktop: colapsa em barra de icones; expande ao clicar (persiste). */}
-      <aside className={`hidden md:flex md:flex-col bg-zinc-50 border-r border-zinc-200 shrink-0 transition-[width] duration-150 ${collapsed ? 'w-14' : 'w-60'}`}>
+      <aside className={`hidden md:flex md:flex-col bg-zinc-50 border-r border-zinc-200 shrink-0 transition-[width] duration-150 ${collapsed ? 'w-14' : 'w-60 xl:w-72'}`}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-1 py-3 overflow-y-auto">
             <button
@@ -879,6 +879,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
           <div className="min-h-full flex flex-col justify-center">
             <AdvisorArrival
+              wide
               subtitle={isPt
                 ? 'Inteligência estratégica aplicada à realidade da sua empresa'
                 : 'Strategic intelligence applied to your company reality'}
@@ -894,7 +895,11 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         </div>
 
         {/* Messages */}
-        <div className={`flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-zinc-50 ${view === 'chat' ? '' : 'hidden'}`}>
+        <div className={`flex-1 overflow-y-auto px-4 py-6 bg-zinc-50 ${view === 'chat' ? '' : 'hidden'}`}>
+         {/* Coluna de leitura centralizada (só desktop, lg+): o ganho de largura vai
+             para respiro e para as laterais, nunca para linhas de texto mais longas.
+             Abaixo de lg (mobile/tablet) a coluna fica cheia como antes. */}
+         <div className="mx-auto w-full lg:max-w-3xl space-y-4">
 
           {/* Abertura proativa ancorada no arquivo (sugestão + chips). Some ao
               começar a digitar; nunca conta contra a cota de mensagens. */}
@@ -990,6 +995,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           )}
 
           <div ref={bottomRef} />
+         </div>
         </div>
 
         {/* Oferta contextual: aparece quando o usuario pede contato humano. */}
@@ -1034,8 +1040,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           </div>
         )}
 
-        {/* Input (ou CTA de upgrade quando a cota esgota). Some na aba Inicio. */}
+        {/* Input (ou CTA de upgrade quando a cota esgota). Some na aba Inicio.
+            Alinhado a mesma coluna de leitura das mensagens. */}
         <div className={`border-t border-zinc-100 bg-white px-4 py-3 ${view === 'chat' ? '' : 'hidden'}`}>
+          <div className="mx-auto w-full lg:max-w-3xl">
           {blocked ? (
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between
                             rounded-xl bg-taime-50 border border-taime-100 px-4 py-3">
@@ -1077,12 +1085,13 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
               <p className="text-[10px] text-zinc-300 mt-1.5 text-right">Shift+Enter para nova linha</p>
             </>
           )}
+          </div>
         </div>
       </div>
 
       {/* Painel de contexto (workspace): fixo a direita no desktop (>= lg).
           Fundo tonal para os cards brancos do painel se destacarem como camadas. */}
-      <aside className="hidden lg:flex lg:flex-col w-[320px] shrink-0 border-l border-zinc-200 bg-zinc-50 overflow-y-auto">
+      <aside className="hidden lg:flex lg:flex-col w-[320px] xl:w-[360px] 2xl:w-[400px] shrink-0 border-l border-zinc-200 bg-zinc-50 overflow-y-auto">
         <AdvisorContextPanel
           turn={latestPanel}
           loading={loading || recovering}

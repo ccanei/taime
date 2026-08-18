@@ -38,7 +38,7 @@ export default async function AdvisorPage() {
     <div className="min-h-screen bg-zinc-50">
       {/* Header */}
       <header className="bg-white border-b border-zinc-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl lg:max-w-none mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="font-bold text-xl tracking-tight text-zinc-900">
               TAIME
@@ -53,7 +53,10 @@ export default async function AdvisorPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-6">
+      {/* Desktop (lg+): a area de trabalho do Advisor ocupa a largura total da
+          viewport, com padding lateral pequeno. Mobile/tablet ficam inalterados
+          (max-w-6xl so tem efeito acima de 1152px). */}
+      <main className="max-w-6xl lg:max-w-none mx-auto px-6 lg:px-8 py-6">
         <AdvisorView
           userId={user.id}
           userName={userName}
