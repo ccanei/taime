@@ -493,6 +493,16 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
 
   useEffect(() => {
     async function bootstrap() {
+      // Deep-link ?ask=<pergunta> (vindo do email de alerta new_signal): pre-preenche
+      // o composer com a pergunta sugerida e abre a conversa. NAO envia sozinho (nao
+      // consome cota sem intencao); o usuario revisa e envia.
+      const askParam = new URLSearchParams(window.location.search).get('ask')
+      if (askParam && askParam.trim()) {
+        setInput(askParam.trim().slice(0, 500))
+        setView('chat')
+        setTimeout(() => inputRef.current?.focus(), 0)
+      }
+
       // Deep-link ?session=<uuid> (vindo da pagina de planos, "Ver a conversa"):
       // abre direto aquela sessao em vez da mais recente. Fail-safe: id invalido ou
       // sem historico cai no fluxo normal.

@@ -5,6 +5,7 @@ import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-serv
 import LogoutButton from '@/components/LogoutButton'
 import LanguageSelector from '@/components/LanguageSelector'
 import AccountForm from '@/components/AccountForm'
+import AccountNotifications from '@/components/AccountNotifications'
 
 type Locale = 'pt' | 'en'
 
@@ -70,6 +71,26 @@ export default async function AccountPage() {
 
   const preferredLanguage: 'pt-BR' | 'en' =
     profileRow.preferred_language === 'en' ? 'en' : 'pt-BR'
+
+  // Preferencias de alertas (Fase 3.1): query best-effort separada. Se a migracao
+  // ainda nao foi aplicada (colunas ausentes), a query falha e usamos os defaults
+  // sem quebrar o resto da pagina. Defaults: sinal novo ON, acao parada OFF.
+  let alertPrefs = { alert_new_signal: true, alert_stalled_action: false, alerts_muted: false }
+  try {
+    const { data: prefRow } = await service
+      .from('users')
+      .select('alert_new_signal, alert_stalled_action, alerts_muted')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (prefRow) {
+      const p = prefRow as { alert_new_signal: boolean | null; alert_stalled_action: boolean | null; alerts_muted: boolean | null }
+      alertPrefs = {
+        alert_new_signal:     p.alert_new_signal ?? true,
+        alert_stalled_action: p.alert_stalled_action ?? false,
+        alerts_muted:         p.alerts_muted ?? false,
+      }
+    }
+  } catch { /* migracao pendente: usa defaults */ }
 
   // Free: contagem de desbloqueios de reports nos últimos 30 dias (janela rolling).
   // Fonte: free_report_unlocks (mesma cota que free_unlock_report aplica em
@@ -208,6 +229,9 @@ export default async function AccountPage() {
             </div>
           )}
         </section>
+
+        {/* Preferencias de alertas do Advisor (Fase 3.1) */}
+        <AccountNotifications initial={alertPrefs} />
       </main>
     </div>
   )
