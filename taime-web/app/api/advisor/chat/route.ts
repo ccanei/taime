@@ -15,7 +15,7 @@ import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
-import { looksLikeRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-plan-extract'
+import { detectRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-plan-extract'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -1771,11 +1771,43 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   //    nem ao historico, mesmo num deslize do modelo.
   reply = stripEmDash(reply)
 
+  // ── Extracao do roadmap para OFERTA de plano salvo (Fase 2.1) ──────────────
+  //    FORA do caminho critico: heuristica barata (custo zero sem roadmap) +
+  //    extracao Haiku sob timeout, fail-safe. NAO altera o texto da resposta; se
+  //    falhar, apenas nao ha oferta. Corre ANTES da persistencia para gravar a
+  //    observabilidade (plan_detection) no context_metadata do assistant, e para
+  //    devolver plan_offer no JSON. O cliente guarda ate decidir salvar (nada e
+  //    persistido em advisor_plans antes da confirmacao).
+  const roadmapDet = detectRoadmap(reply)
+  let planOffer: PlanOffer | null = null
+  const planDetection: { heuristic: boolean; via: string | null; extracted: boolean; reason: string } = {
+    heuristic: roadmapDet.matched,
+    via:       roadmapDet.via,
+    extracted: false,
+    reason:    roadmapDet.matched ? `heuristic_${roadmapDet.via}` : 'no_roadmap',
+  }
+  if (roadmapDet.matched) {
+    try {
+      planOffer = await withTimeout(
+        extractRoadmap(reply, { userId: user.id, sessionId }),
+        9000,
+        null,
+      )
+      planDetection.extracted = planOffer !== null
+      if (!planOffer) planDetection.reason = 'extract_failed_or_timeout'
+    } catch (e) {
+      planOffer = null
+      planDetection.reason = 'extract_exception'
+      console.error('[advisor-plan-offer] extracao ignorada (nao afeta a resposta):', e instanceof Error ? e.message : e)
+    }
+  }
+
   // ── Persist both messages to advisory_memory ──────────────────────────────
   // v4.2: created_at explícito e sequencial. Sem isso, PostgreSQL avalia now()
   // uma vez por transação e os dois rows ficam com timestamp idêntico, deixando
   // a ordem da reabertura não-determinística. 1ms já basta para o tiebreaker.
   const contextMeta = {
+    plan_detection:       planDetection,
     report_ids_used:      reportIdsUsed,
     trend_ids_used:       trendIdsUsed,
     similarities,
@@ -1917,26 +1949,6 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     await persistExtractedContext(service, user.id, profile, extracted)
   } catch (e) {
     console.error('[advisor-context] extraction/persist EXCEPTION (ignored, nao afeta persistencia):', e)
-  }
-
-  // ── Extracao do roadmap para OFERTA de plano salvo (Fase 2.1) ──────────────
-  //    FORA do caminho critico: so roda a Haiku se a resposta PARECE um roadmap
-  //    (heuristica barata -> custo zero quando nao ha roadmap). A extracao NAO
-  //    altera o texto da resposta e e fail-safe: qualquer erro/timeout -> sem
-  //    oferta, resposta segue normal. O resultado vai no JSON como plan_offer; o
-  //    cliente guarda ate decidir salvar (nada e persistido antes da confirmacao).
-  let planOffer: PlanOffer | null = null
-  try {
-    if (looksLikeRoadmap(reply)) {
-      planOffer = await withTimeout(
-        extractRoadmap(reply, { userId: user.id, sessionId }),
-        9000,
-        null,
-      )
-    }
-  } catch (e) {
-    planOffer = null
-    console.error('[advisor-plan-offer] extracao ignorada (nao afeta a resposta):', e instanceof Error ? e.message : e)
   }
 
   // Responde com a cota e history_saved (false = a conversa NAO pode ser gravada;
