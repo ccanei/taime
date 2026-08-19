@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { computeProgress, type PlanRecord } from '@/lib/advisor-plan'
 import { ProgressBar, PhaseDetail, progressText, togglePhaseAction, patchPlan } from '@/components/PlanUI'
+import ExportPlanButtons from '@/components/ExportPlanButtons'
 
 const PLANS_HREF = '/dashboard/advisor/plans'
 
@@ -60,6 +61,11 @@ export default function ActivePlanCard({ plans, isPt }: { plans: PlanRecord[]; i
           <PhaseDetail phase={current} isPt={isPt} onToggleAction={toggle} disabled={saving} />
         </div>
       )}
+
+      {/* Exportacao compacta, sem competir com "Abrir/Ver todos" do topo */}
+      <div className="mt-3 flex items-center justify-end">
+        <ExportPlanButtons plan={plan} isPt={isPt} compact />
+      </div>
     </div>
   )
 }

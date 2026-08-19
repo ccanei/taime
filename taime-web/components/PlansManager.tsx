@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useLocale } from '@/lib/useLocale'
 import { computeProgress, type PlanRecord, type PlanStatus } from '@/lib/advisor-plan'
 import { ProgressBar, PhaseDetail, progressText, togglePhaseAction, patchPlan } from '@/components/PlanUI'
+import ExportPlanButtons from '@/components/ExportPlanButtons'
 
 // Pagina de planos (Fase 2.2, TAREFA 2): lista os planos do usuario (ativos, depois
 // concluidos, depois arquivados), cada um com progresso e detalhe expansivel de todas
@@ -175,8 +176,13 @@ export default function PlansManager() {
                         <p className="mt-3 text-[11px] text-amber-700 leading-snug">{limitMsg}</p>
                       )}
 
+                      {/* Exportar (disponivel para qualquer plano do usuario) */}
+                      <div className="mt-4">
+                        <ExportPlanButtons plan={plan} isPt={isPt} />
+                      </div>
+
                       {/* Acoes de gestao */}
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
                         {plan.status === 'active' && (
                           <>
                             <button onClick={() => changeStatus(plan, 'completed')} disabled={busy}
