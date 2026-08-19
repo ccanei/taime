@@ -276,7 +276,7 @@ export const pt = {
         desc: 'Para o executivo que decide.',
         features: ['Acesso ilimitado a todo o arquivo', 'Executive Advisor com 250 mensagens por mês'],
         trustNote: 'Ativação imediata no cadastro. Sem cartão de crédito.',
-        finePrint: 'Valor de referência após o lançamento: R$ 197/mês',
+        finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês',
         cta: 'Começar com o Essential', href: '/login', highlight: true,
       },
       {
@@ -414,7 +414,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Comece a decidir com dados reais', badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Grátis por tempo limitado', highlight: true,  trustNote: 'Ativação imediata no cadastro. Sem cartão de crédito.', finePrint: 'Valor de referência após o lançamento: R$ 197/mês', cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Grátis por tempo limitado', highlight: true,  trustNote: 'Ativação imediata no cadastro. Sem cartão de crédito.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
       { name: 'Estratégico', price: 'Sob consulta', priceOriginal: null,         priceNote: null,                                                 freeNote: null,                                                       desc: 'Para organizações.',               badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Fale conosco'              },
     ],
     planFeatures: [
