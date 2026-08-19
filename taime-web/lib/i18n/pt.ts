@@ -282,7 +282,7 @@ export const pt = {
       {
         name: 'Estratégico', price: 'Sob consulta', priceOriginal: null, priceNote: null, freeNote: null, badge: null,
         desc: 'Para organizações.',
-        features: ['Múltiplos assentos com memória estratégica compartilhada', 'Executive Advisor com contexto da sua empresa', 'Integração Microsoft Teams', 'Relatórios e artefatos sob demanda', 'Faturamento corporativo'],
+        features: ['Múltiplos usuários com memória estratégica compartilhada', 'Executive Advisor com contexto da sua empresa', 'Integração Microsoft Teams', 'Relatórios e artefatos sob demanda', 'Faturamento corporativo'],
         trustNote: null, finePrint: null,
         cta: 'Fale conosco', href: '/login', highlight: false,
       },
