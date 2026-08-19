@@ -14,12 +14,19 @@ import { LineChart, Target, MessageSquareText, MessageCircle, type LucideIcon } 
 // Intencao de contato humano: pedir para falar com alguem/equipe/suporte/comercial.
 const HANDOFF_RE = /\b(falar|conversar|contat\w+)\b[^.?!]{0,40}\b(algu[eé]m|uma pessoa|humano|pessoa real|equipe|time|suporte|comercial|vendas|atendimento|respons[aá]vel)\b|\b(talk|speak|connect|get in touch)\b[^.?!]{0,40}\b(someone|a (human|person|rep)|the team|sales|support|a human)\b|\b(human (support|agent|being)|real person|contact (the )?(team|support|sales))\b/i
 
+// Roadmap extraido (Fase 2.1): estrutura que a resposta do Advisor pode virar plano.
+// Tipos locais e leves (nao importa a lib server-side de extracao no bundle do client).
+interface PlanActionData { text: string; status: 'todo' | 'doing' | 'done' }
+interface PlanPhaseData  { label: string; actions: PlanActionData[]; avoid: string[]; exitCriteria: string }
+interface PlanOfferData  { title: string; theme: string; phases: PlanPhaseData[] }
+
 interface Message {
   id:         string
   role:       'user' | 'assistant'
   content:    string
   created_at: string
   citations?: Record<string, string>  // "reportId#trend-rank" -> titulo, p/ tooltip dos chips
+  planOffer?: PlanOfferData | null     // roadmap salvavel detectado nesta resposta (Fase 2.1)
 }
 
 // Botao discreto de copiar (por resposta do Advisor). Copia o markdown limpo e da
@@ -54,6 +61,135 @@ function CopyButton({ text, isPt }: { text: string; isPt: boolean }) {
         </svg>
       )}
     </button>
+  )
+}
+
+// Oferta discreta "Salvar como meu plano" (Fase 2.1). Aparece abaixo de uma resposta
+// que contem um roadmap salvavel. O cliente decide: nada e persistido sem o clique.
+// Cobre o fluxo de conflito de tema (substituir/criar novo) e o limite por plano.
+type SaveState = 'idle' | 'saving' | 'saved' | 'conflict' | 'limit' | 'error' | 'dismissed'
+function SavePlanOffer({ offer, sessionId, sourceMessageId, isPt }: {
+  offer: PlanOfferData; sessionId: string; sourceMessageId: string; isPt: boolean
+}) {
+  const [state, setState]       = useState<SaveState>('idle')
+  const [conflictTitle, setConflictTitle] = useState<string | null>(null)
+  const [limitInfo, setLimitInfo]         = useState<{ limit: number; plan: string } | null>(null)
+
+  async function save(mode?: 'replace' | 'new') {
+    setState('saving')
+    try {
+      const res = await fetch('/api/advisor/plans', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          sessionId, sourceMessageId,
+          title: offer.title, theme: offer.theme, phases: offer.phases,
+          mode,
+        }),
+      })
+      const json = await res.json() as {
+        ok?: boolean; conflict?: string; existing?: { title?: string | null }
+        error?: string; limit?: number; plan?: string
+      }
+      if (res.status === 409 && json.conflict === 'same_theme') {
+        setConflictTitle(json.existing?.title ?? null)
+        setState('conflict')
+        return
+      }
+      if (res.status === 403 && json.error === 'limit_reached') {
+        setLimitInfo({ limit: json.limit ?? 1, plan: json.plan ?? 'free' })
+        setState('limit')
+        return
+      }
+      if (!res.ok || !json.ok) { setState('error'); return }
+      setState('saved')
+    } catch {
+      setState('error')
+    }
+  }
+
+  if (state === 'dismissed') return null
+
+  const phaseCount = offer.phases.length
+  const saving = state === 'saving'
+
+  if (state === 'saved') {
+    return (
+      <div className="mt-3 flex items-center gap-2 rounded-lg border border-taime-100 bg-taime-50/60 px-3 py-2 text-xs text-taime-800">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M20 6 9 17l-5-5" /></svg>
+        <span>{isPt
+          ? 'Plano salvo. Você acompanha as fases pelo seu histórico.'
+          : 'Plan saved. You can track the phases from your history.'}</span>
+      </div>
+    )
+  }
+
+  if (state === 'conflict') {
+    return (
+      <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-xs text-zinc-600">
+        <p className="leading-snug">{isPt
+          ? `Você já tem um plano ativo sobre este tema${conflictTitle ? ` (${conflictTitle})` : ''}. Quer substituir ou criar um novo?`
+          : `You already have an active plan on this theme${conflictTitle ? ` (${conflictTitle})` : ''}. Replace it or create a new one?`}</p>
+        <div className="mt-2 flex items-center gap-2">
+          <button onClick={() => save('replace')} disabled={saving}
+            className="text-xs font-semibold text-white bg-taime-600 hover:bg-taime-700 transition-colors rounded-md px-3 py-1.5 disabled:opacity-50">
+            {isPt ? 'Substituir' : 'Replace'}
+          </button>
+          <button onClick={() => save('new')} disabled={saving}
+            className="text-xs font-semibold text-taime-700 bg-white border border-taime-200 hover:bg-taime-50 transition-colors rounded-md px-3 py-1.5 disabled:opacity-50">
+            {isPt ? 'Criar novo' : 'Create new'}
+          </button>
+          <button onClick={() => setState('dismissed')} className="text-xs text-zinc-400 hover:text-zinc-600 px-1">
+            {isPt ? 'Agora não' : 'Not now'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (state === 'limit') {
+    const n = limitInfo?.limit ?? 1
+    return (
+      <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-xs text-zinc-600">
+        <p className="leading-snug">{isPt
+          ? `Você já tem ${n} ${n === 1 ? 'plano ativo' : 'planos ativos'}, o limite do seu acesso atual. Para salvar este, arquive um plano existente ou amplie seu acesso.`
+          : `You already have ${n} active ${n === 1 ? 'plan' : 'plans'}, the limit of your current access. To save this one, archive an existing plan or expand your access.`}</p>
+        <div className="mt-2 flex items-center gap-2">
+          <a href="/planos" className="text-xs font-semibold text-taime-700 hover:text-taime-800 transition-colors">
+            {isPt ? 'Ver planos' : 'View plans'}
+          </a>
+          <button onClick={() => setState('dismissed')} className="text-xs text-zinc-400 hover:text-zinc-600 px-1">
+            {isPt ? 'Dispensar' : 'Dismiss'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // idle / saving / error
+  return (
+    <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2.5">
+      <p className="text-xs text-zinc-500 leading-snug">{isPt
+        ? `Este roadmap pode virar um plano seu: salvamos as ${phaseCount} ${phaseCount === 1 ? 'fase' : 'fases'} e você acompanha o progresso por aqui.`
+        : `This roadmap can become your plan: we save the ${phaseCount} ${phaseCount === 1 ? 'phase' : 'phases'} and you track the progress here.`}</p>
+      <div className="mt-2 flex items-center gap-2">
+        <button onClick={() => save()} disabled={saving}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-taime-700 bg-white border border-taime-200 hover:bg-taime-50 transition-colors rounded-md px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+          {saving ? (isPt ? 'Salvando...' : 'Saving...') : (isPt ? 'Salvar como meu plano' : 'Save as my plan')}
+        </button>
+        {state !== 'saving' && (
+          <button onClick={() => setState('dismissed')} className="text-xs text-zinc-400 hover:text-zinc-600 px-1">
+            {isPt ? 'Agora não' : 'Not now'}
+          </button>
+        )}
+      </div>
+      {state === 'error' && (
+        <p className="mt-1.5 text-[11px] text-amber-700">{isPt
+          ? 'Não deu para salvar agora. Tente novamente.'
+          : 'Could not save right now. Please try again.'}</p>
+      )}
+    </div>
   )
 }
 
@@ -540,7 +676,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: text, sessionId: sid }),
       })
-      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null }
+      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null; plan_offer?: PlanOfferData | null }
 
       // Cota esgotada: nada foi gerado nem consumido. Remove a mensagem otimista
       // e mostra o CTA de upgrade no lugar do input.
@@ -559,6 +695,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         content:    json.reply,
         created_at: new Date().toISOString(),
         citations:  json.citations,
+        planOffer:  json.plan_offer ?? undefined,
       }
       setMessages(prev => [...prev, assistantMsg])
       // Painel "Nesta resposta": popula com as analises que este turno consultou.
@@ -969,6 +1106,14 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                         source="advisor"
                         isPt={isPt}
                       />
+                      {msg.planOffer && msg.planOffer.phases.length > 0 && (
+                        <SavePlanOffer
+                          offer={msg.planOffer}
+                          sessionId={sessionId}
+                          sourceMessageId={msg.id}
+                          isPt={isPt}
+                        />
+                      )}
                     </>
                   )}
               </div>

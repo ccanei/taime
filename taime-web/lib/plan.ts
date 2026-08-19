@@ -74,6 +74,18 @@ export function getWindowType(plan: Plan | null): AdvisorWindowType {
   return 'lifetime'
 }
 
+// Limite de PLANOS SALVOS ativos do Advisor por tier (Fase 2.1). Ponto UNICO de
+// verdade, extensivel: e a mesma mecanica que o Stripe vai controlar depois.
+//   free      -> 1 plano ativo
+//   essential -> 3 planos ativos
+//   strategic -> ilimitado (null)
+// Null (sem subscription) e tratado como free.
+export function getSavedPlanLimit(plan: Plan | null): number | null {
+  if (plan === 'strategic') return null
+  if (plan === 'essential') return 3
+  return 1
+}
+
 // Piso permissivo: libera TODO o arquivo (desde 2015+). Ponto unico de verdade
 // para o floor "sem limite" da busca vetorial do Advisor. A janela temporal por
 // plano foi eliminada: TODOS os planos consultam o arquivo completo. O que limita

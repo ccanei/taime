@@ -15,6 +15,7 @@ import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
+import { looksLikeRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-plan-extract'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -1918,7 +1919,28 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     console.error('[advisor-context] extraction/persist EXCEPTION (ignored, nao afeta persistencia):', e)
   }
 
+  // ── Extracao do roadmap para OFERTA de plano salvo (Fase 2.1) ──────────────
+  //    FORA do caminho critico: so roda a Haiku se a resposta PARECE um roadmap
+  //    (heuristica barata -> custo zero quando nao ha roadmap). A extracao NAO
+  //    altera o texto da resposta e e fail-safe: qualquer erro/timeout -> sem
+  //    oferta, resposta segue normal. O resultado vai no JSON como plan_offer; o
+  //    cliente guarda ate decidir salvar (nada e persistido antes da confirmacao).
+  let planOffer: PlanOffer | null = null
+  try {
+    if (looksLikeRoadmap(reply)) {
+      planOffer = await withTimeout(
+        extractRoadmap(reply, { userId: user.id, sessionId }),
+        9000,
+        null,
+      )
+    }
+  } catch (e) {
+    planOffer = null
+    console.error('[advisor-plan-offer] extracao ignorada (nao afeta a resposta):', e instanceof Error ? e.message : e)
+  }
+
   // Responde com a cota e history_saved (false = a conversa NAO pode ser gravada;
-  // a UI avisa o usuario). Strategic vem com limit null (sem contador).
-  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations, context_panel: contextPanel })
+  // a UI avisa o usuario). Strategic vem com limit null (sem contador). plan_offer
+  // presente = a resposta contem um roadmap salvavel; ausente = sem oferta.
+  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations, context_panel: contextPanel, plan_offer: planOffer })
 }
