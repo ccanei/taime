@@ -8,7 +8,7 @@ export const en: Translations = {
     about:      'About',
     contact:    'Contact',
     access:     'Sign in →',
-    reports:    'Reports',
+    reports:    'Dashboard',
     signOut:    'Sign out',
   },
 
@@ -310,7 +310,7 @@ export const en: Translations = {
     footerDesc: 'TAIME is a strategic technology intelligence platform. Built for those who decide based on evidence.',
     footerLinks: [
       { label: 'Home',         href: '/' },
-      { label: 'Reports',      href: '/dashboard' },
+      { label: 'Dashboard',    href: '/dashboard' },
       { label: 'How it works', href: '/#como-funciona' },
       { label: 'Plans',        href: '/planos' },
       { label: 'FAQ',          href: '/faq' },

@@ -6,7 +6,7 @@ export const pt = {
     about:      'Sobre',
     contact:    'Contato',
     access:     'Acessar →',
-    reports:    'Relatórios',
+    reports:    'Dashboard',
     signOut:    'Sair',
   },
 
@@ -308,7 +308,7 @@ export const pt = {
     footerDesc: 'TAIME é uma plataforma de inteligência estratégica em tecnologia. Construída para quem decide com base em evidências.',
     footerLinks: [
       { label: 'Home',         href: '/' },
-      { label: 'Relatórios',   href: '/dashboard' },
+      { label: 'Dashboard',    href: '/dashboard' },
       { label: 'Como funciona',href: '/#como-funciona' },
       { label: 'Planos',       href: '/planos' },
       { label: 'FAQ',          href: '/faq' },

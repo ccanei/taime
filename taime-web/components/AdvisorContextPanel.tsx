@@ -239,6 +239,16 @@ export default function AdvisorContextPanel({
           </div>
         </Section>
       )}
+
+      {/* Acesso permanente aos planos salvos (mesmo sem plano ativo): garante que a
+          pagina de planos nunca fica inacessivel. No mobile, o painel abre pelo botao
+          "Contexto" do header. */}
+      {!(activePlan && activePlan.phases.length > 0) && (
+        <Link href="/dashboard/advisor/plans"
+          className="px-1 text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+          {isPt ? 'Meus planos →' : 'My plans →'}
+        </Link>
+      )}
     </div>
   )
 }

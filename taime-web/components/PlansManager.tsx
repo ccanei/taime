@@ -11,8 +11,6 @@ import { ProgressBar, PhaseDetail, progressText, togglePhaseAction, patchPlan } 
 // as fases; gestao (arquivar / concluir / reativar / excluir com confirmacao); link de
 // volta a conversa que originou o plano. Fail-safe: erro de carga nao quebra a tela.
 
-const STATUS_ORDER: PlanStatus[] = ['active', 'completed', 'archived']
-
 function StatusBadge({ status, isPt }: { status: PlanStatus; isPt: boolean }) {
   const map: Record<PlanStatus, { pt: string; en: string; cls: string }> = {
     active:    { pt: 'Ativo',      en: 'Active',    cls: 'bg-taime-50 text-taime-700 ring-taime-100' },
@@ -32,6 +30,7 @@ export default function PlansManager() {
   const [busyId,  setBusyId]  = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [limitMsg, setLimitMsg] = useState<string | null>(null)
+  const [tab, setTab] = useState<'active' | 'inactive'>('active')  // Ativos / Arquivados (arquivados + concluidos)
 
   const load = useCallback(async () => {
     try {
@@ -43,11 +42,13 @@ export default function PlansManager() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  // Abre o plano indicado por ?id= (deep-link vindo do card/painel), quando existir.
+  // Abre o plano indicado por ?id= (deep-link vindo do card/painel), quando existir,
+  // ja na aba correta (ativo vs arquivado/concluido).
   useEffect(() => {
     if (!plans) return
     const id = new URLSearchParams(window.location.search).get('id')
-    if (id && plans.some(p => p.id === id)) setOpenId(id)
+    const target = id ? plans.find(p => p.id === id) : undefined
+    if (target) { setOpenId(target.id); setTab(target.status === 'active' ? 'active' : 'inactive') }
   }, [plans])
 
   function updateLocal(updated: PlanRecord) {
@@ -120,23 +121,12 @@ export default function PlansManager() {
     )
   }
 
-  const groups = STATUS_ORDER
-    .map(status => ({ status, items: plans.filter(p => p.status === status) }))
-    .filter(g => g.items.length > 0)
+  const active   = plans.filter(p => p.status === 'active')
+  const inactive = plans.filter(p => p.status !== 'active')   // arquivados + concluidos
+  const items    = tab === 'active' ? active : inactive
 
-  return (
-    <div className="flex flex-col gap-8">
-      {groups.map(group => (
-        <section key={group.status}>
-          <h2 className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-400 mb-3">
-            {group.status === 'active'    ? (isPt ? 'Ativos' : 'Active')
-              : group.status === 'completed' ? (isPt ? 'Concluídos' : 'Completed')
-              : (isPt ? 'Arquivados' : 'Archived')}
-            <span className="ml-1.5 text-zinc-300 tabular-nums">{group.items.length}</span>
-          </h2>
-          <div className="flex flex-col gap-3">
-            {group.items.map(plan => {
-              const progress = computeProgress(plan.phases)
+  function renderCard(plan: PlanRecord) {
+            const progress = computeProgress(plan.phases)
               const open = openId === plan.id
               const busy = busyId === plan.id
               const editable = plan.status === 'active'
@@ -233,10 +223,35 @@ export default function PlansManager() {
                   )}
                 </div>
               )
-            })}
-          </div>
-        </section>
-      ))}
+  }
+
+  return (
+    <div>
+      {/* Abas Ativos / Arquivados, espelhando o padrao das conversas do Advisor.
+          "Arquivados" reune arquivados e concluidos; o badge de cada card distingue. */}
+      <div className="flex border-b border-zinc-200 mb-5 text-sm">
+        {(['active', 'inactive'] as const).map(k => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-4 py-2 font-medium transition-colors -mb-px border-b-2 ${
+              tab === k ? 'text-zinc-900 border-taime-600' : 'text-zinc-400 border-transparent hover:text-zinc-700'
+            }`}>
+            {k === 'active' ? (isPt ? 'Ativos' : 'Active') : (isPt ? 'Arquivados' : 'Archived')}
+            <span className="ml-1.5 text-zinc-300 tabular-nums">{k === 'active' ? active.length : inactive.length}</span>
+          </button>
+        ))}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="py-10 text-center text-sm text-zinc-400">
+          {tab === 'active'
+            ? (isPt ? 'Nenhum plano ativo.' : 'No active plan.')
+            : (isPt ? 'Nenhum plano arquivado.' : 'No archived plan.')}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {items.map(renderCard)}
+        </div>
+      )}
     </div>
   )
 }

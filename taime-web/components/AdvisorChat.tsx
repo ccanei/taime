@@ -1010,6 +1010,13 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 {isPt ? 'Completar meu perfil' : 'Complete my profile'}
               </button>
             )}
+            {/* Acesso permanente aos planos salvos, independente de haver plano ativo
+                (evita beco sem saida ao arquivar o ultimo plano). */}
+            <a
+              href="/dashboard/advisor/plans"
+              className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap hidden sm:block">
+              {isPt ? 'Meus planos' : 'My plans'}
+            </a>
             {/* Valvula discreta: falar com a equipe. O Advisor segue como via principal. */}
             <button
               onClick={() => setContactOpen(true)}
