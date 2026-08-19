@@ -1930,11 +1930,21 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     after(async () => {
       const generated = await generateSessionTitle(qForTitle, aForTitle, langForTitle, user.id, sessionId)
       if (!generated) return
-      const { error: titleErr } = await service
+      // Nao sobrescreve titulo RENOMEADO manualmente (title_custom=true). Se a coluna
+      // ainda nao existe (migracao pendente, 42703), reaplica sem o guard (sem regressao).
+      let { error: titleErr } = await service
         .from('advisor_sessions')
         .update({ title: generated })
         .eq('user_id', user.id)
         .eq('session_id', sessionId)
+        .eq('title_custom', false)
+      if (titleErr && titleErr.code === '42703') {
+        ({ error: titleErr } = await service
+          .from('advisor_sessions')
+          .update({ title: generated })
+          .eq('user_id', user.id)
+          .eq('session_id', sessionId))
+      }
       if (titleErr && titleErr.code !== '42883' && titleErr.code !== '42P01') {
         console.error('[advisor-title] update FAILED:', { code: titleErr.code, message: titleErr.message, session_id: sessionId })
       }

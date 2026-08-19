@@ -9,7 +9,7 @@ import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
-import ActivePlanCard from '@/components/ActivePlanCard'
+import ActivePlansPanel from '@/components/ActivePlansPanel'
 import { type PlanRecord } from '@/lib/advisor-plan'
 import { LineChart, Target, MessageSquareText, MessageCircle, type LucideIcon } from 'lucide-react'
 
@@ -364,6 +364,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [viewArchived, setViewArchived] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)   // mobile only
   const [sessionQuery, setSessionQuery] = useState('')      // busca client-side na sidebar
+  // Renomear conversa (inline na lista): id em edicao + valor + estado de salvando.
+  const [renamingId,   setRenamingId]   = useState<string | null>(null)
+  const [renameValue,  setRenameValue]  = useState('')
+  const [renameSaving, setRenameSaving] = useState(false)
 
   // ── Workspace: sidebar colapsavel + painel de contexto direito ──────────────
   const [collapsed,    setCollapsed]    = useState(true)    // sidebar colapsada por padrao no desktop
@@ -431,16 +435,19 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     },
   }))
 
-  // Contexto fixo do painel (perfil + temas). Uma vez, no mount. Fail-safe: se
-  // falhar, o painel fixo fica vazio e a conversa segue normal.
-  useEffect(() => {
-    let cancelled = false
-    fetch(`/api/advisor/context?lang=${isPt ? 'pt' : 'en'}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(j => { if (!cancelled && j) setFixedContext(j as FixedContext) })
-      .catch(() => { /* silencioso */ })
-    return () => { cancelled = true }
+  // Contexto fixo do painel (perfil + temas + cards da Inicio, incl. "Continuar").
+  // Reusavel: recarregado no mount E apos renomear conversa (o card "Continuar" usa
+  // o titulo da sessao). Fail-safe: falha deixa o painel fixo vazio e segue normal.
+  const loadContext = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/advisor/context?lang=${isPt ? 'pt' : 'en'}`)
+      if (!r.ok) return
+      const j = await r.json()
+      if (j) setFixedContext(j as FixedContext)
+    } catch { /* silencioso */ }
   }, [isPt])
+
+  useEffect(() => { loadContext() }, [loadContext])
 
   // Planos ativos (Fase 2.2): alimenta o card da aba Inicio e o bloco do painel.
   // Fail-safe: falha ao carregar nao quebra a tela (fica sem card, com log).
@@ -624,6 +631,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   }
 
   async function selectSession(sid: string) {
+    // Selecionar uma conversa SEMPRE leva para a aba Conversa (TAREFA 3): o usuario
+    // nao precisa mais clicar em "Conversa" depois de escolher na lista.
+    setView('chat')
     if (sid === sessionId) {
       setSessionsOpen(false)
       return
@@ -637,6 +647,34 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setOpening(null)
     setOpeningSuppressed(false)
     await loadHistoryFor(sid)
+  }
+
+  // ── Renomear conversa (TAREFA 2) ────────────────────────────────────────────
+  function startRename(s: SessionRow) {
+    setRenamingId(s.session_id)
+    setRenameValue(s.title ?? '')
+  }
+  async function submitRename(sid: string) {
+    const title = renameValue.trim()
+    if (!title) { setRenamingId(null); return }   // titulo vazio volta ao anterior (nao salva)
+    setRenameSaving(true)
+    try {
+      const res = await fetch(`/api/advisor/sessions/${sid}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      })
+      if (res.ok) {
+        const j = await res.json() as { title?: string }
+        const newTitle = j.title ?? title
+        // Propaga: lista (aqui) + card "Continuar" da Inicio (recarrega o contexto).
+        setSessions(prev => prev.map(s => s.session_id === sid ? { ...s, title: newTitle } : s))
+        loadContext()
+      }
+    } catch (e) {
+      console.error('[advisor-rename] falhou (ignorado):', e instanceof Error ? e.message : e)
+    } finally {
+      setRenameSaving(false)
+      setRenamingId(null)
+    }
   }
 
   // Recupera a resposta persistida quando o fetch morre (troca de aba durante a
@@ -868,11 +906,11 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 {group.items.map(s => {
                   const isActive = s.session_id === sessionId
                   const Icon = sessionIcon(s.type)
+                  const isRenaming = renamingId === s.session_id
                   return (
-                    <button
+                    <div
                       key={s.session_id}
-                      onClick={() => selectSession(s.session_id)}
-                      className={`w-full text-left rounded-lg border-l-2 pl-2 pr-2.5 py-2 flex items-start gap-2.5 transition-colors
+                      className={`group w-full rounded-lg border-l-2 pl-2 pr-1.5 py-2 flex items-start gap-2.5 transition-colors
                         ${isActive
                           ? 'border-taime-600 bg-taime-50/70'
                           : 'border-transparent hover:bg-white hover:shadow-sm'}`}>
@@ -880,15 +918,55 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                         ${isActive ? 'bg-taime-100 text-taime-700' : 'bg-zinc-100 text-zinc-500'}`}>
                         <Icon size={14} strokeWidth={2} />
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className={`block text-xs leading-snug line-clamp-2 ${isActive ? 'font-semibold text-zinc-900' : 'font-medium text-zinc-700'}`}>
-                          {s.title ?? (isPt ? 'Sem título' : 'Untitled')}
-                        </span>
-                        <span className="mt-1 block text-[10px] text-zinc-400 tabular-nums">
-                          {timeAgo(s.last_activity_at)} · {s.message_count} {isPt ? 'msgs' : 'msgs'}
-                        </span>
-                      </span>
-                    </button>
+                      <div className="min-w-0 flex-1">
+                        {isRenaming ? (
+                          <div className="flex flex-col gap-1">
+                            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter')  { e.preventDefault(); submitRename(s.session_id) }
+                                if (e.key === 'Escape') { setRenamingId(null) }
+                              }}
+                              maxLength={120}
+                              className="w-full rounded border border-taime-300 bg-white px-1.5 py-1 text-xs text-zinc-900 outline-none focus:ring-1 focus:ring-taime-500"
+                            />
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => submitRename(s.session_id)} disabled={renameSaving}
+                                className="text-[10px] font-semibold text-taime-700 hover:text-taime-800 disabled:opacity-50">
+                                {isPt ? 'Salvar' : 'Save'}
+                              </button>
+                              <button onClick={() => setRenamingId(null)}
+                                className="text-[10px] text-zinc-400 hover:text-zinc-600">
+                                {isPt ? 'Cancelar' : 'Cancel'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => selectSession(s.session_id)} className="w-full text-left">
+                            <span className={`block text-xs leading-snug line-clamp-2 ${isActive ? 'font-semibold text-zinc-900' : 'font-medium text-zinc-700'}`}>
+                              {s.title ?? (isPt ? 'Sem título' : 'Untitled')}
+                            </span>
+                            <span className="mt-1 block text-[10px] text-zinc-400 tabular-nums">
+                              {timeAgo(s.last_activity_at)} · {s.message_count} {isPt ? 'msgs' : 'msgs'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                      {!isRenaming && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startRename(s) }}
+                          title={isPt ? 'Renomear' : 'Rename'}
+                          aria-label={isPt ? 'Renomear conversa' : 'Rename conversation'}
+                          className="shrink-0 mt-0.5 p-1 rounded text-zinc-300 opacity-0 group-hover:opacity-100 hover:text-taime-700 hover:bg-zinc-100 transition-opacity focus:opacity-100">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   )
                 })}
               </div>
@@ -1064,8 +1142,13 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
         <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
           <div className="min-h-full flex flex-col justify-center">
             {activePlans.length > 0 && (
-              <div className="w-full px-2 pt-6">
-                <ActivePlanCard plans={activePlans} isPt={isPt} />
+              <div className="w-full max-w-2xl mx-auto px-2 pt-6">
+                <ActivePlansPanel
+                  plans={activePlans}
+                  isPt={isPt}
+                  title={isPt ? 'Planos de ação' : 'Action plans'}
+                  currentSessionId={null}
+                />
               </div>
             )}
             <AdvisorArrival
@@ -1296,7 +1379,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           loading={loading || recovering}
           isPt={isPt}
           fixed={fixedContext}
-          activePlan={activePlans[0] ?? null}
+          plans={activePlans}
+          currentSessionId={view === 'chat' ? sessionId : null}
           onOpenProfile={onOpenProfile}
           onPickTheme={handlePickTheme}
         />
@@ -1318,7 +1402,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
               loading={loading || recovering}
               isPt={isPt}
               fixed={fixedContext}
-              activePlan={activePlans[0] ?? null}
+              plans={activePlans}
+              currentSessionId={view === 'chat' ? sessionId : null}
               onOpenProfile={onOpenProfile}
               onPickTheme={handlePickTheme}
             />
