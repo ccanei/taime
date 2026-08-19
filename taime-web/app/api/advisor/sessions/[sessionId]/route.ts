@@ -34,9 +34,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ sessionId
     .select('session_id, title')
     .maybeSingle()
   if (error) {
-    if (error.code === '42703' || error.code === '42P01') {
-      return NextResponse.json({ error: 'migration_pending' }, { status: 503 })
-    }
+    // Coluna/tabela ausente (migracao pendente): 42703 (Postgres), PGRST204 (PostgREST
+    // schema cache no write), 42P01, ou a mensagem citando a coluna. Degrada limpo (503).
+    const missing = error.code === '42703' || error.code === 'PGRST204' || error.code === '42P01'
+      || (error.message ?? '').includes('title_custom')
+    if (missing) return NextResponse.json({ error: 'migration_pending' }, { status: 503 })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
   if (!data) return NextResponse.json({ error: 'not_found' }, { status: 404 })

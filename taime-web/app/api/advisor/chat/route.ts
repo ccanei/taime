@@ -1938,7 +1938,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
         .eq('user_id', user.id)
         .eq('session_id', sessionId)
         .eq('title_custom', false)
-      if (titleErr && titleErr.code === '42703') {
+      if (titleErr && (titleErr.code === '42703' || titleErr.code === 'PGRST204' || (titleErr.message ?? '').includes('title_custom'))) {
         ({ error: titleErr } = await service
           .from('advisor_sessions')
           .update({ title: generated })
