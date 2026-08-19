@@ -1,6 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { scoreColor, scoreRing } from '@/lib/types'
+import { computeProgress, type PlanRecord } from '@/lib/advisor-plan'
 
 // Painel de contexto do workspace do Advisor. Duas seccoes:
 //  - VIVA ("Nesta resposta"): as analises que o turno atual consultou (cards
@@ -69,13 +71,50 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+// Bloco "Seu plano" (Fase 2.2, TAREFA 3): plano ativo mais recente, fase atual e as
+// proximas 2-3 acoes pendentes, com link para a pagina de planos. Discreto, mesma
+// familia visual dos outros blocos. Nao renderiza sem plano.
+function PlanBlock({ plan, isPt }: { plan: PlanRecord; isPt: boolean }) {
+  const progress = computeProgress(plan.phases)
+  const current  = plan.phases[progress.currentPhaseIndex]
+  const pending  = (current?.actions ?? []).filter(a => a.status !== 'done').slice(0, 3)
+  return (
+    <Section title={isPt ? 'Seu plano' : 'Your plan'}>
+      <Link href="/dashboard/advisor/plans" className="group block">
+        <p className="text-[13px] font-semibold text-zinc-800 group-hover:text-taime-700 leading-snug line-clamp-2">
+          {plan.title ?? (isPt ? 'Plano estratégico' : 'Strategic plan')}
+        </p>
+      </Link>
+      <p className="mt-1 text-[11px] text-zinc-400 tabular-nums">
+        {(isPt ? `Fase ${progress.currentPhaseIndex + 1} de ${progress.phaseCount}` : `Phase ${progress.currentPhaseIndex + 1} of ${progress.phaseCount}`)}
+        {` · ${progress.doneActions}/${progress.totalActions} ${isPt ? 'ações' : 'actions'}`}
+      </p>
+      {pending.length > 0 ? (
+        <ul className="mt-2 flex flex-col gap-1">
+          {pending.map((a, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-[11px] text-zinc-600 leading-snug">
+              <span className="mt-1 shrink-0 w-3 h-3 rounded-full border border-zinc-300" />{a.text}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-[11px] text-taime-700 font-medium">{isPt ? 'Fase concluída.' : 'Phase complete.'}</p>
+      )}
+      <Link href="/dashboard/advisor/plans" className="mt-2 inline-block text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+        {isPt ? 'Ver o plano →' : 'Open the plan →'}
+      </Link>
+    </Section>
+  )
+}
+
 export default function AdvisorContextPanel({
-  turn, loading, isPt, fixed, onOpenProfile, onPickTheme,
+  turn, loading, isPt, fixed, activePlan, onOpenProfile, onPickTheme,
 }: {
   turn:          PanelTurn | null
   loading:       boolean
   isPt:          boolean
   fixed:         FixedContext | null
+  activePlan?:   PlanRecord | null
   onOpenProfile?: () => void
   onPickTheme:   (label: string) => void
 }) {
@@ -86,6 +125,10 @@ export default function AdvisorContextPanel({
 
   return (
     <div className="flex flex-col gap-3 p-3 text-sm">
+
+      {/* ── Seu plano (Fase 2.2) ─────────────────────────────────────── */}
+      {activePlan && activePlan.phases.length > 0 && <PlanBlock plan={activePlan} isPt={isPt} />}
+
 
       {/* ── VIVA: Nesta resposta ─────────────────────────────────────── */}
       <Section title={isPt ? 'Nesta resposta' : 'In this answer'}>

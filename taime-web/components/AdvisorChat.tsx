@@ -9,6 +9,8 @@ import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
+import ActivePlanCard from '@/components/ActivePlanCard'
+import { type PlanRecord } from '@/lib/advisor-plan'
 import { LineChart, Target, MessageSquareText, MessageCircle, type LucideIcon } from 'lucide-react'
 
 // Intencao de contato humano: pedir para falar com alguem/equipe/suporte/comercial.
@@ -68,8 +70,8 @@ function CopyButton({ text, isPt }: { text: string; isPt: boolean }) {
 // que contem um roadmap salvavel. O cliente decide: nada e persistido sem o clique.
 // Cobre o fluxo de conflito de tema (substituir/criar novo) e o limite por plano.
 type SaveState = 'idle' | 'saving' | 'saved' | 'conflict' | 'limit' | 'error' | 'dismissed'
-function SavePlanOffer({ offer, sessionId, sourceMessageId, isPt }: {
-  offer: PlanOfferData; sessionId: string; sourceMessageId: string; isPt: boolean
+function SavePlanOffer({ offer, sessionId, sourceMessageId, isPt, onSaved }: {
+  offer: PlanOfferData; sessionId: string; sourceMessageId: string; isPt: boolean; onSaved?: () => void
 }) {
   const [state, setState]       = useState<SaveState>('idle')
   const [conflictTitle, setConflictTitle] = useState<string | null>(null)
@@ -103,6 +105,7 @@ function SavePlanOffer({ offer, sessionId, sourceMessageId, isPt }: {
       }
       if (!res.ok || !json.ok) { setState('error'); return }
       setState('saved')
+      onSaved?.()
     } catch {
       setState('error')
     }
@@ -368,6 +371,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [fixedContext, setFixedContext] = useState<FixedContext | null>(null) // perfil + temas + arquivo + home
   const [panelOpen,    setPanelOpen]    = useState(false)   // folha do painel no mobile
   const [view,         setView]         = useState<'home' | 'chat'>('home') // aba Inicio vs conversa
+  const [activePlans,  setActivePlans]  = useState<PlanRecord[]>([])        // planos ativos (Fase 2.2)
 
   // ── Abertura proativa: sugestão de partida + chips, ancorada em trends reais.
   // Iniciativa do Advisor, fora da cota (nunca passa pelo /chat). Ver
@@ -438,6 +442,21 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     return () => { cancelled = true }
   }, [isPt])
 
+  // Planos ativos (Fase 2.2): alimenta o card da aba Inicio e o bloco do painel.
+  // Fail-safe: falha ao carregar nao quebra a tela (fica sem card, com log).
+  const loadPlans = useCallback(async () => {
+    try {
+      const res = await fetch('/api/advisor/plans')
+      if (!res.ok) return
+      const json = await res.json() as { plans?: PlanRecord[] }
+      setActivePlans(json.plans ?? [])
+    } catch (e) {
+      console.error('[advisor-plans] load falhou (ignorado):', e instanceof Error ? e.message : e)
+    }
+  }, [])
+
+  useEffect(() => { loadPlans() }, [loadPlans])
+
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
   const loadSessions = useCallback(async (archived: boolean) => {
@@ -474,6 +493,18 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
 
   useEffect(() => {
     async function bootstrap() {
+      // Deep-link ?session=<uuid> (vindo da pagina de planos, "Ver a conversa"):
+      // abre direto aquela sessao em vez da mais recente. Fail-safe: id invalido ou
+      // sem historico cai no fluxo normal.
+      const requested = new URLSearchParams(window.location.search).get('session')
+      if (requested && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requested)) {
+        setSessionId(requested)
+        await loadHistoryFor(requested)
+        setView('chat')
+        await loadSessions(false)
+        return
+      }
+
       const supabase = createSupabaseBrowser()
       const { data: latest } = await supabase
         .from('advisory_memory')
@@ -1015,6 +1046,11 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
             espaco; em telas curtas cresce e rola sem cortar o topo. */}
         <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
           <div className="min-h-full flex flex-col justify-center">
+            {activePlans.length > 0 && (
+              <div className="w-full px-2 pt-6">
+                <ActivePlanCard plans={activePlans} isPt={isPt} />
+              </div>
+            )}
             <AdvisorArrival
               wide
               subtitle={isPt
@@ -1112,6 +1148,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                           sessionId={sessionId}
                           sourceMessageId={msg.id}
                           isPt={isPt}
+                          onSaved={loadPlans}
                         />
                       )}
                     </>
@@ -1242,6 +1279,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           loading={loading || recovering}
           isPt={isPt}
           fixed={fixedContext}
+          activePlan={activePlans[0] ?? null}
           onOpenProfile={onOpenProfile}
           onPickTheme={handlePickTheme}
         />
@@ -1263,6 +1301,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
               loading={loading || recovering}
               isPt={isPt}
               fixed={fixedContext}
+              activePlan={activePlans[0] ?? null}
               onOpenProfile={onOpenProfile}
               onPickTheme={handlePickTheme}
             />

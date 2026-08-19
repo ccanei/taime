@@ -1,18 +1,12 @@
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
+import { normalizePhases, type PlanPhase } from '@/lib/advisor-plan'
 
 // Extracao estruturada do roadmap que o Advisor entrega, para virar um plano salvo
 // (Fase 2.1). FORA do caminho critico da resposta: chamada Haiku com timeout e
 // fail-safe. Se qualquer coisa falhar, retorna null e nenhum plano e oferecido; a
 // resposta ao cliente NUNCA e alterada por isto.
 
-export type PlanActionStatus = 'todo' | 'doing' | 'done'
-export interface PlanAction { text: string; status: PlanActionStatus }
-export interface PlanPhase {
-  label:        string          // rotulo + horizonte, ex: "Fase 1: Fundacao (0-3 meses)"
-  actions:      PlanAction[]    // itens de acao, com status por item
-  avoid:        string[]        // o que NAO fazer
-  exitCriteria: string          // criterio de saida
-}
+export type { PlanActionStatus, PlanAction, PlanPhase } from '@/lib/advisor-plan'
 export interface PlanOffer {
   title:  string
   theme:  string
@@ -73,33 +67,15 @@ export function looksLikeRoadmap(text: string): boolean {
 }
 
 function asStr(v: unknown): string { return typeof v === 'string' ? v.trim() : '' }
-function asStrArr(v: unknown): string[] {
-  return Array.isArray(v) ? v.map(asStr).filter(Boolean) : []
-}
-function asStatus(v: unknown): PlanActionStatus {
-  return v === 'doing' || v === 'done' ? v : 'todo'
-}
 
 // Valida e normaliza a estrutura extraida. Retorna null se nao houver ao menos uma
-// fase com ao menos uma acao (nao ofertar plano vazio).
+// fase com ao menos uma acao (nao ofertar plano vazio). A normalizacao das fases
+// e compartilhada (lib/advisor-plan) com a rota de edicao da 2.2.
 export function normalizeOffer(raw: unknown): PlanOffer | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   if (o.roadmap === false) return null
-  const phasesRaw = Array.isArray(o.phases) ? o.phases : []
-  const phases: PlanPhase[] = phasesRaw.map(p => {
-    const ph = (p ?? {}) as Record<string, unknown>
-    const actions = (Array.isArray(ph.actions) ? ph.actions : []).map(a => {
-      const ac = (a ?? {}) as Record<string, unknown>
-      return { text: asStr(ac.text), status: asStatus(ac.status) }
-    }).filter(a => a.text)
-    return {
-      label:        asStr(ph.label),
-      actions,
-      avoid:        asStrArr(ph.avoid),
-      exitCriteria: asStr(ph.exitCriteria),
-    }
-  }).filter(p => p.label && p.actions.length > 0)
+  const phases = normalizePhases(o.phases)
   if (phases.length === 0) return null
   return { title: asStr(o.title) || 'Plano estratégico', theme: asStr(o.theme), phases }
 }

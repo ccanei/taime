@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
+import { computeProgress, type PlanRecord } from '@/lib/advisor-plan'
 import { getTranslations } from '@/lib/i18n'
 import { scoreColor, scoreRing, type Report } from '@/lib/types'
 import { buildEditions, CURATED_THEME_SLUGS, type ArchiveStats } from '@/lib/dashboard'
@@ -45,6 +46,27 @@ async function getAdvisorStatus(userId: string): Promise<{ hasProfile: boolean; 
   return { hasProfile: true, lastMessage: lastMsg ? (lastMsg as { content: string }).content.slice(0, 400) : null }
 }
 
+// Plano ativo mais recente do usuario (Fase 2.2, TAREFA 4). Fail-safe: tabela
+// ausente ou erro -> null (o card simplesmente nao aparece, sem quebrar o dashboard).
+async function getActivePlan(userId: string): Promise<PlanRecord | null> {
+  try {
+    const service = createSupabaseService()
+    const { data, error } = await service
+      .from('advisor_plans')
+      .select('id, title, theme, phases, status, session_id, created_at, updated_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error || !data) return null
+    return data as PlanRecord
+  } catch (e) {
+    console.error('[dashboard] getActivePlan falhou (ignorado):', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 // Badge "novo" do Advisor por 30 dias desde o lancamento (2026-05-21).
 const ADVISOR_LAUNCH = new Date('2026-05-21')
 const showNewBadge   = (Date.now() - ADVISOR_LAUNCH.getTime()) < 30 * 24 * 60 * 60 * 1000
@@ -58,10 +80,11 @@ export default async function DashboardPage() {
   const locale: 'pt' | 'en' = localeCookie === 'en' ? 'en' : 'pt'
   const isEn = locale === 'en'
 
-  const [reports, advisorStatus, plan] = await Promise.all([
+  const [reports, advisorStatus, plan, activePlan] = await Promise.all([
     getReports(),
     getAdvisorStatus(user.id),
     getUserPlan(user.id),
+    getActivePlan(user.id),
   ])
   const advisorUnlocked = hasAdvisorAccess(plan)
 
@@ -185,6 +208,28 @@ export default async function DashboardPage() {
     </div>
   )
 
+  // ── Card do plano ativo (Fase 2.2). Sem plano ativo, nada aparece ──────
+  const planCardNode = (advisorUnlocked && activePlan && activePlan.phases.length > 0) ? (() => {
+    const progress = computeProgress(activePlan.phases)
+    const pct = progress.totalActions > 0 ? Math.round((progress.doneActions / progress.totalActions) * 100) : 0
+    return (
+      <Link href="/dashboard/advisor/plans"
+        className="group block rounded-xl border border-zinc-200 border-t-2 border-t-taime-500 bg-white p-4 hover:shadow-md transition-all">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-taime-600 mb-1">{isEn ? 'Your plan' : 'Seu plano'}</p>
+        <h3 className="text-sm font-bold text-zinc-900 leading-snug line-clamp-2 group-hover:text-taime-700 transition-colors">
+          {activePlan.title ?? (isEn ? 'Strategic plan' : 'Plano estratégico')}
+        </h3>
+        <p className="mt-1.5 text-[11px] text-zinc-500 tabular-nums">
+          {(isEn ? `Phase ${progress.currentPhaseIndex + 1} of ${progress.phaseCount}` : `Fase ${progress.currentPhaseIndex + 1} de ${progress.phaseCount}`)}
+          {` · ${progress.doneActions}/${progress.totalActions} ${isEn ? 'actions' : 'ações'}`}
+        </p>
+        <div className="mt-1.5 h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden">
+          <div className="h-full rounded-full bg-taime-500" style={{ width: `${pct}%` }} />
+        </div>
+      </Link>
+    )
+  })() : null
+
   const continueNode = (continueReport && continueRow) ? (
     <ContinueReadingCard
       reportId={continueReport.id}
@@ -228,7 +273,7 @@ export default async function DashboardPage() {
             locale={locale}
             stats={stats}
             heroNode={heroNode}
-            advisorNode={advisorNode}
+            advisorNode={planCardNode ? <div className="flex flex-col gap-3">{advisorNode}{planCardNode}</div> : advisorNode}
             continueNode={continueNode}
           />
         )}
