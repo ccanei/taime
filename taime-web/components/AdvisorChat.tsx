@@ -7,7 +7,7 @@ import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
-import AdvisorContextPanel, { type PanelTurn, type FixedContext } from '@/components/AdvisorContextPanel'
+import AdvisorContextPanel, { type PanelTurn, type FixedContext, type AssessmentSummary } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
 import ActivePlansPanel from '@/components/ActivePlansPanel'
 import { type PlanRecord } from '@/lib/advisor-plan'
@@ -376,6 +376,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [panelOpen,    setPanelOpen]    = useState(false)   // folha do painel no mobile
   const [view,         setView]         = useState<'home' | 'chat'>('home') // aba Inicio vs conversa
   const [activePlans,  setActivePlans]  = useState<PlanRecord[]>([])        // planos ativos (Fase 2.2)
+  const [assessment,   setAssessment]   = useState<AssessmentSummary | null>(null) // diagnostico (Assessment A)
 
   // ── Abertura proativa: sugestão de partida + chips, ancorada em trends reais.
   // Iniciativa do Advisor, fora da cota (nunca passa pelo /chat). Ver
@@ -463,6 +464,20 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   }, [])
 
   useEffect(() => { loadPlans() }, [loadPlans])
+
+  // Diagnostico de maturidade (Assessment A): progresso para o painel. Fail-safe.
+  const loadAssessment = useCallback(async () => {
+    try {
+      const res = await fetch('/api/advisor/assessment')
+      if (!res.ok) return
+      const j = await res.json() as { available?: boolean; answers?: Record<string, unknown>; domains?: AssessmentSummary['domains'] }
+      setAssessment({ available: j.available !== false, answered: Object.keys(j.answers ?? {}).length, domains: j.domains ?? [] })
+    } catch (e) {
+      console.error('[advisor-assessment] load falhou (ignorado):', e instanceof Error ? e.message : e)
+    }
+  }, [])
+
+  useEffect(() => { loadAssessment() }, [loadAssessment])
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -1381,6 +1396,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           fixed={fixedContext}
           plans={activePlans}
           currentSessionId={view === 'chat' ? sessionId : null}
+          assessment={assessment}
           onOpenProfile={onOpenProfile}
           onPickTheme={handlePickTheme}
         />
@@ -1404,6 +1420,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
               fixed={fixedContext}
               plans={activePlans}
               currentSessionId={view === 'chat' ? sessionId : null}
+          assessment={assessment}
               onOpenProfile={onOpenProfile}
               onPickTheme={handlePickTheme}
             />

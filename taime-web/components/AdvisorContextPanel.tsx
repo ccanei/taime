@@ -4,6 +4,9 @@ import Link from 'next/link'
 import { scoreColor, scoreRing } from '@/lib/types'
 import { type PlanRecord } from '@/lib/advisor-plan'
 import ActivePlansPanel from '@/components/ActivePlansPanel'
+import { DOMAINS, TOTAL_QUESTIONS, type DomainScore } from '@/lib/assessment-model'
+
+export interface AssessmentSummary { available: boolean; answered: number; domains: DomainScore[] }
 
 // Painel de contexto do workspace do Advisor. Duas seccoes:
 //  - VIVA ("Nesta resposta"): as analises que o turno atual consultou (cards
@@ -72,8 +75,37 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+// Bloco "Diagnóstico" (TAREFA 4): progresso do assessment + link. Sem assessment
+// iniciado, convite discreto; dormente (available=false) nao aparece.
+function AssessmentBlock({ a, isPt }: { a: AssessmentSummary; isPt: boolean }) {
+  if (!a.available) return null
+  const completed = a.domains.filter(d => d.complete).map(d => DOMAINS.find(x => x.id === d.domain)?.short[isPt ? 'pt' : 'en'] ?? d.domain)
+  return (
+    <Section title={isPt ? 'Diagnóstico' : 'Assessment'}>
+      {a.answered === 0 ? (
+        <>
+          <p className="text-[11px] text-zinc-500 leading-snug mb-1.5">{isPt ? 'Mapeie seu estágio por domínio.' : 'Map your stage by domain.'}</p>
+          <Link href="/dashboard/advisor/assessment" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+            {isPt ? 'Começar o diagnóstico →' : 'Start the assessment →'}
+          </Link>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] text-zinc-500 leading-snug tabular-nums">
+            {a.answered} {isPt ? `de ${TOTAL_QUESTIONS} respondidas` : `of ${TOTAL_QUESTIONS} answered`}
+            {completed.length > 0 && <> · {completed.join(', ')} {isPt ? (completed.length === 1 ? 'completo' : 'completos') : 'complete'}</>}
+          </p>
+          <Link href="/dashboard/advisor/assessment" className="mt-1.5 inline-block text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+            {isPt ? 'Ver o diagnóstico →' : 'Open the assessment →'}
+          </Link>
+        </>
+      )}
+    </Section>
+  )
+}
+
 export default function AdvisorContextPanel({
-  turn, loading, isPt, fixed, plans, currentSessionId, onOpenProfile, onPickTheme,
+  turn, loading, isPt, fixed, plans, currentSessionId, assessment, onOpenProfile, onPickTheme,
 }: {
   turn:            PanelTurn | null
   loading:         boolean
@@ -81,6 +113,7 @@ export default function AdvisorContextPanel({
   fixed:           FixedContext | null
   plans?:          PlanRecord[]
   currentSessionId?: string | null
+  assessment?:     AssessmentSummary | null
   onOpenProfile?:  () => void
   onPickTheme:     (label: string) => void
 }) {
@@ -103,6 +136,9 @@ export default function AdvisorContextPanel({
           currentSessionId={currentSessionId}
         />
       )}
+
+      {/* ── Diagnóstico de maturidade (Assessment Parte A) ─────────────── */}
+      {assessment && <AssessmentBlock a={assessment} isPt={isPt} />}
 
 
       {/* ── VIVA: Nesta resposta ─────────────────────────────────────── */}

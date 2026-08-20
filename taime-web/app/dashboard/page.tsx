@@ -4,6 +4,8 @@ import { cookies } from 'next/headers'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import { computeProgress, type PlanRecord } from '@/lib/advisor-plan'
+import { computeScores, TOTAL_QUESTIONS, type Answers, type DomainScore } from '@/lib/assessment-model'
+import AssessmentPortrait from '@/components/AssessmentPortrait'
 import { getTranslations } from '@/lib/i18n'
 import { scoreColor, scoreRing, type Report } from '@/lib/types'
 import { buildEditions, CURATED_THEME_SLUGS, type ArchiveStats } from '@/lib/dashboard'
@@ -67,6 +69,26 @@ async function getActivePlan(userId: string): Promise<PlanRecord | null> {
   }
 }
 
+// Diagnostico de maturidade ativo do usuario (Assessment Parte A, TAREFA 4). Fail-safe:
+// tabela ausente (migracao pendente) ou erro -> available=false (o card nao aparece).
+async function getAssessment(userId: string): Promise<{ available: boolean; answered: number; domains: DomainScore[] }> {
+  try {
+    const service = createSupabaseService()
+    const { data, error } = await service
+      .from('advisor_assessments')
+      .select('answers')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (error) return { available: error.code !== '42P01', answered: 0, domains: [] }
+    const answers = ((data?.answers ?? {}) as Answers)
+    return { available: true, answered: Object.keys(answers).length, domains: computeScores(answers) }
+  } catch (e) {
+    console.error('[dashboard] getAssessment falhou (ignorado):', e instanceof Error ? e.message : e)
+    return { available: false, answered: 0, domains: [] }
+  }
+}
+
 // Badge "novo" do Advisor por 30 dias desde o lancamento (2026-05-21).
 const ADVISOR_LAUNCH = new Date('2026-05-21')
 const showNewBadge   = (Date.now() - ADVISOR_LAUNCH.getTime()) < 30 * 24 * 60 * 60 * 1000
@@ -80,11 +102,12 @@ export default async function DashboardPage() {
   const locale: 'pt' | 'en' = localeCookie === 'en' ? 'en' : 'pt'
   const isEn = locale === 'en'
 
-  const [reports, advisorStatus, plan, activePlan] = await Promise.all([
+  const [reports, advisorStatus, plan, activePlan, assessment] = await Promise.all([
     getReports(),
     getAdvisorStatus(user.id),
     getUserPlan(user.id),
     getActivePlan(user.id),
+    getAssessment(user.id),
   ])
   const advisorUnlocked = hasAdvisorAccess(plan)
 
@@ -230,6 +253,26 @@ export default async function DashboardPage() {
     )
   })() : null
 
+  // ── Card do diagnóstico (Assessment A). Dormente (available=false) nada aparece;
+  //    sem respostas ainda, convite discreto; com respostas, o retrato compacto ──
+  const assessmentCardNode = (advisorUnlocked && assessment.available) ? (
+    <Link href="/dashboard/advisor/assessment"
+      className="group block rounded-xl border border-zinc-200 bg-white p-4 hover:shadow-md transition-all">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-taime-600 mb-1">{isEn ? 'Maturity assessment' : 'Diagnóstico de maturidade'}</p>
+      {assessment.answered === 0 ? (
+        <>
+          <p className="text-xs text-zinc-500 leading-snug">{isEn ? 'Map your stage by domain to sharpen the Advisor.' : 'Mapeie seu estágio por domínio para afinar o Advisor.'}</p>
+          <span className="mt-1.5 inline-block text-xs font-semibold text-taime-700 group-hover:text-taime-800">{isEn ? 'Start the assessment →' : 'Começar o diagnóstico →'}</span>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] text-zinc-500 tabular-nums mb-2.5">{assessment.answered} {isEn ? `of ${TOTAL_QUESTIONS} answered` : `de ${TOTAL_QUESTIONS} respondidas`}</p>
+          <AssessmentPortrait domains={assessment.domains} isPt={!isEn} compact />
+        </>
+      )}
+    </Link>
+  ) : null
+
   const continueNode = (continueReport && continueRow) ? (
     <ContinueReadingCard
       reportId={continueReport.id}
@@ -273,7 +316,9 @@ export default async function DashboardPage() {
             locale={locale}
             stats={stats}
             heroNode={heroNode}
-            advisorNode={planCardNode ? <div className="flex flex-col gap-3">{advisorNode}{planCardNode}</div> : advisorNode}
+            advisorNode={(planCardNode || assessmentCardNode)
+              ? <div className="flex flex-col gap-3">{advisorNode}{planCardNode}{assessmentCardNode}</div>
+              : advisorNode}
             continueNode={continueNode}
           />
         )}

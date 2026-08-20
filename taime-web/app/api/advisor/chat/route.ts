@@ -16,6 +16,9 @@ import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 import { detectRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-plan-extract'
+import { loadActiveAssessment, saveAnswers } from '@/lib/assessment-store'
+import { detectDomain, computeDomainScore, nextUnansweredInDomain, questionById, type AssessmentQuestion, type Level } from '@/lib/assessment-model'
+import { buildAskInstruction, mapAnswerToLevel, buildAssessmentContextBlock } from '@/lib/assessment-capture'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -1640,6 +1643,41 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     }),
     4000, null,
   )
+  // ── Assessment de Maturidade (Parte A): contexto factual + captura incremental ──
+  //    DORMENTE ate a migracao (available=false = tabela ausente). Tudo fail-safe:
+  //    erro nunca quebra a resposta e o Advisor segue igual.
+  const ASSESSMENT_MAX_PER_CONVERSATION = 3
+  let assessmentAnswers: import('@/lib/assessment-model').Answers = {}
+  let assessmentAsk: AssessmentQuestion | null = null
+  let assessmentAvailable = false
+  // Perguntas de assessment feitas no TURNO ANTERIOR (para mapear a resposta atual).
+  const priorAskedIds: string[] = (() => {
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role !== 'assistant') continue
+      const cap = (history[i].context_metadata as { assessment_capture?: { asked?: string[] } } | null)?.assessment_capture
+      return Array.isArray(cap?.asked) ? cap!.asked! : []
+    }
+    return []
+  })()
+  try {
+    const loaded = await loadActiveAssessment(user.id)
+    assessmentAvailable = loaded.available
+    assessmentAnswers = loaded.row?.answers ?? {}
+    if (assessmentAvailable) {
+      const askedThisSession = history.reduce((n, m) => {
+        const cap = (m.context_metadata as { assessment_capture?: { asked?: string[] } } | null)?.assessment_capture
+        return n + (Array.isArray(cap?.asked) ? cap.asked.length : 0)
+      }, 0)
+      const dom = detectDomain(userMessage)
+      if (dom && askedThisSession < ASSESSMENT_MAX_PER_CONVERSATION && !computeDomainScore(dom, assessmentAnswers).complete) {
+        assessmentAsk = nextUnansweredInDomain(dom, assessmentAnswers)
+      }
+    }
+  } catch (e) {
+    console.error('[assessment] setup falhou (ignorado):', e instanceof Error ? e.message : e)
+    assessmentAvailable = false; assessmentAsk = null
+  }
+
   const system: SystemBlock[] = [
     { type: 'text', text: RULES_BLOCK,                cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildProfileBlock(profile), cache_control: { type: 'ephemeral' } },
@@ -1668,6 +1706,14 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
       type: 'text',
       text: `YOUR PROACTIVE OPENING FOR THIS CONVERSATION (you already sent this greeting to the client to break the blank screen; it is the first thing in this chat, above the client's first message):\n"""\n${openingRow.content}\n"""\nYou OWN this opening: never deny having said it. If the client asks where a figure or claim in it comes from, point to the report you linked inside it (the markdown link is the source) and offer to go deeper. If the opening carried no figure, say it was a qualitative framing and offer to pull the specific report. Do not repeat the opening verbatim; build forward from it.`,
     })
+  }
+  // Assessment (Parte A): estagio factual do cliente + anamnese opcional (fora do cache).
+  if (assessmentAvailable && Object.keys(assessmentAnswers).length > 0) {
+    const block = buildAssessmentContextBlock(assessmentAnswers, lang)
+    if (block) system.push({ type: 'text', text: block })
+  }
+  if (assessmentAsk) {
+    system.push({ type: 'text', text: buildAskInstruction(assessmentAsk, lang) })
   }
   system.push({ type: 'text', text: languageInstruction(lang) }) // dinâmico, fora do cache
 
@@ -1807,12 +1853,38 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // ── Assessment (Parte A): mapeia a resposta do cliente as perguntas do turno
+  //    anterior (Haiku, fail-safe, bounded) e grava o que mapear com CONFIANCA. So
+  //    quando ha pergunta pendente do turno anterior (fresh sessions: nada a mapear).
+  const assessmentMapped: Array<{ questionId: string; level: number; reason: string }> = []
+  if (assessmentAvailable && priorAskedIds.length > 0) {
+    try {
+      for (const qid of priorAskedIds.slice(0, 2)) {
+        const q = questionById(qid)
+        if (!q || assessmentAnswers[qid]) continue   // ja respondida: nao remapeia
+        const m = await withTimeout(mapAnswerToLevel(q, userMessage, lang, { userId: user.id }), 8000, null)
+        if (m) assessmentMapped.push({ questionId: qid, level: m.level, reason: m.reason })
+      }
+      if (assessmentMapped.length > 0) {
+        await saveAnswers(user.id, assessmentMapped.map(m => ({ questionId: m.questionId, level: m.level as Level, origin: 'conversation' as const })))
+      }
+    } catch (e) {
+      console.error('[assessment] map/save ignorado (nao afeta a resposta):', e instanceof Error ? e.message : e)
+    }
+  }
+  const assessmentCapture = {
+    asked:       assessmentAsk ? [assessmentAsk.id] : [],
+    prior_asked: priorAskedIds,
+    mapped:      assessmentMapped,   // [{questionId, level, reason}] auditavel por query
+  }
+
   // ── Persist both messages to advisory_memory ──────────────────────────────
   // v4.2: created_at explícito e sequencial. Sem isso, PostgreSQL avalia now()
   // uma vez por transação e os dois rows ficam com timestamp idêntico, deixando
   // a ordem da reabertura não-determinística. 1ms já basta para o tiebreaker.
   const contextMeta = {
     plan_detection:       planDetection,
+    assessment_capture:   assessmentCapture,
     report_ids_used:      reportIdsUsed,
     trend_ids_used:       trendIdsUsed,
     similarities,
