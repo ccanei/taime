@@ -17,7 +17,7 @@ import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMon
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 import { detectRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-plan-extract'
 import { loadActiveAssessment, saveAnswers } from '@/lib/assessment-store'
-import { detectDomain, computeDomainScore, nextUnansweredInDomain, questionById, questionsByDomain, type AssessmentQuestion, type Level } from '@/lib/assessment-model'
+import { detectDomains, computeDomainScore, nextUnansweredInDomain, questionById, questionsByDomain, type AssessmentQuestion, type Level } from '@/lib/assessment-model'
 import { buildAskInstruction, mapAnswerToLevel, buildAssessmentContextBlock } from '@/lib/assessment-capture'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
@@ -1677,13 +1677,19 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
         const cap = (m.context_metadata as { assessment_capture?: { asked?: string[] } } | null)?.assessment_capture
         return n + (Array.isArray(cap?.asked) ? cap.asked.length : 0)
       }, 0)
-      const dom = detectDomain(userMessage)
-      if (!dom) assessmentAskReason = 'no_domain'
-      else if (askedThisSession >= ASSESSMENT_MAX_PER_CONVERSATION) assessmentAskReason = 'cap_reached'
-      else if (computeDomainScore(dom, assessmentAnswers).complete) assessmentAskReason = `domain_complete:${dom}`
+      const domains = detectDomains(userMessage)   // ate 2, em ordem de relevancia
+      const domainsLabel = domains.join(', ')
+      if (domains.length === 0) assessmentAskReason = 'no_domain'
+      else if (askedThisSession >= ASSESSMENT_MAX_PER_CONVERSATION) assessmentAskReason = `cap_reached (domains: ${domainsLabel})`
       else {
-        assessmentAsk = nextUnansweredInDomain(dom, assessmentAnswers)
-        assessmentAskReason = assessmentAsk ? `ask:${assessmentAsk.id}` : `domain_complete:${dom}`
+        // Percorre os dominios detectados em ordem, escolhe o 1o com pergunta pendente.
+        for (const d of domains) {
+          const q = nextUnansweredInDomain(d, assessmentAnswers)
+          if (q) { assessmentAsk = q; break }
+        }
+        assessmentAskReason = assessmentAsk
+          ? `ask:${assessmentAsk.id} (domains: ${domainsLabel})`
+          : `domains_complete (domains: ${domainsLabel})`
       }
     }
   } catch (e) {
@@ -1877,8 +1883,7 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   let assessmentMapReason = 'unavailable'
   if (assessmentAvailable) {
     const cand = new Set<string>(priorAskedIds)
-    const priorDomain = detectDomain(priorAssistantContent)
-    if (priorDomain) for (const qq of questionsByDomain(priorDomain)) cand.add(qq.id)
+    for (const d of detectDomains(priorAssistantContent)) for (const qq of questionsByDomain(d)) cand.add(qq.id)
     assessmentCandidates = [...cand].filter(id => questionById(id) && !assessmentAnswers[id]).slice(0, 4)
     if (assessmentCandidates.length === 0) {
       assessmentMapReason = 'no_candidates'

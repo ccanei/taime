@@ -269,24 +269,30 @@ export function overallStatus(answers: Answers): 'in_progress' | 'complete' {
 }
 
 // ── Deteccao barata de dominio pelo texto (para a captura incremental) ───────
-// Palavras-chave PT + EN por dominio. Retorna o dominio com mais acertos, ou null.
+// Palavras-chave PT + EN por dominio. Flag `g` e obrigatoria: sem ela, text.match()
+// retorna so o 1o acerto (length 1) e a "relevancia por contagem" nunca funciona.
 const DOMAIN_KEYWORDS: Record<DomainId, RegExp> = {
-  data:       /\bdados?\b|\bdata\b|planilha|spreadsheet|banco de dados|database|data ?warehouse|data ?lake|linhagem|lineage|qualidade de dado|dataset|\bETL\b|integra[cç][aã]o de dados/i,
-  cloud:      /\bnuvem\b|\bcloud\b|infraestrutura|\binfra\b|servidor|on[- ]?premise|\bAWS\b|\bAzure\b|\bGCP\b|kubernetes|container|provisionamento|escalabilidade|finops|data ?center|latac|\bIaC\b/i,
-  ai:         /\bIA\b|intelig[eê]ncia artificial|\bAI\b|automa[cç][aã]o|automation|\bagente\b|\bagentes\b|\bagent\b|\bmodelo\b|machine learning|\bML\b|\bLLM\b|copiloto|copilot|\bRPA\b|automatizar/i,
-  security:   /seguran[cç]a|security|\bacesso\b|\bacessos\b|\baccess\b|criptografia|encryption|incidente|vulnerabilidade|\bSIEM\b|compliance|\bLGPD\b|\bGDPR\b|privacidade|amea[cç]a|\bbreach\b|zero ?trust|identidade/i,
-  governance: /governan[cç]a|governance|prioriza[cç][aã]o|prioridade|modelo operacional|operating model|documenta[cç][aã]o|\bprocesso\b|\bKPI\b|m[eé]trica|portf[oó]lio|roadmap|tomada de decis[aã]o|vigil[aâ]ncia tecnol/i,
+  data:       /\bdados?\b|\bdata\b|planilha|spreadsheet|banco de dados|database|data ?warehouse|data ?lake|linhagem|lineage|qualidade de dado|dataset|\bETL\b|integra[cç][aã]o de dados/gi,
+  cloud:      /\bnuvem\b|\bcloud\b|infraestrutura|\binfra\b|servidor|on[- ]?premise|\bAWS\b|\bAzure\b|\bGCP\b|kubernetes|container|provisionamento|escalabilidade|finops|data ?center|\bIaC\b/gi,
+  ai:         /\bIA\b|intelig[eê]ncia artificial|\bAI\b|automa[cç][aã]o|automation|\bagente\b|\bagentes\b|\bagent\b|\bmodelo\b|machine learning|\bML\b|\bLLM\b|copiloto|copilot|\bRPA\b|automatizar/gi,
+  security:   /seguran[cç]a|security|\bacesso\b|\bacessos\b|\baccess\b|criptografia|encryption|incidente|vulnerabilidade|\bSIEM\b|compliance|\bLGPD\b|\bGDPR\b|privacidade|amea[cç]a|\bbreach\b|zero ?trust|identidade/gi,
+  governance: /governan[cç]a|governance|prioriza[cç][aã]o|prioridade|modelo operacional|operating model|documenta[cç][aã]o|\bprocesso\b|\bKPI\b|m[eé]trica|portf[oó]lio|roadmap|tomada de decis[aã]o|vigil[aâ]ncia tecnol/gi,
+}
+
+// Retorna os dominios relevantes do texto (ate `max`), em ordem de relevancia (contagem
+// de acertos desc; empate preserva a ordem de DOMAINS). Vazio se nenhum casa. Um turno
+// pode tocar mais de um dominio (ex: "seguranca dos agentes de IA" -> security + ai).
+export function detectDomains(text: string, max = 2): DomainId[] {
+  if (!text) return []
+  return DOMAINS
+    .map(d => ({ id: d.id, n: (text.match(DOMAIN_KEYWORDS[d.id]) ?? []).length }))
+    .filter(x => x.n > 0)
+    .sort((a, b) => b.n - a.n)
+    .slice(0, max)
+    .map(x => x.id)
 }
 export function detectDomain(text: string): DomainId | null {
-  if (!text) return null
-  let best: DomainId | null = null
-  let bestN = 0
-  for (const d of DOMAINS) {
-    const m = text.match(DOMAIN_KEYWORDS[d.id])
-    const n = m ? m.length : 0
-    if (n > bestN) { bestN = n; best = d.id }
-  }
-  return bestN > 0 ? best : null
+  return detectDomains(text, 1)[0] ?? null
 }
 
 // Proxima pergunta ainda nao respondida de um dominio (para a captura incremental).
