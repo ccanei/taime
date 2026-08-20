@@ -17,7 +17,7 @@ import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMon
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 import { detectRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-plan-extract'
 import { loadActiveAssessment, saveAnswers } from '@/lib/assessment-store'
-import { detectDomain, computeDomainScore, nextUnansweredInDomain, questionById, type AssessmentQuestion, type Level } from '@/lib/assessment-model'
+import { detectDomain, computeDomainScore, nextUnansweredInDomain, questionById, questionsByDomain, type AssessmentQuestion, type Level } from '@/lib/assessment-model'
 import { buildAskInstruction, mapAnswerToLevel, buildAssessmentContextBlock } from '@/lib/assessment-capture'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
@@ -1644,17 +1644,24 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     4000, null,
   )
   // ── Assessment de Maturidade (Parte A): contexto factual + captura incremental ──
-  //    DORMENTE ate a migracao (available=false = tabela ausente). Tudo fail-safe:
-  //    erro nunca quebra a resposta e o Advisor segue igual.
+  //    DORMENTE ate a migracao (available=false = tabela ausente). Fail-safe: erro nunca
+  //    quebra a resposta. INSTRUMENTADO: assessment_capture e SEMPRE gravado com um motivo
+  //    (ask_reason / map_reason) para diagnostico por query.
   const ASSESSMENT_MAX_PER_CONVERSATION = 3
   let assessmentAnswers: import('@/lib/assessment-model').Answers = {}
   let assessmentAsk: AssessmentQuestion | null = null
   let assessmentAvailable = false
-  // Perguntas de assessment feitas no TURNO ANTERIOR (para mapear a resposta atual).
+  let assessmentAskReason = 'unavailable'
+  // Ultima resposta REAL do assistant (exclui a abertura proativa): serve para saber que
+  // pergunta o Advisor fez no turno anterior, INJETADA ou ESPONTANEA (base do mapeamento).
+  const priorAssistantContent: string = (() => {
+    for (let i = dialogueHistory.length - 1; i >= 0; i--) if (dialogueHistory[i].role === 'assistant') return dialogueHistory[i].content
+    return ''
+  })()
   const priorAskedIds: string[] = (() => {
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i].role !== 'assistant') continue
-      const cap = (history[i].context_metadata as { assessment_capture?: { asked?: string[] } } | null)?.assessment_capture
+    for (let i = dialogueHistory.length - 1; i >= 0; i--) {
+      if (dialogueHistory[i].role !== 'assistant') continue
+      const cap = (dialogueHistory[i].context_metadata as { assessment_capture?: { asked?: string[] } } | null)?.assessment_capture
       return Array.isArray(cap?.asked) ? cap!.asked! : []
     }
     return []
@@ -1663,19 +1670,25 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     const loaded = await loadActiveAssessment(user.id)
     assessmentAvailable = loaded.available
     assessmentAnswers = loaded.row?.answers ?? {}
-    if (assessmentAvailable) {
-      const askedThisSession = history.reduce((n, m) => {
+    if (!assessmentAvailable) {
+      assessmentAskReason = 'unavailable'
+    } else {
+      const askedThisSession = dialogueHistory.reduce((n, m) => {
         const cap = (m.context_metadata as { assessment_capture?: { asked?: string[] } } | null)?.assessment_capture
         return n + (Array.isArray(cap?.asked) ? cap.asked.length : 0)
       }, 0)
       const dom = detectDomain(userMessage)
-      if (dom && askedThisSession < ASSESSMENT_MAX_PER_CONVERSATION && !computeDomainScore(dom, assessmentAnswers).complete) {
+      if (!dom) assessmentAskReason = 'no_domain'
+      else if (askedThisSession >= ASSESSMENT_MAX_PER_CONVERSATION) assessmentAskReason = 'cap_reached'
+      else if (computeDomainScore(dom, assessmentAnswers).complete) assessmentAskReason = `domain_complete:${dom}`
+      else {
         assessmentAsk = nextUnansweredInDomain(dom, assessmentAnswers)
+        assessmentAskReason = assessmentAsk ? `ask:${assessmentAsk.id}` : `domain_complete:${dom}`
       }
     }
   } catch (e) {
     console.error('[assessment] setup falhou (ignorado):', e instanceof Error ? e.message : e)
-    assessmentAvailable = false; assessmentAsk = null
+    assessmentAvailable = false; assessmentAsk = null; assessmentAskReason = 'exception'
   }
 
   const system: SystemBlock[] = [
@@ -1853,29 +1866,49 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── Assessment (Parte A): mapeia a resposta do cliente as perguntas do turno
-  //    anterior (Haiku, fail-safe, bounded) e grava o que mapear com CONFIANCA. So
-  //    quando ha pergunta pendente do turno anterior (fresh sessions: nada a mapear).
+  // ── Assessment (Parte A): mapeia a resposta do cliente as perguntas do turno anterior,
+  //    sejam as que INJETAMOS ou as que o Advisor fez ESPONTANEAMENTE. Candidatos =
+  //    perguntas nao respondidas do dominio que a pergunta anterior do Advisor tocou +
+  //    as injetadas. Haiku bounded e paralelo, fail-safe; grava so o que mapear com
+  //    CONFIANCA (o gate de confianca do Haiku evita falso-positivo). Fresh session
+  //    (sem turno anterior) nao tem candidato, entao nao mapeia.
   const assessmentMapped: Array<{ questionId: string; level: number; reason: string }> = []
-  if (assessmentAvailable && priorAskedIds.length > 0) {
-    try {
-      for (const qid of priorAskedIds.slice(0, 2)) {
-        const q = questionById(qid)
-        if (!q || assessmentAnswers[qid]) continue   // ja respondida: nao remapeia
-        const m = await withTimeout(mapAnswerToLevel(q, userMessage, lang, { userId: user.id }), 8000, null)
-        if (m) assessmentMapped.push({ questionId: qid, level: m.level, reason: m.reason })
+  let assessmentCandidates: string[] = []
+  let assessmentMapReason = 'unavailable'
+  if (assessmentAvailable) {
+    const cand = new Set<string>(priorAskedIds)
+    const priorDomain = detectDomain(priorAssistantContent)
+    if (priorDomain) for (const qq of questionsByDomain(priorDomain)) cand.add(qq.id)
+    assessmentCandidates = [...cand].filter(id => questionById(id) && !assessmentAnswers[id]).slice(0, 4)
+    if (assessmentCandidates.length === 0) {
+      assessmentMapReason = 'no_candidates'
+    } else {
+      try {
+        const results = await Promise.all(assessmentCandidates.map(qid =>
+          withTimeout(mapAnswerToLevel(questionById(qid)!, userMessage, lang, { userId: user.id }), 8000, null)
+            .then(m => (m ? { questionId: qid, level: m.level, reason: m.reason } : null)),
+        ))
+        for (const r of results) if (r) assessmentMapped.push(r)
+        if (assessmentMapped.length > 0) {
+          await saveAnswers(user.id, assessmentMapped.map(m => ({ questionId: m.questionId, level: m.level as Level, origin: 'conversation' as const })))
+          assessmentMapReason = `mapped:${assessmentMapped.length}`
+        } else {
+          assessmentMapReason = 'no_confident_map'
+        }
+      } catch (e) {
+        assessmentMapReason = 'map_exception'
+        console.error('[assessment] map/save ignorado (nao afeta a resposta):', e instanceof Error ? e.message : e)
       }
-      if (assessmentMapped.length > 0) {
-        await saveAnswers(user.id, assessmentMapped.map(m => ({ questionId: m.questionId, level: m.level as Level, origin: 'conversation' as const })))
-      }
-    } catch (e) {
-      console.error('[assessment] map/save ignorado (nao afeta a resposta):', e instanceof Error ? e.message : e)
     }
   }
   const assessmentCapture = {
+    available:   assessmentAvailable,
     asked:       assessmentAsk ? [assessmentAsk.id] : [],
+    ask_reason:  assessmentAskReason,
     prior_asked: priorAskedIds,
-    mapped:      assessmentMapped,   // [{questionId, level, reason}] auditavel por query
+    candidates:  assessmentCandidates,
+    mapped:      assessmentMapped,   // [{questionId, level, reason}]
+    map_reason:  assessmentMapReason,
   }
 
   // ── Persist both messages to advisory_memory ──────────────────────────────
