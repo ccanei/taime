@@ -273,9 +273,9 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
 
     {/* ── COLUNA ESQUERDA (desktop, chegada E conversa): "o acervo" ────────────
         So agregados: temas por categoria (contagem) + curva de sinais acumulados.
-        Sem titulos, periodos, scores ou links. Fail-safe por bloco. */}
-    {(byCategory?.length || archiveStats?.byYear) && (
-      <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">
+        Sem titulos, periodos, scores ou links. O wrapper e sempre um filho do grid
+        (mantem as 3 proporcoes); cada bloco e fail-safe: sem dado, nao aparece. */}
+    <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">
         {byCategory && byCategory.length > 0 && (
           <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">{C.archiveTitle}</p>
@@ -296,7 +296,6 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
           </div>
         )}
       </aside>
-    )}
 
     <div className="flex flex-col h-[calc(100vh-260px)] min-h-[480px]
                     border border-zinc-200 rounded-2xl overflow-hidden bg-white">
