@@ -1,0 +1,125 @@
+{
+  "_meta": {
+    "_generated_at": "2026-08-21T14:34:50.931Z",
+    "_model": "claude-sonnet-4-6",
+    "_how_to_edit": "Cada ancora vive em anchors[question_id][nivel] (niveis \"2\",\"3\",\"4\"). Para curar: ajuste `ano`, `evidencia`, `trend_id`/`trend_period` conforme sua revisao, escreva sua `nota`, e marque `curated: true`. O script NUNCA sobrescreve linhas com curated:true (a menos que voce rode --force). Rerodando, ele mescla: preserva o curado e atualiza o resto. --only-missing reprocessa so as vazias/sem_lastro nao curadas.",
+    "_confianca": "alta = trecho explicito de virada; media = indicio menos explicito; sem_lastro = sem trecho que sustente (ano vazio, correto quando o arquivo nao mostra a virada).",
+    "_part_b": "A Parte B (veredito de atraso) LE este arquivo. So use ano quando confianca != sem_lastro e, idealmente, apos curated:true."
+  },
+  "data_1": {
+    "2": {
+      "ano": null,
+      "trend_id": null,
+      "trend_period": null,
+      "evidencia": "",
+      "confianca": "sem_lastro",
+      "curated": false,
+      "nota": ""
+    },
+    "3": {
+      "ano": 2020,
+      "trend_id": "ec237101-36cd-44f7-bbf4-0fd5bb77f265",
+      "trend_period": "2020-03-16",
+      "evidencia": "a operacionalização de dados na nuvem se torna pré-requisito para decisões orientadas a dados",
+      "confianca": "media",
+      "curated": false,
+      "nota": ""
+    },
+    "4": {
+      "ano": 2023,
+      "trend_id": "9a6c7834-026c-437d-92a4-e3255d584035",
+      "trend_period": "2023-02-01",
+      "evidencia": "a infraestrutura de dados está migrando de silos fragmentados para arquiteturas lakehouse unificadas",
+      "confianca": "media",
+      "curated": false,
+      "nota": ""
+    }
+  },
+  "data_2": {
+    "2": {
+      "ano": null,
+      "trend_id": null,
+      "trend_period": null,
+      "evidencia": "",
+      "confianca": "sem_lastro",
+      "curated": false,
+      "nota": ""
+    },
+    "3": {
+      "ano": null,
+      "trend_id": null,
+      "trend_period": null,
+      "evidencia": "",
+      "confianca": "sem_lastro",
+      "curated": false,
+      "nota": ""
+    },
+    "4": {
+      "ano": null,
+      "trend_id": null,
+      "trend_period": null,
+      "evidencia": "",
+      "confianca": "sem_lastro",
+      "curated": false,
+      "nota": ""
+    }
+  },
+  "data_3": {
+    "2": {
+      "ano": 2021,
+      "trend_id": "1b0616c0-438e-4f33-9551-d1973713e151",
+      "trend_period": "2021-05-16",
+      "evidencia": "Qualidade de dados vira pré-requisito estratégico para extrair valor de IA e analytics",
+      "confianca": "media",
+      "curated": false,
+      "nota": ""
+    },
+    "3": {
+      "ano": 2021,
+      "trend_id": "1b0616c0-438e-4f33-9551-d1973713e151",
+      "trend_period": "2021-05-16",
+      "evidencia": "MDM deixou de ser projeto de TI e virou pré-condição para qualquer ambição de IA",
+      "confianca": "media",
+      "curated": false,
+      "nota": ""
+    },
+    "4": {
+      "ano": 2022,
+      "trend_id": "fd56682f-28c0-44fb-9b80-d0da5d128124",
+      "trend_period": "2022-11-16",
+      "evidencia": "separação visível entre organizações que operacionalizaram qualidade e propriedade de dados e as que permanecem presas a arquiteturas monolíticas e dados de baixa qualidade",
+      "confianca": "media",
+      "curated": false,
+      "nota": ""
+    }
+  },
+  "data_4": {
+    "2": {
+      "ano": null,
+      "trend_id": null,
+      "trend_period": null,
+      "evidencia": "",
+      "confianca": "sem_lastro",
+      "curated": false,
+      "nota": ""
+    },
+    "3": {
+      "ano": 2021,
+      "trend_id": "30e83414-9673-4e40-9a36-ff4453ad90b9",
+      "trend_period": "2021-12-16",
+      "evidencia": "Gestão de dados mestres torna-se pré-requisito estrutural para escalar IA em produção",
+      "confianca": "media",
+      "curated": false,
+      "nota": ""
+    },
+    "4": {
+      "ano": null,
+      "trend_id": null,
+      "trend_period": null,
+      "evidencia": "",
+      "confianca": "sem_lastro",
+      "curated": false,
+      "nota": ""
+    }
+  }
+}

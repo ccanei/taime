@@ -1,0 +1,13 @@
+question_id,domain,level,stage_pt,ano,confianca,curated,trend_id,trend_period,evidencia,nota
+"data_1","data","2","Centralizados em um sistema principal ou um conjunto conhecido de planilhas","","sem_lastro","false","","","",""
+"data_1","data","3","Em uma base estruturada, com acesso controlado por área","9999","media","true","ec237101-36cd-44f7-bbf4-0fd5bb77f265","2020-03-16","a operacionalização de dados na nuvem se torna pré-requisito para decisões orientadas a dados","teste manual: ano fixado por mim"
+"data_1","data","4","Base unificada, com governança, linhagem e qualidade monitorada","2023","media","false","9a6c7834-026c-437d-92a4-e3255d584035","2023-02-01","a infraestrutura de dados está migrando de silos fragmentados para arquiteturas lakehouse unificadas",""
+"data_2","data","2","Sai de relatórios prontos, mas exige conferência manual","","sem_lastro","false","","","",""
+"data_2","data","3","Self-service para as áreas, a partir de fontes definidas","","sem_lastro","false","","","",""
+"data_2","data","4","Em tempo quase real, com confiança na origem e na qualidade","","sem_lastro","false","","","",""
+"data_3","data","2","Há limpezas pontuais quando um problema estoura","2021","media","false","1b0616c0-438e-4f33-9551-d1973713e151","2021-05-16","Qualidade de dados vira pré-requisito estratégico para extrair valor de IA e analytics",""
+"data_3","data","3","Regras de qualidade definidas para os dados críticos","2021","media","false","1b0616c0-438e-4f33-9551-d1973713e151","2021-05-16","MDM deixou de ser projeto de TI e virou pré-condição para qualquer ambição de IA",""
+"data_3","data","4","Qualidade monitorada continuamente, com dono e métricas","2022","media","false","fd56682f-28c0-44fb-9b80-d0da5d128124","2022-11-16","separação visível entre organizações que operacionalizaram qualidade e propriedade de dados e as que permanecem presas a arquiteturas monolíticas e dados de baixa qualidade",""
+"data_4","data","2","Existe, mas extrair uma série histórica dá trabalho","","sem_lastro","false","","","",""
+"data_4","data","3","Histórico consolidado para os domínios principais","2021","media","false","30e83414-9673-4e40-9a36-ff4453ad90b9","2021-12-16","Gestão de dados mestres torna-se pré-requisito estrutural para escalar IA em produção",""
+"data_4","data","4","Histórico rico, versionado e pronto para análise e modelos","","sem_lastro","false","","","",""
