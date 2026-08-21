@@ -260,22 +260,21 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
     ? null
     : L.counter(Math.min(used, QUESTION_LIMIT), QUESTION_LIMIT)
 
-  // Desktop (lg+) na aba Inicio: tres colunas. Fora disso (mobile/tablet, ou aba
-  // Conversa) fica na largura de leitura centralizada, como hoje.
+  // Desktop (xl+): tres colunas TANTO na chegada QUANTO na conversa. Mobile/tablet
+  // seguem em coluna unica na largura de leitura centralizada, como hoje.
+  const nearLimit = used >= QUESTION_LIMIT - 1 || blocked === 'limit'
   return (
-    <div className={`mx-auto ${view === 'home' ? 'max-w-3xl xl:max-w-[1436px]' : 'max-w-3xl'}`}>
+    <div className="mx-auto max-w-3xl xl:max-w-[1436px]">
     <div className={`mb-6 text-center ${view === 'chat' ? '' : 'hidden'}`}>
       <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 mb-2 leading-snug">{L.title}</h1>
       <p className="text-sm text-zinc-500 max-w-xl mx-auto leading-relaxed">{L.subtitle}</p>
     </div>
-    <div className={view === 'home'
-      ? 'xl:grid xl:grid-cols-[minmax(0,300px)_minmax(0,768px)_minmax(0,320px)] xl:gap-6 xl:justify-center xl:items-stretch'
-      : ''}>
+    <div className="xl:grid xl:grid-cols-[minmax(0,300px)_minmax(0,768px)_minmax(0,320px)] xl:gap-6 xl:justify-center xl:items-stretch">
 
-    {/* ── COLUNA ESQUERDA (so home + desktop): "o acervo" ──────────────────────
+    {/* ── COLUNA ESQUERDA (desktop, chegada E conversa): "o acervo" ────────────
         So agregados: temas por categoria (contagem) + curva de sinais acumulados.
         Sem titulos, periodos, scores ou links. Fail-safe por bloco. */}
-    {view === 'home' && (byCategory?.length || archiveStats?.byYear) && (
+    {(byCategory?.length || archiveStats?.byYear) && (
       <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">
         {byCategory && byCategory.length > 0 && (
           <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
@@ -510,10 +509,11 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
       </div>
     </div>
 
-    {/* ── COLUNA DIREITA (so home + desktop): "como funciona" ──────────────────
-        Institucional: o que o Advisor entrega e nao faz, perguntas fortes de
-        exemplo (prefillam o composer), e conversao discreta. Sem dado do acervo. */}
-    {view === 'home' && (
+    {/* ── COLUNA DIREITA (desktop): conteudo MUDA entre chegada e conversa ──────
+        Chegada: "como funciona" + perguntas de exemplo + conversao (institucional).
+        Conversa: perguntas restantes + conversao (ganha peso ao esgotar) + exemplos.
+        Sempre so conteudo institucional/agregado, nunca dado do acervo. */}
+    {view === 'home' ? (
       <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pl-1">
         <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
           <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">{C.howTitle}</p>
@@ -557,6 +557,53 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
             {C.convCta} →
           </Link>
         </div>
+      </aside>
+    ) : (
+      <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pl-1">
+        {/* Perguntas restantes: mesmo dado do contador do header. */}
+        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
+            {isPt ? 'Suas perguntas' : 'Your questions'}
+          </p>
+          <p className="text-sm font-semibold text-zinc-800 tabular-nums">
+            {isPt
+              ? `${Math.min(used, QUESTION_LIMIT)} de ${QUESTION_LIMIT} perguntas usadas`
+              : `${Math.min(used, QUESTION_LIMIT)} of ${QUESTION_LIMIT} questions used`}
+          </p>
+          <div className="mt-2.5 flex gap-1.5" aria-hidden>
+            {Array.from({ length: QUESTION_LIMIT }).map((_, i) => (
+              <span key={i} className={`h-1.5 flex-1 rounded-full ${i < Math.min(used, QUESTION_LIMIT) ? 'bg-taime-500' : 'bg-zinc-200'}`} />
+            ))}
+          </div>
+        </div>
+
+        {/* Conversao: ganha peso conforme as perguntas se esgotam (sem urgencia
+            artificial, sem contagem regressiva agressiva). */}
+        <div className={`rounded-2xl shadow-sm p-4 border ${nearLimit ? 'border-taime-400 bg-taime-50 ring-1 ring-taime-200' : 'border-taime-200 bg-taime-50/60'}`}>
+          <p className={`font-bold text-zinc-800 ${nearLimit ? 'text-base' : 'text-sm'}`}>{C.convTitle}</p>
+          <p className="mt-1 text-xs text-zinc-600 leading-relaxed">{C.convBody}</p>
+          <Link href="/login" className={`btn-primary mt-3 w-full justify-center inline-flex ${nearLimit ? 'text-sm px-3 py-2.5' : 'text-xs px-3 py-2'}`}>
+            {C.convCta} →
+          </Link>
+        </div>
+
+        {/* Se sobrar espaco: perguntas de exemplo clicaveis (uteis para o proximo passo). */}
+        {!blocked && (
+          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">{C.examplesTitle}</p>
+            <div className="flex flex-col gap-1.5">
+              {C.examples.slice(0, 4).map((q, i) => (
+                <button
+                  key={i}
+                  onClick={() => askExample(q)}
+                  className="text-left text-xs text-taime-700 bg-taime-50 hover:bg-taime-100 border border-taime-100
+                             rounded-lg px-2.5 py-1.5 leading-snug transition-colors">
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </aside>
     )}
 
