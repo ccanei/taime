@@ -74,7 +74,7 @@ interface AnthropicUsage {
 // 2026-07-01: trocado temporariamente para Sonnet so para gerar o periodo PRESENTE
 // 2026-06-16; REVERTIDO para Opus em 2026-07-02 (o batch historico depende de Opus
 // para evitar hindsight). Para gerar periodos presentes, usar Sonnet pontualmente.
-// 2026-08-17: periodo PRESENTE (ago/2026, producao A + sombra B) — sem risco de
+// 2026-08-17: periodo PRESENTE (ago/2026, producao A + sombra B), sem risco de
 // hindsight, entao Sonnet 4.6. Reverter para claude-opus-4-8 ao voltar ao batch historico.
 // 2026-08-21: PILOTO DE REGENERACAO (periodos historicos sombra 2026-02-08 e 2024-10-08):
 // revertido para Opus (batch historico depende de Opus p/ evitar hindsight). O temperature
