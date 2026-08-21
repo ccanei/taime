@@ -18,6 +18,8 @@ const SUPA = (process.env.SUPABASE_URL ?? '').replace(/\/rest\/v1\/?$/, '').repl
 const SKEY = process.env.SUPABASE_SERVICE_KEY ?? ''
 const SOURCE = process.env.SOURCE_PERIOD ?? '2026-03-01'
 const SHADOW = process.env.SHADOW_PERIOD ?? '2026-03-08'
+const ORIGIN = process.env.COPY_ORIGIN ?? 'reanalysis_pilot'
+const SKIP_IF_EXISTS = process.env.SKIP_IF_EXISTS === '1'
 const FORCE = process.argv.includes('--force')
 const H = { apikey: SKEY, Authorization: `Bearer ${SKEY}`, 'Content-Type': 'application/json' }
 
@@ -50,6 +52,7 @@ async function insert(rows: unknown[]): Promise<void> {
 async function main() {
   console.log(`Copia de sinais: ${SOURCE} (real, so leitura) -> ${SHADOW} (sombra, insert)`)
   const existing = await countShadow()
+  if (existing > 0 && SKIP_IF_EXISTS && !FORCE) { console.log(`= ${SHADOW} ja tem ${existing} signals; SKIP_IF_EXISTS=1, pulando copia (retomada).`); return }
   if (existing > 0 && !FORCE) { console.error(`✗ ${SHADOW} ja tem ${existing} signals. Limpe a sombra ou use --force. Recusando p/ nao duplicar.`); process.exit(1) }
 
   const src = await getAll()
@@ -63,7 +66,7 @@ async function main() {
     summary:      s.summary,
     is_noise:     false,                       // reset: o filter do piloto decide de novo
     collected_at: s.collected_at,
-    metadata:     { ...(s.metadata ?? {}), origin: 'reanalysis_pilot', source_period: SOURCE, source_signal_id: s.id },
+    metadata:     { ...(s.metadata ?? {}), origin: ORIGIN, source_period: SOURCE, source_signal_id: s.id },
   }))
 
   const BATCH = 100
@@ -73,6 +76,6 @@ async function main() {
     done += Math.min(BATCH, copies.length - i)
     process.stdout.write(`\r  inseridos ${done}/${copies.length}`)
   }
-  console.log(`\n✓ ${done} copias inseridas sob ${SHADOW} (origin=reanalysis_pilot). Nada do periodo real foi alterado.`)
+  console.log(`\n✓ ${done} copias inseridas sob ${SHADOW} (origin=${ORIGIN}). Nada do periodo real foi alterado.`)
 }
 main().catch(e => { console.error(e); process.exit(1) })
