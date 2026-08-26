@@ -31,9 +31,28 @@ const CheckIcon = () => (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
 )
 
+// Meta de dimensionamento por acao (esforco, papel, dependencia): so renderiza os
+// campos presentes; ausentes, nao ocupa espaco. Fica sob o texto da acao.
+function ActionMeta({ action, isPt }: { action: PlanAction; isPt: boolean }) {
+  if (!action.effort && !action.role && !action.dependsOn) return null
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-tight text-zinc-400">
+      {action.effort && (
+        <span className="font-semibold text-zinc-500">{action.effort}</span>
+      )}
+      {action.role && (
+        <span>{isPt ? 'Papel: ' : 'Role: '}{action.role}</span>
+      )}
+      {action.dependsOn && (
+        <span>{isPt ? 'Depende de: ' : 'Depends on: '}{action.dependsOn}</span>
+      )}
+    </span>
+  )
+}
+
 // Linha de acao com toggle (checkbox). readOnly desabilita o clique (leitura pura).
-export function ActionRow({ action, onToggle, disabled, readOnly }: {
-  action: PlanAction; onToggle?: () => void; disabled?: boolean; readOnly?: boolean
+export function ActionRow({ action, onToggle, disabled, readOnly, isPt }: {
+  action: PlanAction; onToggle?: () => void; disabled?: boolean; readOnly?: boolean; isPt?: boolean
 }) {
   const done = action.status === 'done'
   const box = (
@@ -43,7 +62,10 @@ export function ActionRow({ action, onToggle, disabled, readOnly }: {
     </span>
   )
   const label = (
-    <span className={`text-xs leading-snug ${done ? 'text-zinc-400 line-through' : 'text-zinc-700'}`}>{action.text}</span>
+    <span className="min-w-0 flex flex-col">
+      <span className={`text-xs leading-snug ${done ? 'text-zinc-400 line-through' : 'text-zinc-700'}`}>{action.text}</span>
+      <ActionMeta action={action} isPt={isPt ?? true} />
+    </span>
   )
   if (readOnly) {
     return <div className="flex items-start gap-2 py-1">{box}{label}</div>
@@ -68,10 +90,16 @@ export function PhaseDetail({ phase, isPt, onToggleAction, disabled, readOnly, d
       <p className="text-xs font-bold text-zinc-800 mb-1.5">{phase.label}</p>
       <div className="flex flex-col">
         {phase.actions.map((a, i) => (
-          <ActionRow key={i} action={a} readOnly={readOnly} disabled={disabled}
+          <ActionRow key={i} action={a} readOnly={readOnly} disabled={disabled} isPt={isPt}
             onToggle={onToggleAction ? () => onToggleAction(i) : undefined} />
         ))}
       </div>
+      {phase.investment && (
+        <p className="mt-2 text-[11px] text-zinc-500 leading-snug">
+          <span className="font-semibold text-zinc-600">{isPt ? 'Investimento estimado: ' : 'Estimated investment: '}</span>
+          {phase.investment}
+        </p>
+      )}
       {phase.avoid.length > 0 && (
         <div className="mt-2">
           <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700/80 mb-1">

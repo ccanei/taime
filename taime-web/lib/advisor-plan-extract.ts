@@ -88,14 +88,18 @@ The roadmap may appear as prose, as a list, OR as a MARKDOWN TABLE. The table us
 - Map the Nao fazer / Ainda nao / Avoid cell to "avoid".
 - Map the Criterio de saida / Exit criteria cell to "exitCriteria".
 
+The answer MAY also carry a SIZING (dimensioning) layer: an effort estimate and an executing role per action, dependencies between actions, and an estimated investment per phase. Capture these ONLY when the answer states them.
+- Per action: "effort" (e.g. "16h", "3 dias", "2 days"), "role" (the FUNCTION that executes, e.g. "o dono do programa", "quem opera o CRM"; never a person's name), "dependsOn" (which prior action or phase must come first).
+- Per phase: "investment" (the phase's estimated investment, kept as a RANGE or scenarios, e.g. "R$ 12.800 a R$ 22.400"; never a single closed number).
+
 Rules:
-- Extract ONLY what is present in the answer. Do NOT invent phases, actions, horizons or criteria.
+- Extract ONLY what is present in the answer. Do NOT invent phases, actions, horizons or criteria. Do NOT invent effort, role, dependency or investment: omit any sizing field the answer does not state (never guess a number, a role or a range).
 - If the answer does NOT contain a real phased roadmap (phases with a horizon and concrete actions), return exactly {"roadmap": false}.
 - Every action item status is "todo".
 - Never use the em dash character; use a hyphen or a comma.
 - Output ONLY the JSON object, nothing else.
 
-Shape when it IS a roadmap:
+Shape when it IS a roadmap (the sizing fields effort, role, dependsOn and investment are OPTIONAL, include a field only when present in the answer):
 {
   "roadmap": true,
   "title": "<= 8 words, plan title in the answer's language>",
@@ -103,9 +107,10 @@ Shape when it IS a roadmap:
   "phases": [
     {
       "label": "phase name with its horizon, e.g. 'Fase 1: Fundacao (0-3 meses)'",
-      "actions": [ { "text": "action item", "status": "todo" } ],
+      "actions": [ { "text": "action item", "status": "todo", "effort": "16h", "role": "o dono do programa", "dependsOn": "" } ],
       "avoid": [ "what not to do" ],
-      "exitCriteria": "the exit criterion for this phase"
+      "exitCriteria": "the exit criterion for this phase",
+      "investment": "R$ 12.800 a R$ 22.400"
     }
   ]
 }`
