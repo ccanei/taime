@@ -346,6 +346,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   const [messages,   setMessages]   = useState<Message[]>([])
   const [input,      setInput]      = useState('')
   const [loading,    setLoading]    = useState(false)
+  // Streaming (SSE): id da mensagem do assistant que esta sendo transmitida agora.
+  // Enquanto setado, a bolha de "consultando" some e a mensagem cresce com cursor.
+  const [streamingId, setStreamingId] = useState<string | null>(null)
   // Recuperacao pos-interrupcao: quando o fetch morre (troca de aba durante a
   // geracao), a resposta ja foi persistida no server (commit 3744604); aqui
   // recarregamos a conversa em vez de mostrar erro criptico.
@@ -764,78 +767,123 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setHistoryWarn(false)
     pendingSidRef.current = sid
 
+    // Estado do stream desta resposta (visivel ao catch para decidir recuperacao).
+    const assistantId = crypto.randomUUID()
+    let started = false           // ja recebemos ao menos um delta (bolha criada)
+    let content = ''              // texto acumulado exibido
+    let meta: { reply?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null; plan_offer?: PlanOfferData | null } | null = null
+
+    const setContent = (c: string) => {
+      content = c
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: c } : m))
+    }
+    const ensureBubble = () => {
+      if (started) return
+      started = true
+      setStreamingId(assistantId)
+      setLoading(false)   // a bolha de "consultando" da lugar a mensagem que cresce
+      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', created_at: new Date().toISOString() }])
+    }
+
     try {
-      const res  = await fetch('/api/advisor/chat', {
+      const res = await fetch('/api/advisor/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: text, sessionId: sid }),
       })
-      const json = await res.json() as { reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null; plan_offer?: PlanOfferData | null }
 
-      // Cota esgotada: nada foi gerado nem consumido. Remove a mensagem otimista
-      // e mostra o CTA de upgrade no lugar do input.
-      if (res.status === 403 && json.error === 'message_limit_reached') {
-        setMessages(prev => prev.filter(m => m.id !== userMsg.id))
-        if (typeof json.used === 'number') setUsed(json.used)
-        setBlocked(true)
-        return
+      // Erros de gate/contador nao sao stream: vem como JSON, tratados como antes.
+      const ctype = res.headers.get('content-type') ?? ''
+      if (!ctype.includes('text/event-stream')) {
+        const json = await res.json().catch(() => ({})) as { error?: string; used?: number }
+        if (res.status === 403 && json.error === 'message_limit_reached') {
+          setMessages(prev => prev.filter(m => m.id !== userMsg.id))
+          if (typeof json.used === 'number') setUsed(json.used)
+          setBlocked(true)
+          return
+        }
+        throw new Error(json.error ?? 'Erro na resposta')
       }
 
-      if (!res.ok || !json.reply) throw new Error(json.error ?? 'Erro na resposta')
-
-      const assistantMsg: Message = {
-        id:         crypto.randomUUID(),
-        role:       'assistant',
-        content:    json.reply,
-        created_at: new Date().toISOString(),
-        citations:  json.citations,
-        planOffer:  json.plan_offer ?? undefined,
+      // ── Consumo do SSE ──────────────────────────────────────────────────────
+      if (!res.body) throw new Error('no_stream_body')
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let streamErr: string | null = null
+      let done = false
+      while (!done) {
+        const { done: rdone, value } = await reader.read()
+        if (rdone) break
+        buf += decoder.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buf.indexOf('\n\n')) !== -1) {
+          const frame = buf.slice(0, sep); buf = buf.slice(sep + 2)
+          const lines    = frame.split('\n')
+          const ev       = lines.find(l => l.startsWith('event:'))?.slice(6).trim()
+          const dataLine = lines.find(l => l.startsWith('data:'))?.slice(5).trim()
+          if (!ev || !dataLine) continue
+          let data: { text?: string; reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null; plan_offer?: PlanOfferData | null }
+          try { data = JSON.parse(dataLine) } catch { continue }
+          if (ev === 'delta') {
+            ensureBubble()
+            setContent(content + (data.text ?? ''))
+          } else if (ev === 'correction') {
+            ensureBubble()
+            if (typeof data.reply === 'string') setContent(data.reply)
+          } else if (ev === 'meta') {
+            meta = data
+            ensureBubble()
+            if (typeof data.reply === 'string') setContent(data.reply)
+          } else if (ev === 'error') {
+            streamErr = data.error ?? 'stream_error'
+            done = true; break
+          } else if (ev === 'done') {
+            done = true; break
+          }
+        }
       }
-      setMessages(prev => [...prev, assistantMsg])
-      // Painel "Nesta resposta": popula com as analises que este turno consultou.
-      if (json.context_panel) setLatestPanel(json.context_panel)
-      // Persistencia: se o backend nao conseguiu gravar a conversa, avisa o usuario
-      // (nao bloqueia; a resposta ja foi entregue).
-      if (json.history_saved === false) setHistoryWarn(true)
-      // Intencao de contato humano: o Advisor respondeu normalmente; alem disso,
-      // oferecemos abrir o popup de contato. O Advisor segue a via principal.
+      if (streamErr) throw new Error(streamErr)
+      if (!meta || !content.trim()) throw new Error('empty_stream')
+
+      // Aplica a meta ao balao ja transmitido (citacoes + oferta de plano).
+      setMessages(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: meta!.reply ?? content, citations: meta!.citations, planOffer: meta!.plan_offer ?? undefined }
+        : m))
+      if (meta.context_panel) setLatestPanel(meta.context_panel)
+      if (meta.history_saved === false) setHistoryWarn(true)
       if (HANDOFF_RE.test(text)) setHandoffOffered(true)
-      // Atualiza o contador com o estado real vindo do servidor; se esta foi a
-      // ultima mensagem permitida, bloqueia o proximo envio.
-      if (typeof json.used === 'number') {
-        setUsed(json.used)
-        if (msgLimit !== null && json.used >= msgLimit) setBlocked(true)
+      if (typeof meta.used === 'number') {
+        setUsed(meta.used)
+        if (msgLimit !== null && meta.used >= msgLimit) setBlocked(true)
       }
-      // Refresh da barra lateral: a sessão atual sobe pro topo da lista de
-      // ativas, com title definido (se foi a primeira mensagem) e count atualizado.
       loadSessions(viewArchived)
     } catch (err) {
-      if (isNetworkInterruption(err)) {
-        // Interrupcao (troca de aba/rede durante a geracao): a resposta ja foi
-        // gerada e PERSISTIDA no server (commit 3744604). Recupera do banco em vez
-        // de mostrar erro criptico. Nunca exibe "Load failed"/"did not match".
-        setLoading(false)
+      // Se o stream chegou a comecar OU foi interrupcao de rede, a resposta pode ter
+      // sido gerada e PERSISTIDA no server (independente do cliente): recupera do banco
+      // em vez de erro criptico. So mostra erro seco quando nada comecou e nao e rede.
+      setLoading(false)
+      if (started || isNetworkInterruption(err)) {
         const ok = await recover(sid)
-        if (!ok) {
+        if (ok) {
+          setStreamingId(null)   // recover substitui as mensagens pelo estado do server
+        } else if (!started) {
           setMessages(prev => [...prev, {
-            id:         crypto.randomUUID(),
-            role:       'assistant',
-            content:    isPt
+            id: crypto.randomUUID(), role: 'assistant', created_at: new Date().toISOString(),
+            content: isPt
               ? 'A conexão caiu enquanto eu respondia. A resposta pode ter sido salva: recarregue a conversa ou pergunte de novo.'
               : 'The connection dropped while I was answering. The reply may have been saved: reload the conversation or ask again.',
-            created_at: new Date().toISOString(),
           }])
         }
       } else {
         setMessages(prev => [...prev, {
-          id:         crypto.randomUUID(),
-          role:       'assistant',
-          content:    isPt ? 'Desculpe, houve um erro. Tente novamente.' : 'Sorry, something went wrong. Please try again.',
-          created_at: new Date().toISOString(),
+          id: crypto.randomUUID(), role: 'assistant', created_at: new Date().toISOString(),
+          content: isPt ? 'Desculpe, houve um erro. Tente novamente.' : 'Sorry, something went wrong. Please try again.',
         }])
       }
     } finally {
       pendingSidRef.current = null
+      setStreamingId(null)
       setLoading(false)
       inputRef.current?.focus()
     }
@@ -1251,20 +1299,28 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                     <>
                       <CopyButton text={msg.content} isPt={isPt} />
                       <AdvisorMarkdown content={msg.content} citations={msg.citations} />
-                      <AdvisorFeedback
-                        question={messages[i - 1]?.role === 'user' ? messages[i - 1].content : ''}
-                        answer={msg.content}
-                        source="advisor"
-                        isPt={isPt}
-                      />
-                      {msg.planOffer && msg.planOffer.phases.length > 0 && (
-                        <SavePlanOffer
-                          offer={msg.planOffer}
-                          sessionId={sessionId}
-                          sourceMessageId={msg.id}
-                          isPt={isPt}
-                          onSaved={loadPlans}
-                        />
+                      {msg.id === streamingId ? (
+                        // Cursor de geracao: sinaliza claramente que a resposta esta saindo.
+                        <span className="inline-block w-[3px] h-4 ml-0.5 align-[-2px] bg-taime-500 rounded-sm animate-pulse"
+                          aria-label={isPt ? 'gerando' : 'generating'} />
+                      ) : (
+                        <>
+                          <AdvisorFeedback
+                            question={messages[i - 1]?.role === 'user' ? messages[i - 1].content : ''}
+                            answer={msg.content}
+                            source="advisor"
+                            isPt={isPt}
+                          />
+                          {msg.planOffer && msg.planOffer.phases.length > 0 && (
+                            <SavePlanOffer
+                              offer={msg.planOffer}
+                              sessionId={sessionId}
+                              sourceMessageId={msg.id}
+                              isPt={isPt}
+                              onSaved={loadPlans}
+                            />
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -1272,7 +1328,10 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
             </div>
           ))}
 
-          {(loading || recovering) && (
+          {/* Bolha de espera: enquanto o servidor consulta o arquivo e ainda nao chegou
+              o 1o token. Some assim que o stream comeca (streamingId), quando a propria
+              mensagem passa a crescer com o cursor de geracao. */}
+          {(loading || recovering) && !streamingId && (
             <div className="flex gap-3">
               <div className="w-7 h-7 rounded-full bg-taime-600 flex items-center justify-center
                              text-xs font-bold text-white shrink-0">T</div>
@@ -1280,11 +1339,14 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 {recovering ? (
                   <p className="text-sm text-zinc-500">{isPt ? 'Recuperando a resposta...' : 'Recovering the answer...'}</p>
                 ) : (
-                  <div className="flex gap-1 items-center h-4">
-                    {[0, 1, 2].map(i => (
-                      <div key={i} className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce"
-                        style={{ animationDelay: `${i * 0.15}s` }} />
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1 items-center h-4">
+                      {[0, 1, 2].map(i => (
+                        <div key={i} className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce"
+                          style={{ animationDelay: `${i * 0.15}s` }} />
+                      ))}
+                    </div>
+                    <span className="text-xs text-zinc-400">{isPt ? 'Consultando o arquivo...' : 'Consulting the archive...'}</span>
                   </div>
                 )}
               </div>

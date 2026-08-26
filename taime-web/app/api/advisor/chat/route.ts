@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { stripEmDash } from '@/lib/strip-markdown'
 import { createSupabaseServer, createSupabaseService } from '@/lib/supabase-server'
 import {
@@ -26,9 +26,16 @@ import { buildAskInstruction, mapAnswerToLevel, buildAssessmentContextBlock } fr
 // (~6s: embed + rpc de 40 chunks + coverage + joins) e, no pior caso, DUAS geracoes
 // (a retentativa corretiva do grounding). Com 60s isso estourava e a funcao morria
 // no meio da entrega -> a plataforma devolvia texto puro ("An error...") e o front
-// quebrava no res.json(). Subimos para 120s (Vercel permite ate 300s). max_tokens
-// e teto, nao alvo: respostas curtas seguem rapidas.
-export const maxDuration = 120
+// quebrava no res.json().
+// v6 (STREAMING): a rota agora responde em SSE (text/event-stream). O tempo ate o
+// primeiro token cai para poucos segundos (o cliente ve tokens conforme saem, nao
+// uma tela parada) e a conexao fica viva enquanto a geracao corre, entao o 504
+// FUNCTION_INVOCATION_TIMEOUT (roadmap dimensionado, 120,3s) deixa de acontecer.
+// maxDuration sobe para 300s (teto do Vercel) so como folga de seguranca: a geracao
+// + persistencia rodam INDEPENDENTES do cliente (nao propagamos req.signal a
+// Anthropic), entao mesmo que a aba caia no meio, gera-se e persiste-se ate o fim
+// (licao do fix 3744604). max_tokens e teto, nao alvo: respostas curtas seguem rapidas.
+export const maxDuration = 300
 
 interface AdvisorProfile {
   company_name:           string | null
@@ -1209,11 +1216,142 @@ async function callMain(
   return { ok: true, reply, stopReason: data.stop_reason ?? null, usage: normalizeUsage(data.usage) }
 }
 
-// v4.9: catch de ULTIMA INSTANCIA. A rota NUNCA mais responde texto puro. Qualquer
-// excecao nao tratada em handleChat vira JSON valido ({error, code}, status 500),
-// para o front sempre conseguir res.json(). Timeout da plataforma continua sendo
-// texto (a funcao morre antes daqui), por isso o maxDuration foi para 120s.
-export async function POST(req: NextRequest): Promise<NextResponse> {
+// ── SSE: transporte de streaming da resposta do Advisor ─────────────────────
+// A rota responde em text/event-stream. Eventos emitidos:
+//   start      {}          stream aberto (o front ja mostra "consultando/gerando")
+//   delta      { text }     pedaco de texto do modelo, conforme sai
+//   correction { reply }    o texto final difere do exibido (retentativa de grounding,
+//                           regeneracao por truncamento, nota de corte ou travessao):
+//                           o front substitui o conteudo pela versao final
+//   meta       { reply, used, limit, plan, history_saved, citations, context_panel, plan_offer }
+//   error      { error, code? }   falha (o front trata; nunca deixa a msg pela metade)
+//   done       {}          fim
+// O producer roda INDEPENDENTE do cliente: se o enqueue falhar (aba caiu), paramos de
+// enviar mas seguimos gerando e PERSISTINDO ate o fim (persistencia antes do meta).
+type SseSend = (event: string, data: unknown) => void
+function sseResponse(producer: (send: SseSend) => Promise<void>): Response {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false
+      const send: SseSend = (event, data) => {
+        if (closed) return
+        try { controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)) }
+        catch { closed = true }   // cliente desconectou: para de enviar; o producer segue
+      }
+      try {
+        await producer(send)
+      } catch (e) {
+        console.error('[advisor-chat] STREAM producer EXCEPTION:', e instanceof Error ? (e.stack ?? e.message) : e)
+        send('error', { error: 'internal_error', code: 'advisor_unhandled' })
+      } finally {
+        try { if (!closed) controller.close() } catch { /* ja fechado */ }
+      }
+    },
+  })
+  return new Response(stream, {
+    headers: {
+      'Content-Type':      'text/event-stream; charset=utf-8',
+      'Cache-Control':     'no-cache, no-transform',
+      'Connection':        'keep-alive',
+      'X-Accel-Buffering': 'no',   // desliga buffering de proxy: os tokens saem na hora
+    },
+  })
+}
+
+// ── Chamada principal em STREAMING (Sonnet via SSE da Anthropic) ────────────
+// Mesma forma de retorno de callMain, mais um callback onDelta chamado a cada pedaco
+// de texto visivel (text_delta). Acumula o texto BRUTO (o stripEmDash final roda no
+// chamador, como antes). Blocos de thinking sao ignorados, exatamente como o callMain
+// nao-stream so pegava content type='text'. NAO propaga AbortSignal do cliente.
+async function callMainStream(
+  system: SystemBlock[],
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  maxTokens: number,
+  onDelta: (text: string) => void,
+): Promise<{ ok: boolean; reply: string; stopReason: string | null; usage: Usage | null; errText?: string }> {
+  const res = await fetch(ANTHROPIC_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta':    'prompt-caching-2024-07-31',
+    },
+    body: JSON.stringify({ model: ADVISOR_MODEL, max_tokens: maxTokens, system, messages, stream: true }),
+  })
+  if (!res.ok || !res.body) {
+    return { ok: false, reply: '', stopReason: null, usage: null, errText: res.ok ? 'no_stream_body' : await res.text() }
+  }
+
+  const reader  = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let reply = ''
+  let stopReason: string | null = null
+  const usage: Partial<Usage> = {}
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let sep: number
+      while ((sep = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, sep)
+        buf = buf.slice(sep + 2)
+        const dataLine = frame.split('\n').find(l => l.startsWith('data:'))
+        if (!dataLine) continue
+        const payload = dataLine.slice(5).trim()
+        if (!payload) continue
+        let ev: {
+          type?:    string
+          message?: { usage?: Partial<Usage> }
+          delta?:   { type?: string; text?: string; stop_reason?: string }
+          usage?:   { output_tokens?: number }
+          error?:   unknown
+        }
+        try { ev = JSON.parse(payload) } catch { continue }
+        switch (ev.type) {
+          case 'message_start':
+            if (ev.message?.usage) {
+              usage.input_tokens                = ev.message.usage.input_tokens ?? 0
+              usage.cache_read_input_tokens     = ev.message.usage.cache_read_input_tokens ?? 0
+              usage.cache_creation_input_tokens = ev.message.usage.cache_creation_input_tokens ?? 0
+            }
+            break
+          case 'content_block_delta':
+            if (ev.delta?.type === 'text_delta' && ev.delta.text) {
+              reply += ev.delta.text
+              onDelta(ev.delta.text)
+            }
+            break
+          case 'message_delta':
+            if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason
+            if (ev.usage?.output_tokens != null) usage.output_tokens = ev.usage.output_tokens
+            break
+          case 'error':
+            return { ok: false, reply, stopReason, usage: normalizeUsage(usage), errText: JSON.stringify(ev.error ?? {}) }
+          default:
+            break
+        }
+      }
+    }
+  } catch (e) {
+    // Stream da Anthropic caiu no meio: entrega o que ja veio (o chamador valida) ou
+    // sinaliza erro se veio vazio.
+    if (!reply.trim()) {
+      return { ok: false, reply: '', stopReason, usage: normalizeUsage(usage), errText: e instanceof Error ? e.message : String(e) }
+    }
+  }
+  return { ok: true, reply, stopReason, usage: normalizeUsage(usage) }
+}
+
+// v4.9/v6: catch de ULTIMA INSTANCIA para o PROLOGO (auth, gate, contador, retrieval,
+// build do prompt): qualquer excecao antes de abrir o stream vira JSON valido
+// ({error, code}, 500). Depois que o stream abre, as falhas viram evento SSE 'error'
+// (headers ja enviados), tratado dentro de sseResponse.
+export async function POST(req: NextRequest): Promise<Response> {
   try {
     return await handleChat(req)
   } catch (e) {
@@ -1223,7 +1361,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 }
 
-async function handleChat(req: NextRequest): Promise<NextResponse> {
+async function handleChat(req: NextRequest): Promise<Response> {
   // Auth
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
@@ -1757,13 +1895,29 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
 
   const maxTokens = pickMaxTokens(userMessage, strategic)
 
-  // ── Chamada principal ──────────────────────────────────────────────────────
+  // ── A partir daqui, STREAMING (SSE). O prologo acima (auth, gate, contador,
+  //    retrieval, coverage, assessment, build do prompt) ja rodou e seus erros de
+  //    gate seguem como JSON. O corpo abaixo gera + persiste dentro do stream. ────
+  return sseResponse(async (send) => {
+  send('start', {})
+
+  // ── Chamada principal (STREAMING de tokens) ────────────────────────────────
+  // Telemetria de percepcao: tempo ate o PRIMEIRO token (ttft) e tempo total.
   const _tMain = Date.now()
-  const first = await callMain(system, conversationMessages, maxTokens)
-  logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(first.usage), latency_ms: Date.now() - _tMain, success: first.ok, error_code: first.ok ? null : 'api_error', user_id: user.id, meta: { step: 'main', session_id: sessionId } })
+  let _ttftMs: number | null = null
+  // Texto EXIBIDO ao cliente (o que foi realmente enviado em deltas). Se o texto
+  // final diferir dele (retry, regen, nota de corte, travessao), emitimos 'correction'.
+  let streamedRaw = ''
+  const first = await callMainStream(system, conversationMessages, maxTokens, (t) => {
+    if (_ttftMs === null) _ttftMs = Date.now() - _tMain
+    streamedRaw += t
+    send('delta', { text: t })
+  })
+  logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(first.usage), latency_ms: Date.now() - _tMain, success: first.ok, error_code: first.ok ? null : 'api_error', user_id: user.id, meta: { step: 'main', session_id: sessionId, ttft_ms: _ttftMs, streamed: true } })
   if (!first.ok) {
     console.error('Anthropic API error:', first.errText)
-    return NextResponse.json({ error: 'AI service error' }, { status: 502 })
+    send('error', { error: 'AI service error', code: 'ai_service_error' })
+    return
   }
 
   let reply      = first.reply
@@ -1851,6 +2005,12 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
   //    defesa primaria; aqui garantimos que nenhum travessao (—) chega ao cliente
   //    nem ao historico, mesmo num deslize do modelo.
   reply = stripEmDash(reply)
+
+  // ── Sincroniza o cliente se o texto FINAL diferir do que foi exibido em deltas
+  //    (retentativa de grounding, regeneracao por truncamento, nota de corte ou
+  //    remocao de travessao). No caso comum nada muda e nada e enviado. Corre ANTES
+  //    da extracao do roadmap (que tem timeout ate 9s) para o texto se acertar ja. ─
+  if (reply !== streamedRaw) send('correction', { reply })
 
   // ── Extracao do roadmap para OFERTA de plano salvo (Fase 2.1) ──────────────
   //    FORA do caminho critico: heuristica barata (custo zero sem roadmap) +
@@ -2045,37 +2205,35 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     console.error('[advisor-persist] advisor_session_upsert EXCEPTION:', e)
   }
 
-  // ── Auto-titulo da conversa (fire-and-forget, apos a resposta) ─────────────
-  //    Apenas na 1a resposta (sessao nova). Uma chamada Haiku gera 4-6 palavras no
-  //    idioma da conversa e substitui o titulo de fallback. Roda em after() para
-  //    NAO atrasar a resposta; se falhar, o fallback permanece.
-  if (isNewSession && historySaved) {
-    const qForTitle = userMessage
-    const aForTitle = reply
-    const langForTitle = lang
-    after(async () => {
-      const generated = await generateSessionTitle(qForTitle, aForTitle, langForTitle, user.id, sessionId)
-      if (!generated) return
-      // Nao sobrescreve titulo RENOMEADO manualmente (title_custom=true). Se a coluna
-      // ainda nao existe (migracao pendente, 42703), reaplica sem o guard (sem regressao).
-      let { error: titleErr } = await service
-        .from('advisor_sessions')
-        .update({ title: generated })
-        .eq('user_id', user.id)
-        .eq('session_id', sessionId)
-        .eq('title_custom', false)
-      if (titleErr && (titleErr.code === '42703' || titleErr.code === 'PGRST204' || (titleErr.message ?? '').includes('title_custom'))) {
-        ({ error: titleErr } = await service
+  // ── Auto-titulo da conversa: Haiku gera 4-6 palavras e substitui o fallback, so
+  //    na 1a resposta (sessao nova). Antes rodava em after(); no transporte SSE o
+  //    after() pode cair fora do escopo de request, entao definimos a tarefa aqui e
+  //    a AWAITAMOS depois do meta/done (nao atrasa o cliente, que ja tem tudo, e o
+  //    Vercel mantem a funcao viva ate gravar). Se falhar, o fallback permanece.
+  const runAutoTitle = (isNewSession && historySaved)
+    ? async () => {
+        const generated = await generateSessionTitle(userMessage, reply, lang, user.id, sessionId)
+        if (!generated) return
+        // Nao sobrescreve titulo RENOMEADO manualmente (title_custom=true). Se a coluna
+        // ainda nao existe (migracao pendente, 42703), reaplica sem o guard (sem regressao).
+        let { error: titleErr } = await service
           .from('advisor_sessions')
           .update({ title: generated })
           .eq('user_id', user.id)
-          .eq('session_id', sessionId))
+          .eq('session_id', sessionId)
+          .eq('title_custom', false)
+        if (titleErr && (titleErr.code === '42703' || titleErr.code === 'PGRST204' || (titleErr.message ?? '').includes('title_custom'))) {
+          ({ error: titleErr } = await service
+            .from('advisor_sessions')
+            .update({ title: generated })
+            .eq('user_id', user.id)
+            .eq('session_id', sessionId))
+        }
+        if (titleErr && titleErr.code !== '42883' && titleErr.code !== '42P01') {
+          console.error('[advisor-title] update FAILED:', { code: titleErr.code, message: titleErr.message, session_id: sessionId })
+        }
       }
-      if (titleErr && titleErr.code !== '42883' && titleErr.code !== '42P01') {
-        console.error('[advisor-title] update FAILED:', { code: titleErr.code, message: titleErr.message, session_id: sessionId })
-      }
-    })
-  }
+    : null
 
   // ── Passo OPCIONAL (best-effort) DEPOIS da persistencia critica: captacao
   //    passiva de contexto do perfil (idempotente). Totalmente isolado, nunca
@@ -2087,8 +2245,17 @@ async function handleChat(req: NextRequest): Promise<NextResponse> {
     console.error('[advisor-context] extraction/persist EXCEPTION (ignored, nao afeta persistencia):', e)
   }
 
-  // Responde com a cota e history_saved (false = a conversa NAO pode ser gravada;
-  // a UI avisa o usuario). Strategic vem com limit null (sem contador). plan_offer
-  // presente = a resposta contem um roadmap salvavel; ausente = sem oferta.
-  return NextResponse.json({ reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations, context_panel: contextPanel, plan_offer: planOffer })
+  // Meta final: mesma carga do JSON de antes (cota, history_saved, citations, painel,
+  // plan_offer) + o reply final autoritativo (o cliente reconcilia o conteudo com ele).
+  // A persistencia critica JA ocorreu acima, entao o meta chega depois de tudo gravado.
+  // Strategic vem com limit null (sem contador). plan_offer presente = roadmap salvavel.
+  send('meta', { reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations, context_panel: contextPanel, plan_offer: planOffer })
+  send('done', {})
+
+  // Best-effort DEPOIS do done (nao atrasa o cliente): auto-titulo. Awaited para o
+  // Vercel manter a funcao viva ate gravar. Isolado: nunca afeta a resposta ja entregue.
+  if (runAutoTitle) {
+    try { await runAutoTitle() } catch (e) { console.error('[advisor-title] EXCEPTION (ignored):', e) }
+  }
+  })
 }

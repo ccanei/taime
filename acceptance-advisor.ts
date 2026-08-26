@@ -92,6 +92,7 @@ interface CaseResult {
   elapsedMs: number
   reply:     string
   meta:      ChatMeta | null
+  ttftMs:    number | null   // tempo ate o 1o token (streaming). null se resposta nao-stream.
 }
 interface Check { desc: string; pass: boolean }
 
@@ -164,6 +165,9 @@ async function authenticate(): Promise<{ cookie: string; userId: string; method:
 }
 
 // ── Chamada da rota + leitura do metadata ────────────────────────────────────
+// Transporte: a rota responde em SSE (text/event-stream). Acumulamos os deltas,
+// aplicamos correction/meta, e medimos o tempo ate o 1o token (ttft) e o total.
+// Erros de gate/contador continuam vindo como JSON (nao-stream) e sao lidos igual.
 async function askAdvisor(cookie: string, message: string): Promise<CaseResult> {
   const sessionId = randomUUID()
   const ctrl = new AbortController()
@@ -171,6 +175,8 @@ async function askAdvisor(cookie: string, message: string): Promise<CaseResult> 
   const t0 = Date.now()
   let status = 0
   let json: Record<string, unknown> = {}
+  let reply = ''
+  let ttftMs: number | null = null
   try {
     const r = await fetch(`${SITE}/api/advisor/chat`, {
       method:  'POST',
@@ -179,14 +185,52 @@ async function askAdvisor(cookie: string, message: string): Promise<CaseResult> 
       signal:  ctrl.signal,
     })
     status = r.status
-    json = await r.json() as Record<string, unknown>
+    const ctype = r.headers.get('content-type') ?? ''
+    if (ctype.includes('text/event-stream') && r.body) {
+      const reader  = r.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let content = ''
+      let streaming = true
+      while (streaming) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buf.indexOf('\n\n')) !== -1) {
+          const frame = buf.slice(0, sep); buf = buf.slice(sep + 2)
+          const lines    = frame.split('\n')
+          const ev       = lines.find(l => l.startsWith('event:'))?.slice(6).trim()
+          const dataLine = lines.find(l => l.startsWith('data:'))?.slice(5).trim()
+          if (!ev || !dataLine) continue
+          let data: Record<string, unknown>
+          try { data = JSON.parse(dataLine) as Record<string, unknown> } catch { continue }
+          if (ev === 'delta') {
+            if (ttftMs === null) ttftMs = Date.now() - t0
+            content += typeof data.text === 'string' ? data.text : ''
+          } else if (ev === 'correction') {
+            if (typeof data.reply === 'string') content = data.reply
+          } else if (ev === 'meta') {
+            json = data
+            if (typeof data.reply === 'string') content = data.reply
+          } else if (ev === 'error') {
+            json = data; streaming = false; break
+          } else if (ev === 'done') {
+            streaming = false; break
+          }
+        }
+      }
+      reply = content
+    } else {
+      json  = await r.json().catch(() => ({})) as Record<string, unknown>
+      reply = typeof json.reply === 'string' ? json.reply : ''
+    }
   } finally {
     clearTimeout(timer)
   }
   const elapsedMs = Date.now() - t0
-  const reply = typeof json.reply === 'string' ? json.reply : ''
   const meta = await readMeta(sessionId)
-  return { json, status, elapsedMs, reply, meta }
+  return { json, status, elapsedMs, reply, meta, ttftMs }
 }
 
 async function readMeta(sessionId: string): Promise<ChatMeta | null> {
@@ -329,7 +373,7 @@ async function main(): Promise<void> {
   }
   console.log(gray(`auth: ${auth.method}  (user ${auth.userId.slice(0, 8)}...)\n`))
 
-  const rows: Array<{ name: string; ok: boolean; checks: Check[]; ms: number; note?: string }> = []
+  const rows: Array<{ name: string; ok: boolean; checks: Check[]; ms: number; ttft: number | null; note?: string }> = []
   for (const c of CASES) {
     process.stdout.write(gray(`  rodando ${c.name.padEnd(12)} `))
     try {
@@ -337,18 +381,20 @@ async function main(): Promise<void> {
       const checks = c.assert(res)
       const metaWarn = res.meta ? '' : ' (advisory_memory nao lido)'
       const ok = checks.every(k => k.pass)
-      rows.push({ name: c.name, ok, checks, ms: res.elapsedMs, note: metaWarn })
-      console.log((ok ? green('ok') : red('FALHOU')) + gray(`  ${(res.elapsedMs / 1000).toFixed(1)}s${metaWarn}`))
+      rows.push({ name: c.name, ok, checks, ms: res.elapsedMs, ttft: res.ttftMs, note: metaWarn })
+      const ttftStr = res.ttftMs != null ? `ttft ${(res.ttftMs / 1000).toFixed(1)}s · ` : ''
+      console.log((ok ? green('ok') : red('FALHOU')) + gray(`  ${ttftStr}total ${(res.elapsedMs / 1000).toFixed(1)}s${metaWarn}`))
     } catch (e) {
-      rows.push({ name: c.name, ok: false, checks: [{ desc: `excecao: ${e instanceof Error ? e.message : String(e)}`, pass: false }], ms: 0 })
+      rows.push({ name: c.name, ok: false, checks: [{ desc: `excecao: ${e instanceof Error ? e.message : String(e)}`, pass: false }], ms: 0, ttft: null })
       console.log(red('ERRO') + gray(`  ${e instanceof Error ? e.message : String(e)}`))
     }
   }
 
-  // Tabela final
+  // Tabela final: PASS/FAIL + latencia percebida (ttft) e total, o p50/p95 do cockpit.
   console.log(bold('\n  Resultado\n  ---------'))
   for (const r of rows) {
-    console.log(`  ${r.ok ? green('PASS') : red('FAIL')}  ${r.name.padEnd(12)} ${gray(`${(r.ms / 1000).toFixed(1)}s`)}`)
+    const ttftStr = r.ttft != null ? `ttft ${(r.ttft / 1000).toFixed(1)}s · ` : ''
+    console.log(`  ${r.ok ? green('PASS') : red('FAIL')}  ${r.name.padEnd(12)} ${gray(`${ttftStr}total ${(r.ms / 1000).toFixed(1)}s`)}`)
     if (!r.ok) {
       for (const k of r.checks.filter(x => !x.pass)) console.log(red(`         x ${k.desc}`))
     }
