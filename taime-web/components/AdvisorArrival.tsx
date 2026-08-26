@@ -48,7 +48,7 @@ export function ArchiveDensity({ byYear, isPt }: { byYear: Record<string, number
   return (
     <div className="mt-8 max-w-xl mx-auto">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-2 text-center">
-        {isPt ? `${N} anos de sinais acumulados` : `${N} years of accumulated signals`}
+        {isPt ? `${N} anos de análise acumulada` : `${N} years of accumulated analysis`}
       </p>
       <div className="relative h-[60px]">
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full block" aria-hidden>

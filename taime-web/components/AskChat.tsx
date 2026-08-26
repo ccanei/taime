@@ -272,7 +272,7 @@ export default function AskChat({ siteKey }: { siteKey: string | null }) {
     <div className="xl:grid xl:grid-cols-[minmax(0,300px)_minmax(0,768px)_minmax(0,320px)] xl:gap-6 xl:justify-center xl:items-stretch">
 
     {/* ── COLUNA ESQUERDA (desktop, chegada E conversa): "o acervo" ────────────
-        So agregados: temas por categoria (contagem) + curva de sinais acumulados.
+        So agregados: temas por categoria (contagem) + curva de tendencias acumuladas.
         Sem titulos, periodos, scores ou links. O wrapper e sempre um filho do grid
         (mantem as 3 proporcoes); cada bloco e fail-safe: sem dado, nao aparece. */}
     <aside className="hidden xl:flex xl:flex-col gap-4 h-[calc(100vh-260px)] min-h-[480px] overflow-y-auto pr-1">

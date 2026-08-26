@@ -656,8 +656,8 @@ export default async function LandingPage() {
                 ),
                 title: 'Executive Advisor',
                 desc:  isEn
-                  ? "A strategic advisor that connects years of signals to your company's context."
-                  : 'Um conselheiro estratégico que conecta anos de sinais ao contexto da sua empresa.',
+                  ? "A strategic advisor that connects years of analysis to your company's context."
+                  : 'Um conselheiro estratégico que conecta anos de análise ao contexto da sua empresa.',
                 soon: false,
                 cta:  { href: '/ask', label: isEn ? 'Try it now, no signup' : 'Experimente agora, sem cadastro' },
               },
