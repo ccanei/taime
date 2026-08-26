@@ -349,6 +349,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   // Streaming (SSE): id da mensagem do assistant que esta sendo transmitida agora.
   // Enquanto setado, a bolha de "consultando" some e a mensagem cresce com cursor.
   const [streamingId, setStreamingId] = useState<string | null>(null)
+  // O Sonnet 5 "pensa" antes do 1o token quando a pergunta e densa; ao receber o
+  // heartbeat 'thinking' trocamos o rotulo de espera para "Analisando o arquivo...".
+  const [reasoning, setReasoning] = useState(false)
   // Recuperacao pos-interrupcao: quando o fetch morre (troca de aba durante a
   // geracao), a resposta ja foi persistida no server (commit 3744604); aqui
   // recarregamos a conversa em vez de mostrar erro criptico.
@@ -764,6 +767,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     setMessages(prev => [...prev, ...openingSeed, userMsg])
     setInput('')
     setLoading(true)
+    setReasoning(false)
     setHistoryWarn(false)
     pendingSidRef.current = sid
 
@@ -825,7 +829,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
           if (!ev || !dataLine) continue
           let data: { text?: string; reply?: string; error?: string; used?: number; limit?: number | null; history_saved?: boolean; citations?: Record<string, string>; context_panel?: PanelTurn | null; plan_offer?: PlanOfferData | null }
           try { data = JSON.parse(dataLine) } catch { continue }
-          if (ev === 'delta') {
+          if (ev === 'thinking') {
+            setReasoning(true)   // heartbeat: o Advisor esta raciocinando (ainda sem texto)
+          } else if (ev === 'delta') {
             ensureBubble()
             setContent(content + (data.text ?? ''))
           } else if (ev === 'correction') {
@@ -884,6 +890,7 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     } finally {
       pendingSidRef.current = null
       setStreamingId(null)
+      setReasoning(false)
       setLoading(false)
       inputRef.current?.focus()
     }
@@ -1346,7 +1353,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                           style={{ animationDelay: `${i * 0.15}s` }} />
                       ))}
                     </div>
-                    <span className="text-xs text-zinc-400">{isPt ? 'Consultando o arquivo...' : 'Consulting the archive...'}</span>
+                    <span className="text-xs text-zinc-400">{reasoning
+                      ? (isPt ? 'Analisando o arquivo...' : 'Analyzing the archive...')
+                      : (isPt ? 'Consultando o arquivo...' : 'Consulting the archive...')}</span>
                   </div>
                 )}
               </div>

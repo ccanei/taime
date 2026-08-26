@@ -1269,6 +1269,7 @@ async function callMainStream(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   maxTokens: number,
   onDelta: (text: string) => void,
+  onThinking?: () => void,   // chamado a cada thinking_delta (o Sonnet 5 pensa antes do texto)
 ): Promise<{ ok: boolean; reply: string; stopReason: string | null; usage: Usage | null; errText?: string }> {
   const res = await fetch(ANTHROPIC_API, {
     method: 'POST',
@@ -1324,6 +1325,8 @@ async function callMainStream(
             if (ev.delta?.type === 'text_delta' && ev.delta.text) {
               reply += ev.delta.text
               onDelta(ev.delta.text)
+            } else if (ev.delta?.type === 'thinking_delta') {
+              onThinking?.()
             }
             break
           case 'message_delta':
@@ -1904,16 +1907,31 @@ async function handleChat(req: NextRequest): Promise<Response> {
   // ── Chamada principal (STREAMING de tokens) ────────────────────────────────
   // Telemetria de percepcao: tempo ate o PRIMEIRO token (ttft) e tempo total.
   const _tMain = Date.now()
-  let _ttftMs: number | null = null
+  let _ttftMs: number | null = null           // ate o 1o TEXTO visivel
+  let _firstActivityMs: number | null = null   // ate o 1o sinal (thinking OU texto)
   // Texto EXIBIDO ao cliente (o que foi realmente enviado em deltas). Se o texto
   // final diferir dele (retry, regen, nota de corte, travessao), emitimos 'correction'.
   let streamedRaw = ''
-  const first = await callMainStream(system, conversationMessages, maxTokens, (t) => {
-    if (_ttftMs === null) _ttftMs = Date.now() - _tMain
-    streamedRaw += t
-    send('delta', { text: t })
-  })
-  logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(first.usage), latency_ms: Date.now() - _tMain, success: first.ok, error_code: first.ok ? null : 'api_error', user_id: user.id, meta: { step: 'main', session_id: sessionId, ttft_ms: _ttftMs, streamed: true } })
+  // O Sonnet 5 pensa (adaptive thinking) antes do texto quando o prompt e denso:
+  // isso atrasa o 1o token visivel em dezenas de segundos. Nao expomos o raciocinio
+  // bruto (violaria a confidencialidade de fontes), mas emitimos um heartbeat throttled
+  // de 'thinking' para: (1) o front mostrar "Analisando o arquivo..." (nunca tela
+  // parada), (2) manter a conexao SSE viva durante o pensamento longo.
+  let _lastThinkPing = 0
+  const first = await callMainStream(system, conversationMessages, maxTokens,
+    (t) => {
+      if (_firstActivityMs === null) _firstActivityMs = Date.now() - _tMain
+      if (_ttftMs === null) _ttftMs = Date.now() - _tMain
+      streamedRaw += t
+      send('delta', { text: t })
+    },
+    () => {
+      if (_firstActivityMs === null) _firstActivityMs = Date.now() - _tMain
+      const now = Date.now()
+      if (now - _lastThinkPing >= 1500) { _lastThinkPing = now; send('thinking', {}) }
+    },
+  )
+  logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(first.usage), latency_ms: Date.now() - _tMain, success: first.ok, error_code: first.ok ? null : 'api_error', user_id: user.id, meta: { step: 'main', session_id: sessionId, ttft_ms: _ttftMs, first_activity_ms: _firstActivityMs, streamed: true } })
   if (!first.ok) {
     console.error('Anthropic API error:', first.errText)
     send('error', { error: 'AI service error', code: 'ai_service_error' })
