@@ -170,13 +170,22 @@ async function main(): Promise<void> {
   let trends = (trendData ?? [])
   if (trends.length === 0) { console.error('Sem trends no periodo.'); process.exit(1) }
 
-  // exclui as usadas nos ultimos 4 posts (tolerante a tabela ausente)
-  const mp = await rest<Array<{ trend_id: string | null }>>('marketing_posts?select=trend_id&order=created_at.desc&limit=4')
+  // exclui as usadas nos ultimos 4 posts (tolerante a tabela ausente). A janela
+  // inclui posts source='manual' (a query nao filtra por source): considera tanto
+  // trend_id quanto trend_title, pois um post manual pode ter so o titulo do tema
+  // preenchido, sem trend_id.
+  const mp = await rest<Array<{ trend_id: string | null; trend_title: string | null }>>(
+    'marketing_posts?select=trend_id,trend_title&order=created_at.desc&limit=4')
   const tableMissing = mp.status === 404 || mp.status === 400
-  const recentUsed = new Set((Array.isArray(mp.data) ? mp.data : []).map(x => x.trend_id).filter(Boolean) as string[])
-  const pool = trends.filter(t => !recentUsed.has(t.id))
+  const recentRows = Array.isArray(mp.data) ? mp.data : []
+  const norm = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase()
+  const recentUsedIds    = new Set(recentRows.map(x => x.trend_id).filter(Boolean) as string[])
+  const recentUsedTitles = new Set(recentRows.map(x => norm(x.trend_title)).filter(Boolean))
+  const isRecentlyUsed = (t: TrendRow): boolean =>
+    recentUsedIds.has(t.id) || recentUsedTitles.has(norm(t.title_pt_br)) || recentUsedTitles.has(norm(t.title_en))
+  const pool = trends.filter(t => !isRecentlyUsed(t))
   trends = pool.length > 0 ? pool : trends
-  console.log(`Trends candidatas: ${trends.length} (excluidas ${recentUsed.size} recentes)`)
+  console.log(`Trends candidatas: ${trends.length} (janela recente: ${recentUsedIds.size} por id, ${recentUsedTitles.size} por titulo)`)
 
   // total de posts p/ alternar o angulo
   const cnt = await rest<Array<{ id: string }>>('marketing_posts?select=id')

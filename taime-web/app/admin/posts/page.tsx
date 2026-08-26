@@ -5,19 +5,51 @@ import { AdminHeader, StatCard, fmtInt } from '@/components/admin/kit'
 import ReloadButton from '@/components/admin/ReloadButton'
 import PostsAdmin, { type MarketingPost } from './PostsAdmin'
 
+const FULL_SELECT =
+  'id, created_at, period, trend_id, trend_title, question, advisor_response, post_pt, post_en, status, published_at, published_pt, published_en, source'
+const LEGACY_SELECT =
+  'id, created_at, period, trend_id, trend_title, question, advisor_response, post_pt, post_en, status, published_at'
+
 async function getPosts(): Promise<{ rows: MarketingPost[]; missing: boolean }> {
   const supabase = createSupabaseService()
-  const { data, error } = await supabase
+
+  let data: unknown = null
+  let error: { code?: string; message?: string } | null = null
+
+  const full = await supabase
     .from('marketing_posts')
-    .select('id, created_at, period, trend_id, trend_title, question, advisor_response, post_pt, post_en, status, published_at')
+    .select(FULL_SELECT)
     .order('created_at', { ascending: false })
     .limit(200)
+
+  // Migracao dos campos publicados (published_pt/en, source) ainda nao rodada:
+  // cai no schema legado para a pagina seguir funcionando sem esses campos.
+  const columnMissing = full.error &&
+    (full.error.code === '42703' || /column .* does not exist/i.test(full.error.message ?? ''))
+  if (columnMissing) {
+    const legacy = await supabase
+      .from('marketing_posts')
+      .select(LEGACY_SELECT)
+      .order('created_at', { ascending: false })
+      .limit(200)
+    data = legacy.data; error = legacy.error
+  } else {
+    data = full.data; error = full.error
+  }
+
   if (error) {
     // Tabela ainda nao criada (migracao pendente): UI mostra aviso, nao quebra.
     const missing = error.code === '42P01' || /relation|does not exist/i.test(error.message ?? '')
     return { rows: [], missing }
   }
-  return { rows: (data as MarketingPost[]) ?? [], missing: false }
+
+  const rows = ((data as Partial<MarketingPost>[]) ?? []).map(r => ({
+    ...r,
+    published_pt: r.published_pt ?? null,
+    published_en: r.published_en ?? null,
+    source:       r.source ?? 'machine',
+  })) as MarketingPost[]
+  return { rows, missing: false }
 }
 
 export default async function AdminPostsPage() {
