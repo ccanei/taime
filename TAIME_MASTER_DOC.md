@@ -37,7 +37,7 @@ A pergunta que originou o TAIME foi simples: e se fosse possível pegar o histó
 Notícias das últimas 24h das 110 fontes globais validadas, processadas por IA:
 
 - Título + resumo de 2 linhas
-- Categoria (IA, Cloud, Cybersecurity, Market, Infrastructure, Regulation, Fintech)
+- Categoria: exatamente uma de 14 categorias PRÓPRIAS do Radar (IA, Cloud, Cybersecurity, Regulation, Infrastructure, Market, Fintech, Data, Robotics, Quantum, AI Governance, Networks, Automation, Healthtech). Expandidas de 7 para 14 em 2026-08-26 para acompanhar a granularidade do fluxo de notícia. São orientadas a notícia do dia e INDEPENDENTES das 14 categorias de trend dos relatórios: não espelham a taxonomia dos relatórios. O Haiku escolhe uma por sinal e nunca cria rótulo fora da lista.
 - Fonte por categoria (nunca por nome)
 - Link para a fonte original
 - Atualizado automaticamente 2x ao dia (07h e 14h BRT) via Vercel Cron

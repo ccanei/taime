@@ -85,7 +85,7 @@ Return a JSON array with objects:
   "title_en": "English title",
   "summary_pt": "2-line summary in Portuguese",
   "summary_en": "2-line summary in English",
-  "category": one of: "IA","Cloud","Cybersecurity","Market","Infrastructure","Regulation","Fintech",
+  "category": exactly one of: "IA","Cloud","Cybersecurity","Regulation","Infrastructure","Market","Fintech","Data","Robotics","Quantum","AI Governance","Networks","Automation","Healthtech" (choose the single closest label; never invent a category outside this list),
   "relevance": one of: "high","medium","low",
   "source_category": one of: "technology publication","research institute","consulting firm","venture capital firm","academic research center","regulatory body",
   "url": "original URL",

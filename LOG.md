@@ -2,29 +2,95 @@
 
 ---
 
-## [2026-08-17] - Producao ago/2026 (A) + experimento de coleta hibrida (B), paginacao PostgREST
+## [2026-08-26] - Radar: taxonomia de classificacao expandida de 7 para 14 categorias
+
+O Haiku que classifica cada sinal do Radar escolhia entre 7 categorias (IA, Cloud,
+Cybersecurity, Market, Infrastructure, Regulation, Fintech). Ficou defasado: temas
+novos (dados, robotica, quantum, governanca de IA, redes, automacao, saude digital)
+caiam em rotulos genericos, geralmente "Market". Expandido para 14:
+
+IA, Cloud, Cybersecurity, Regulation, Infrastructure, Market, Fintech, Data,
+Robotics, Quantum, AI Governance, Networks, Automation, Healthtech.
+
+**Razao.** Alinhar a granularidade do Radar ao fluxo de noticia do dia. As categorias
+do Radar sao PROPRIAS do Radar (orientadas a noticia) e INDEPENDENTES das 14 categorias
+de trend dos relatorios: nao espelham a taxonomia dos relatorios, sao listas distintas
+que por acaso tambem tem 14 itens.
+
+**O que mudou.**
+- `collect-radar.ts` (coletor manual): `VALID_CATEGORIES` (fallback continua 'Market')
+  e o prompt do Haiku. Instrucao reforcada: escolher exatamente uma, so da lista, e
+  usar o rotulo mais proximo em vez de inventar quando nao encaixar.
+- `taime-web/app/api/cron/radar/route.ts` (caminho de producao, roda 2x/dia via Vercel
+  Cron): mesmo prompt atualizado para as 14. Sem isso, o cron diario continuaria
+  emitindo so 7 categorias e anularia a mudanca.
+- UI: mapa `CATEGORY_COLORS` estendido para as 14 em `components/RadarFeed.tsx` e
+  `app/radar/page.tsx`. Cores novas: Data (cyan), Robotics (slate), Quantum (purple),
+  AI Governance (indigo), Networks (teal), Automation (amber), Healthtech (pink). O
+  badge segue exibindo o token da categoria cru (sem traducao PT/EN, como as 7 antigas)
+  e o fallback `bg-zinc-100 text-zinc-600` permanece para qualquer valor legado.
+
+**Sem migracao.** `radar_signals.category` e `TEXT NOT NULL` sem CHECK constraint
+(`add-radar-table.sql`), entao os novos rotulos entram sem alterar o schema. Coleta,
+cron, briefing e newsletter inalterados: a mudanca e so na taxonomia de classificacao
+e onde ela e referenciada.
+
+## [2026-08-17] - Producao ago/2026 (A) + experimento de coleta hibrida (B, REJEITADO) + paginacao PostgREST (commit 95dca7c)
 
 Rodada da 1a quinzena de agosto/2026 em producao e, sobre a mesma janela 1-15,
 um experimento de metodo de coleta hibrido num periodo-sombra. Ambos os runs sem
 publicar (NO_AUTO_PUBLISH=1, tudo pending_review, published_at=null). Geracao em
 Sonnet 4.6 (periodo presente, sem risco de hindsight).
 
-- **PERIODO-EXPERIMENTO A LIMPAR: `2026-08-08`** (run B, sombra). NAO e producao.
-  Foi gravado com STORE_KEY cru `2026-08-08` (janela normalizada 1-15 de agosto),
-  isolado de `2026-08-01`. Limpar signals, signal_clusters e reports desse periodo
-  quando o experimento for concluido. NAO tocar em `2026-08-01` (producao A) depois
-  de gerado.
 - **A (producao):** `PERIOD=2026-08-01`, modo full (site:dominio + TOPIC_BY_CATEGORY),
-  pipeline completo collect, filter, analyze, generate, validate.
-- **B (sombra):** `PERIOD=2026-08-08 COLLECT_MODE=hybrid`, mesmo pipeline. Modo hybrid
-  novo no collect-signals: 2 passadas Serper por fonte (topic = full; open = site:dominio
-  puro), uniao com dedup por URL, metadata grava a passada de origem (pass/passes).
-  Default full segue byte-identico ao de hoje.
-- **Paginacao PostgREST (remove o cap de 1000):** filter-signals e analyze-signals
-  passam a ler os signals do periodo via dbGetAll (paginas de 1000 por limit/offset
-  com order=id.asc estavel, acumulando ate a pagina < 1000). generate-report e
-  validate-report ja liam signals por chunks de 100 ids (cap-safe); signal_clusters
-  por periodo e estruturalmente pequeno (corte de 18 no analyze).
+  pipeline completo collect, filter, analyze, generate, validate. 3 reports, 18 trends.
+- **B (sombra):** `PERIOD=2026-08-08 COLLECT_MODE=hybrid`, mesmo pipeline. 2 reports, 12 trends.
+  Modo hybrid: 2 passadas Serper por fonte (topic = full; open = site:dominio puro),
+  uniao com dedup por URL, metadata grava a passada de origem (pass/passes).
+
+### Resultado do comparativo A vs B (numeros finais)
+- **Sinais (pos-dedup):** A=823 (ruido 21.7%)  vs  B=1899 (ruido 41.0%). B = 2,3x o volume.
+- **B por passada:** so topic=614, so open=1071, nas duas=214. Ruido topic 24.0% vs
+  ruido open **50.1%** (a passada aberta praticamente dobra o ruido).
+- **Clusters (formados -> sobreviventes ao corte de 18):** A 20->18  vs  B 12->12.
+- **Densidade (sinais/cluster):** A max 64 / mediana 23 ; B max 110 / mediana 68 (o open
+  so adensa os temas ja dominantes, nao abre temas novos).
+- **Categorias:** B nao trouxe nenhuma que A nao tivesse; A tem 4 que B perdeu
+  (Automation, Cloud, Market, Observability).
+- **theme_slug:** B trouxe **1** novo (`ia-fisica-robotica-implantacao-comercial`) e perdeu **6**
+  (automacao-forca-trabalho-competencias, automacao-inteligente-rpa-ia-generativa,
+  fragmentacao-global-privacidade-dados, kubernetes-edge-cloud-native,
+  observabilidade-ia-producao, veiculos-autonomos-mobilidade-ia).
+- **Validacao:** A verdicts [fail, fail, fail] com `temporal_breach=2` (ambos no report #2,
+  trend rank 3, campo then_now_next.next PT+EN; falha de GERACAO, nenhum sinal do cluster
+  datado apos 15/08). B verdicts [fail, needs_review], `temporal_breach=0`.
+- **Custo:** Serper A=175 chamadas / B=350. Anthropic A=$6.95 / B=$8.59 (B ~1,24x).
+
+### DECISAO: hibrido REJEITADO (fica fora do main)
+O metodo hibrido troca precisao e amplitude por volume e profundidade nos temas ja
+dominantes: com **2,3x o volume** formou **menos** clusters (12 vs 18) e cobriu **menos**
+temas, surfando **1 tema novo contra 6 perdidos**, com a **passada aberta a 50% de ruido**,
+a custo Serper 2x e Anthropic 1,24x. Nao compensa para descobrir trends novas. Os modos
+`minimal` e `hybrid` do `collect-signals.ts` NAO entram no main (ficam so no working tree).
+
+### Limpeza do experimento (feita)
+Periodo `2026-08-08` removido em ordem FK-safe (report_trends 12->0, reports 2->0,
+signal_clusters 12->0, signals 1899->0), com guarda de que `2026-08-01` seguiu intacto
+(823 signals / 18 clusters / 3 reports) a cada etapa. Producao A intacta.
+
+### Paginacao PostgREST (COMMITADO: 95dca7c, push main)
+Remove o cap de 1000 linhas do PostgREST na leitura de signals por periodo:
+`filter-signals.ts` e `analyze-signals.ts` passam a usar `dbGetAll` (paginas de 1000 por
+limit/offset com `order=id.asc` estavel, acumulando ate a pagina < 1000). `generate-report`
+e `validate-report` ja liam signals por chunks de 100 ids (cap-safe); `signal_clusters` por
+periodo e estruturalmente pequeno (corte de 18 no analyze). O commit contem SO estes 2
+arquivos; `collect-signals.ts` (STORE_KEY ja em HEAD; hybrid/minimal rejeitados) e
+`generate-report.ts` (drift do run de julho: Sonnet + temperature; reverter p/ Opus depois)
+ficaram fora.
+
+### Nota de infra: contagem de fontes ativas
+`sources.active = true` = **175** hoje (178 no total). A documentacao diz **159**: defasada
+em +16. Os runs A e B usaram as 175 reais. Alinhar a doc (159 -> 175) numa proxima passada.
 
 ## [2026-08-10] - Newsletter semanal com layout editorial diagramado (lead + grafico por tema + chips/pull quotes)
 

@@ -1,0 +1,455 @@
+{
+  "2026-01-08": [
+    {
+      "id": "514f3b6d-f340-47bc-ba83-3f73a123d768",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "2ba3104d-7682-478c-a6f8-99fe79d60a62",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "80c35271-067f-42ee-82b9-ad187a189a5b",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-01-23": [
+    {
+      "id": "a7e7230f-5c9a-4575-b0a0-645674e90280",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "bc73c9c9-0070-49a2-895c-5f88ad88a87b",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 1,
+      "warning": 0,
+      "info": 0,
+      "flagIds": [
+        "source_name"
+      ]
+    },
+    {
+      "id": "946f4430-12a5-4a07-a689-b1d4bf701ff1",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-02-08": [
+    {
+      "id": "af6240a7-9cf6-48fd-bbd7-130696303c7a",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "009e2f55-7a35-41f2-a95d-24348e12704e",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "3ec5a044-e559-4f82-ac5b-e53870cdf596",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-02-23": [
+    {
+      "id": "9d00279b-d8c5-4cf1-a94d-db24fcc2ef76",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "6095fee6-b7b2-48c3-ab7e-d46361883fe4",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "19e98cd8-0c19-411d-8199-9d344b6c7d76",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 1,
+      "warning": 0,
+      "info": 0,
+      "flagIds": [
+        "temporal_breach"
+      ]
+    }
+  ],
+  "2026-03-08": [
+    {
+      "id": "a3deb211-8451-43dd-8b62-1c29a7ee194a",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "51f7511f-3dd5-45e3-8349-136f0579085f",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "fb74d736-ea51-4916-a8d2-3ce621d27657",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-03-23": [
+    {
+      "id": "df2492a2-7488-4200-8c9a-ec1817010483",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "e1da5845-dcba-4b53-b538-131197b98125",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-04-08": [
+    {
+      "id": "25cee05b-e089-429a-b7ae-79e444afec13",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 1,
+      "warning": 0,
+      "info": 0,
+      "flagIds": [
+        "temporal_breach"
+      ]
+    },
+    {
+      "id": "62e9195d-bfc2-43eb-8212-495826c93f85",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 1,
+      "warning": 0,
+      "info": 0,
+      "flagIds": [
+        "temporal_breach"
+      ]
+    },
+    {
+      "id": "4e7c27f4-a2db-43c2-8209-bdc75ea6f0ce",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-04-23": [
+    {
+      "id": "01571914-3873-4d0a-9c7a-ef014b46e6fd",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 3,
+      "warning": 16,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "temporal_breach",
+        "temporal_breach",
+        "unsupported_claim"
+      ]
+    },
+    {
+      "id": "5c3eef20-72ab-44bc-9577-c38a043b60c2",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "stale",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    }
+  ],
+  "2026-05-08": [
+    {
+      "id": "a89a8305-5ef2-4480-b862-aa1ec0634e58",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 13,
+      "warning": 8,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "unsupported_claim",
+        "unsupported_claim",
+        "unsupported_claim",
+        "unsupported_claim",
+        "unsupported_claim"
+      ]
+    },
+    {
+      "id": "53bbad3a-b737-4f7d-8be6-c262513edbea",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 2,
+      "warning": 1,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "unsupported_claim",
+        "unsupported_claim"
+      ]
+    },
+    {
+      "id": "4acdab89-d00d-4075-bcd2-a753f8bea71b",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 1,
+      "warning": 2,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "partially_supported",
+        "source_name"
+      ]
+    }
+  ],
+  "2026-05-23": [
+    {
+      "id": "ee2b1433-96e5-4018-9203-1a796978f154",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 5,
+      "warning": 10,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "source_name",
+        "unsupported_claim",
+        "unsupported_claim",
+        "unsupported_claim",
+        "unsupported_claim"
+      ]
+    },
+    {
+      "id": "58c3be1c-5347-486b-9d11-3b8d0da8ddbb",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "766831c8-d825-4e7a-88f8-add2985af696",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 10,
+      "warning": 9,
+      "info": 0,
+      "flagIds": [
+        "monetary",
+        "monetary",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "source_name",
+        "source_name",
+        "source_name",
+        "source_name",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach"
+      ]
+    }
+  ],
+  "2026-06-08": [
+    {
+      "id": "4c52962e-934b-48b8-bd7e-c6c33470de18",
+      "report_number": 1,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 5,
+      "warning": 7,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "source_name",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach"
+      ]
+    },
+    {
+      "id": "91ac3af0-6487-47cb-b338-53de41cb8976",
+      "report_number": 2,
+      "status": "pending_review",
+      "verdict": "pass",
+      "blocking": 0,
+      "warning": 0,
+      "info": 0,
+      "flagIds": []
+    },
+    {
+      "id": "e4a1a6ce-33fe-4ced-9b1e-6250abfe5ced",
+      "report_number": 3,
+      "status": "pending_review",
+      "verdict": "fail",
+      "blocking": 10,
+      "warning": 3,
+      "info": 0,
+      "flagIds": [
+        "partially_supported",
+        "partially_supported",
+        "partially_supported",
+        "source_name",
+        "source_name",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "temporal_breach",
+        "unsupported_claim"
+      ]
+    }
+  ]
+}

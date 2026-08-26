@@ -144,12 +144,21 @@ const TOPIC_BY_CATEGORY: Record<string, string> = {
 
 // COLLECT_MODE controla a montagem da query da coleta.
 //   'full'    (default): site:dominio + termos do TOPIC_BY_CATEGORY (metodo A atual).
-//   'minimal' (experimento B): apenas site:dominio, sem os termos de topico. O
-//             filtro de data (cd_min/cd_max em searchSerper) e o isSignalWithinPeriod
-//             continuam intactos; muda SO a query textual.
-// Sem a env (ou com qualquer valor != 'minimal') o comportamento e identico ao de hoje.
+//   'minimal' (experimento): apenas site:dominio, sem os termos de topico.
+//   'hybrid'  (experimento B): DUAS passadas Serper por fonte, com uniao/dedup:
+//             passada 1 = full (site:dominio + TOPIC_BY_CATEGORY),
+//             passada 2 = open (site:dominio puro, sem termos).
+//             Ambas com o mesmo filtro de data (cd_min/cd_max) e o mesmo
+//             isSignalWithinPeriod. Cada sinal grava em metadata de qual(is)
+//             passada(s) veio (pass / passes).
+// O filtro de data e o isSignalWithinPeriod continuam intactos em todos os modos;
+// muda SO a query textual (e, no hybrid, o numero de chamadas). Sem a env (ou com
+// qualquer valor != 'minimal'/'hybrid') o comportamento e identico ao de hoje.
 const COLLECT_MODE = (process.env.COLLECT_MODE ?? 'full').toLowerCase();
 const COLLECT_MINIMAL = COLLECT_MODE === 'minimal';
+const COLLECT_HYBRID  = COLLECT_MODE === 'hybrid';
+
+type CollectPass = 'topic' | 'open';
 
 // Extrai o dominio de forma tolerante: aceita url sem esquema (ex.: "fortune.com",
 // como alguns registros novos da tabela sources) prefixando https:// antes de
@@ -325,6 +334,104 @@ async function collectSource(source: Source): Promise<SourceResult> {
   return { collected, duplicates, errors, outOfPeriod };
 }
 
+// Modo hibrido (COLLECT_MODE=hybrid): duas passadas Serper por fonte.
+//   passada 1 (topic): site:dominio + TOPIC_BY_CATEGORY (identica ao full).
+//   passada 2 (open):  site:dominio puro, sem termos.
+// Uniao dos resultados com dedup por URL: dentro da fonte (map local), entre
+// fontes e contra o periodo (urlExists no banco, ja que gravamos incrementalmente).
+// Cada sinal registra em metadata a passada de origem (pass) e todas as passadas
+// em que apareceu (passes), essencial para o relatorio comparativo.
+async function collectSourceHybrid(source: Source): Promise<SourceResult> {
+  let collected = 0, duplicates = 0, errors = 0, outOfPeriod = 0;
+  const domain = sourceDomain(source.url);
+  const topic  = TOPIC_BY_CATEGORY[source.category] ?? 'technology AI trends innovation';
+  const passSpecs: Array<{ pass: CollectPass; query: string }> = [
+    { pass: 'topic', query: `site:${domain} ${topic}` },
+    { pass: 'open',  query: `site:${domain}` },
+  ];
+
+  // Uniao por URL dentro da fonte, marcando de quais passadas cada URL veio.
+  const byUrl = new Map<string, { item: SerperOrganic; passes: CollectPass[]; query: string }>();
+  for (let p = 0; p < passSpecs.length; p++) {
+    const { pass, query } = passSpecs[p];
+    let results: SerperOrganic[];
+    try {
+      results = await searchSerper(query);
+    } catch (err) {
+      console.error(`  ✗ Serper falhou (${pass}): ${err}`);
+      errors++;
+      results = [];
+    }
+    for (const item of results) {
+      if (!item.link) continue;
+      const existing = byUrl.get(item.link);
+      if (existing) {
+        if (!existing.passes.includes(pass)) existing.passes.push(pass);
+      } else {
+        byUrl.set(item.link, { item, passes: [pass], query });
+      }
+    }
+    // Mantem o delay de 700ms entre chamadas Serper (aqui, entre as duas passadas).
+    if (p < passSpecs.length - 1) await sleep(cfg.serperDelayMs);
+  }
+
+  for (const { item, passes, query } of byUrl.values()) {
+    if (!isSignalWithinPeriod(item.date, periodInfo.start, periodInfo.end)) {
+      const shortTitle = (item.title ?? '').slice(0, 60);
+      console.log(`    ⏭ fora do período: ${item.date} — ${shortTitle}`);
+      outOfPeriod++;
+      continue;
+    }
+
+    try {
+      if (await urlExists(item.link)) { duplicates++; continue; }
+
+      const fc = await fetchContent(item.link, item.snippet ?? null);
+
+      if (fc.flags.length) {
+        console.log(`\n      ⚠ contaminação [${fc.contentSource}] ${item.link.slice(0, 70)} :: ${fc.flags.join(' ; ')}`);
+      }
+
+      // topic tem prioridade como origem primaria (passada 1 roda antes).
+      const primaryPass: CollectPass = passes.includes('topic') ? 'topic' : 'open';
+
+      const row: SignalRow = {
+        source_id: source.id,
+        period:    STORE_KEY,
+        title:     item.title,
+        url:       item.link,
+        content:   fc.content,
+        summary:   null,
+        metadata: {
+          snippet:        item.snippet,
+          position:       item.position,
+          published_date: item.date ?? null,
+          query_used:     query,
+          period_label:   periodInfo.labelPt,
+          period_type:    periodInfo.type,
+          period_start:   periodInfo.start.toISOString().slice(0, 10),
+          period_end:     periodInfo.end.toISOString().slice(0, 10),
+          is_historical:  isHistorical(periodInfo),
+          content_source: fc.contentSource,
+          content_flags:  fc.flags,
+          future_years:   fc.futureYears,
+          // Modo hibrido: proveniencia da(s) passada(s) de coleta.
+          pass:           primaryPass,
+          passes:         [...passes].sort(),
+        },
+      };
+
+      await dbPost('signals', row);
+      collected++;
+    } catch (err) {
+      console.error(`    ✗ ${item.link}: ${err}`);
+      errors++;
+    }
+  }
+
+  return { collected, duplicates, errors, outOfPeriod };
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -343,7 +450,11 @@ async function main(): Promise<void> {
   console.log(`Label:      ${periodInfo.labelPt}`);
   console.log(`Intervalo:  ${periodInfo.start.toISOString().slice(0, 10)} → ${periodInfo.end.toISOString().slice(0, 10)}`);
   console.log(`Histórico:  ${isHistorical(periodInfo) ? 'sim (filtro de data Serper)' : 'não (último mês)'}`);
-  console.log(`Modo query: ${COLLECT_MINIMAL ? 'minimal (site:dominio, sem TOPIC_BY_CATEGORY)' : 'full (site:dominio + topicos)'}\n`);
+  console.log(`Modo query: ${
+    COLLECT_HYBRID  ? 'hybrid (2 passadas por fonte: topic + open, uniao/dedup por URL)'
+    : COLLECT_MINIMAL ? 'minimal (site:dominio, sem TOPIC_BY_CATEGORY)'
+    : 'full (site:dominio + topicos)'
+  }\n`);
 
   let sources: Source[];
   try {
@@ -368,7 +479,7 @@ async function main(): Promise<void> {
     const label  = `[${String(i + 1).padStart(2, '0')}/${sources.length}] ${source.name}`;
     process.stdout.write(`${label.padEnd(45, '.')} `);
 
-    const result = await collectSource(source);
+    const result = COLLECT_HYBRID ? await collectSourceHybrid(source) : await collectSource(source);
     totalCollected   += result.collected;
     totalDuplicates  += result.duplicates;
     totalErrors      += result.errors;

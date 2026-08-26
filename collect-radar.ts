@@ -75,7 +75,15 @@ const SOURCE_CATEGORY_LABELS: Record<string, string> = {
   security:   'cybersecurity intelligence firm',
 };
 
-const VALID_CATEGORIES = ['IA', 'Cloud', 'Cybersecurity', 'Fintech', 'Infrastructure', 'Regulation', 'Market'];
+// Categorias PRÓPRIAS do Radar (orientadas a noticia do dia), independentes das
+// 14 categorias de trend dos relatorios. Expandidas de 7 para 14 em 2026-08-26
+// para acompanhar a granularidade do fluxo de noticia sem forcar temas novos em
+// rotulos genericos. O Haiku deve escolher EXATAMENTE UMA por sinal e nunca sair
+// desta lista; sinais que nao encaixam claramente vao ao rotulo mais proximo.
+const VALID_CATEGORIES = [
+  'IA', 'Cloud', 'Cybersecurity', 'Regulation', 'Infrastructure', 'Market', 'Fintech',
+  'Data', 'Robotics', 'Quantum', 'AI Governance', 'Networks', 'Automation', 'Healthtech',
+];
 
 // ─── Supabase REST ────────────────────────────────────────────────────────────
 
@@ -155,7 +163,7 @@ Generate JSON with exactly these fields:
   "title_en": "title in English (max 100 chars)",
   "summary_pt": "resumo em português, 2-3 linhas, focado no impacto estratégico",
   "summary_en": "summary in English, 2-3 lines, focused on strategic impact",
-  "category": "one of: IA | Cloud | Cybersecurity | Fintech | Infrastructure | Regulation | Market",
+  "category": "exactly one of: IA | Cloud | Cybersecurity | Regulation | Infrastructure | Market | Fintech | Data | Robotics | Quantum | AI Governance | Networks | Automation | Healthtech",
   "relevance": "high | medium | low (based on strategic impact for technology decision-makers)",
   "published_at": "ISO date string from URL or snippet if available, else null"
 }
@@ -163,7 +171,7 @@ Generate JSON with exactly these fields:
 RULES:
 - Only include facts explicitly present in the title and snippet
 - Never invent information not in the source material
-- category must be exactly one of the listed options
+- category: choose EXACTLY ONE label, and ONLY from the list above. If a signal does not clearly fit, pick the closest label instead of inventing a new one. Never return a category outside the list
 - relevance: high = immediate executive action needed; medium = monitor closely; low = informational
 - Return ONLY the JSON object, no markdown`;
 
