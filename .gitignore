@@ -62,3 +62,15 @@ restore-published-at.ts
 test-judge-*.sh
 pipeline-2*.sh
 check-state-*.ts
+
+# Probes e rascunhos de validacao/diagnostico LOCAL (nunca versionar). Ferramentas
+# ad-hoc rodadas via ts-node/node durante uma entrega; ficam so no disco do dev, para
+# o git status ficar limpo apos qualquer entrega, sem precisar apagar nada.
+probe-*.ts
+zz-*.ts
+zz-*.mjs
+_*.ts
+_*.mjs
+*-tmp.ts
+*-diag.ts
+*-evidence.ts

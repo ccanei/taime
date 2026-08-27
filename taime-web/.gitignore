@@ -8,5 +8,14 @@ out/
 .DS_Store
 tsconfig.tsbuildinfo
 .claude/
-.claude/
-.claude/
+
+# Probes e rascunhos de validacao/diagnostico LOCAL (nunca versionar): scratch files
+# rodados durante uma entrega. Ficam so no disco do dev.
+probe-*.ts
+zz-*.ts
+zz-*.mjs
+_*.ts
+_*.mjs
+*-tmp.ts
+*-diag.ts
+*-evidence.ts
