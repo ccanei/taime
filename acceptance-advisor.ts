@@ -312,7 +312,12 @@ const CASES: Canon[] = [
     message: 'quais criterios para escolher uma ferramenta de observabilidade?',
     assert: (r) => [
       { desc: 'sem erro (HTTP 200, reply presente)',              pass: httpOk(r) },
-      { desc: 'responde em < 60s',                                pass: r.elapsedMs < 60_000 },
+      // Sob o transporte SSE o elapsed e o TEMPO TOTAL da geracao, que inclui o
+      // raciocinio silencioso (adaptive) do Sonnet 5 e varia ~30-62s ate para
+      // perguntas taticas. O bound sobe de 60s -> 90s: ainda pega lentidao
+      // patologica sem flakear na fronteira. Tatico vs estrategico ja e discriminado
+      // por 'sem espinha no metadata'; a latencia percebida vive no ttft (reportado).
+      { desc: 'responde em < 90s (total, transporte SSE)',        pass: r.elapsedMs < 90_000 },
       { desc: 'sem espinha no metadata (nao-estrategica)',        pass: (r.meta?.spine_theme_slugs?.length ?? 0) === 0 },
       { desc: 'texto > 400 chars',                                pass: r.reply.length > 400 },
     ],
