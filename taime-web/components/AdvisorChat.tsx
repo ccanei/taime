@@ -741,14 +741,33 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
   async function handleSend(textArg?: string) {
     const text = (textArg ?? input).trim()
     if (!text || loading || blocked) return
+    // Enviar A PARTIR DO INICIO (aba Home) com uma conversa ja carregada abre SEMPRE um
+    // novo contexto (nova sessao): o Inicio e ponto de partida neutro, nunca continuacao
+    // implicita da ultima conversa aberta (o bootstrap carrega a mais recente em
+    // sessionId, e sem isto o envio caia nela). Quando o contexto atual JA e uma sessao
+    // nova e vazia (sem historico nem mensagens, ex: abertura proativa da 1a conversa),
+    // continua nela para nao perder a abertura. Dentro da Conversa, segue a sessao aberta.
+    const startFresh = view === 'home' && (hasHistory || messages.length > 0)
+
     if (view !== 'chat') setView('chat')   // enviar sempre leva a conversa
 
     // Chip ou envio real: a abertura sai de cena (a conversa começou).
     clearIdle()
     setOpeningSuppressed(true)
 
-    const sid = sessionId || generateSessionId()
-    if (!sessionId) setSessionId(sid)
+    let sid: string
+    if (startFresh) {
+      sid = generateSessionId()
+      sessionIdRef.current = sid
+      setSessionId(sid)
+      setHasHistory(false)
+      setLatestPanel(null)               // "Nesta resposta" e por turno: novo contexto zera
+      openingFetchedRef.current = true   // envio direto do Inicio: sem abertura proativa aqui
+      setOpening(null)
+    } else {
+      sid = sessionId || generateSessionId()
+      if (!sessionId) setSessionId(sid)
+    }
 
     const userMsg: Message = {
       id:         crypto.randomUUID(),
@@ -760,11 +779,12 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     // Se a conversa comeca com a abertura proativa, ela vira a PRIMEIRA mensagem do
     // transcript (o servidor ja a persistiu como assistant), para permanecer visivel
     // depois do 1o envio, nao so no bloco pre-envio. Na recarga, vem do advisory_memory.
-    const openingSeed: Message[] = (messages.length === 0 && !hasHistory && opening)
+    // Em novo contexto (startFresh) nao ha abertura, entao nao ha seed.
+    const openingSeed: Message[] = (!startFresh && messages.length === 0 && !hasHistory && opening)
       ? [{ id: crypto.randomUUID(), role: 'assistant', content: opening.text, created_at: new Date(Date.now() - 1000).toISOString() }]
       : []
 
-    setMessages(prev => [...prev, ...openingSeed, userMsg])
+    setMessages(prev => startFresh ? [userMsg] : [...prev, ...openingSeed, userMsg])
     setInput('')
     setLoading(true)
     setReasoning(false)
