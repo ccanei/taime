@@ -9,7 +9,6 @@ import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext, type AssessmentSummary } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
-import ActivePlansPanel from '@/components/ActivePlansPanel'
 import { type PlanRecord } from '@/lib/advisor-plan'
 import { LineChart, Target, MessageSquareText, MessageCircle, type LucideIcon } from 'lucide-react'
 
@@ -1231,16 +1230,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
             espaco; em telas curtas cresce e rola sem cortar o topo. */}
         <div className={`flex-1 overflow-y-auto bg-zinc-50 ${view === 'home' ? '' : 'hidden'}`}>
           <div className="min-h-full flex flex-col justify-center">
-            {activePlans.length > 0 && (
-              <div className="w-full max-w-2xl mx-auto px-2 pt-6">
-                <ActivePlansPanel
-                  plans={activePlans}
-                  isPt={isPt}
-                  title={isPt ? 'Planos de ação' : 'Action plans'}
-                  currentSessionId={null}
-                />
-              </div>
-            )}
+            {/* Bloco de planos ativos removido do centro do Inicio: duplicava o painel
+                lateral direito ("SEU PLANO") e empurrava o campo de pergunta e os cards
+                para baixo. O contexto persistente do cliente vive no painel lateral. */}
             <AdvisorArrival
               wide
               subtitle={isPt
