@@ -15,6 +15,8 @@ taime-web/out/
 # Logs e progresso do batch
 batch-progress.json
 batch-periods.json
+# Journal de retomada da virada 2026 (artefato local, nao apagar; nao versionar)
+switch-2026-progress.json
 
 # Backups de progresso e logs de execucao de batch (descartaveis)
 *.bak
