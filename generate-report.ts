@@ -79,7 +79,10 @@ interface AnthropicUsage {
 // 2026-08-21: PILOTO DE REGENERACAO (periodos historicos sombra 2026-02-08 e 2024-10-08):
 // revertido para Opus (batch historico depende de Opus p/ evitar hindsight). O temperature
 // segue comentado nas chamadas (Opus deprecou o parametro).
-const GENERATION_MODEL = 'claude-opus-4-8';
+// 2026-09-04: periodo PRESENTE 2026-08-16 (2a quinzena de agosto), janela ja fechada,
+// sem risco de hindsight -> Sonnet 4.6 + temperature 0.1 (padrao do presente). Reverter
+// para claude-opus-4-8 (e recomentar o temperature) ao voltar ao batch historico.
+const GENERATION_MODEL = 'claude-sonnet-4-6';
 
 const cfg = {
   anthropicKey:        process.env.ANTHROPIC_API_KEY ?? '',
@@ -938,7 +941,7 @@ export async function callClaudeTrend(
   const { text, usage } = await anthropicPost({
     model:       cfg.model,
     max_tokens:  cfg.maxTokens,
-    // temperature: 0.1, // PILOT: claude-opus-4-8 deprecated `temperature`. Restore when reverting to Sonnet.
+    temperature: 0.1, // Sonnet 4.6 (presente): temperatura baixa para consistencia. Recomentar ao voltar a Opus.
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{
       role: 'user',
@@ -1012,7 +1015,7 @@ async function callClaudeMetadata(
   const { text, usage } = await anthropicPost({
     model:       cfg.model,
     max_tokens:  2048,
-    // temperature: 0.1, // PILOT: claude-opus-4-8 deprecated `temperature`. Restore when reverting to Sonnet.
+    temperature: 0.1, // Sonnet 4.6 (presente): temperatura baixa para consistencia. Recomentar ao voltar a Opus.
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: prompt }],
   });
