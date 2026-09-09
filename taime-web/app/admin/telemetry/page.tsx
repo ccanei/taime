@@ -4,6 +4,7 @@ import { isAdmin } from '@/lib/isAdmin'
 import { AdminHeader } from '@/components/admin/kit'
 import ReloadButton from './ReloadButton'
 import { aggregate, type LlmCallRow, type TelemetryAgg } from '@/lib/telemetry-agg'
+import { THEMES } from '@/lib/decision-check'
 
 export const metadata = { title: 'Telemetria · TAIME Admin' }
 export const dynamic = 'force-dynamic' // sempre dados frescos (sem cache de rota)
@@ -38,6 +39,41 @@ async function resolveEmails(userIds: string[]): Promise<Map<string, string>> {
     }
   } catch { /* segue com user_id cru */ }
   return out
+}
+
+// ── Decision Check (isca de leads publica): submissoes por dia, top temas, top
+//    combinacoes. Fail-safe: tabela ausente (migration pendente) -> null. ───────
+interface DcStats {
+  total:   number
+  byDay:   Array<[string, number]>
+  byTheme: Array<[string, number]>
+  byCombo: Array<[string, number]>
+}
+async function getDecisionCheckStats(): Promise<DcStats | null> {
+  try {
+    const supabase = createSupabaseService()
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
+    const { data, error } = await supabase
+      .from('decision_checks')
+      .select('theme_slug, objective, horizon, org_size, created_at')
+      .gte('created_at', since)
+      .limit(50_000)
+    if (error) return null
+    const rows = (data ?? []) as Array<{ theme_slug: string; objective: string; horizon: string; org_size: string; created_at: string }>
+    const day = new Map<string, number>(), theme = new Map<string, number>(), combo = new Map<string, number>()
+    for (const r of rows) {
+      day.set(r.created_at.slice(0, 10), (day.get(r.created_at.slice(0, 10)) ?? 0) + 1)
+      theme.set(r.theme_slug, (theme.get(r.theme_slug) ?? 0) + 1)
+      const k = `${r.theme_slug} · ${r.org_size}/${r.objective}/${r.horizon}`
+      combo.set(k, (combo.get(k) ?? 0) + 1)
+    }
+    return {
+      total: rows.length,
+      byDay:   [...day.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-14),
+      byTheme: [...theme.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
+      byCombo: [...combo.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
+    }
+  } catch { return null }
 }
 
 // ── Formatadores ───────────────────────────────────────────────────────────
@@ -95,6 +131,7 @@ export default async function AdminTelemetryPage() {
   const { rows, tableMissing } = await getRows()
   const agg = aggregate(rows, Date.now())
   const emails = await resolveEmails(agg.advisorByUser.map(u => u.userId))
+  const dc = await getDecisionCheckStats()
   const empty = !tableMissing && rows.length === 0
 
   return (
@@ -165,6 +202,56 @@ export default async function AdminTelemetryPage() {
                       ))}
                     </tbody>
                   </table>
+                </Section>
+
+                {/* ── DECISION CHECK (isca de leads) ────────────────── */}
+                <Section title="Decision Check (isca de leads)" note="Submissoes do /decision-check nos ultimos 30 dias. Custo/tokens da geracao Haiku aparecem no caller decision_check acima.">
+                  {!dc ? (
+                    <p className="text-sm text-zinc-400 py-4">Tabela <code className="font-mono text-xs">decision_checks</code> ainda nao criada. Rode <code className="font-mono text-xs">add-decision-checks.sql</code> no Supabase.</p>
+                  ) : dc.total === 0 ? (
+                    <p className="text-sm text-zinc-400 py-4">Nenhuma submissao no periodo ainda.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div>
+                        <p className="text-xs text-zinc-400 mb-2">Total 30 dias: <span className="font-semibold text-zinc-800 tabular-nums">{int(dc.total)}</span> · Submissoes por dia (14d)</p>
+                        <div className="space-y-1">
+                          {dc.byDay.map(([d, n]) => (
+                            <div key={d} className="flex items-center gap-2">
+                              <span className="text-[11px] text-zinc-400 tabular-nums w-16 shrink-0">{d.slice(5)}</span>
+                              <div className="flex-1 h-2 rounded-full bg-zinc-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-taime-500" style={{ width: `${Math.min(100, (n / Math.max(...dc.byDay.map(x => x[1]))) * 100)}%` }} />
+                              </div>
+                              <span className="text-[11px] text-zinc-500 tabular-nums w-6 text-right">{n}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <p className="text-xs text-zinc-400 mb-2">Temas mais buscados</p>
+                          <ul className="space-y-1.5">
+                            {dc.byTheme.map(([slug, n]) => (
+                              <li key={slug} className="flex items-baseline justify-between gap-2">
+                                <span className="text-xs text-zinc-700 truncate">{THEMES[slug]?.pt ?? slug}</span>
+                                <span className="text-xs text-zinc-400 tabular-nums shrink-0">{n}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-400 mb-2">Top combinacoes</p>
+                          <ul className="space-y-1.5">
+                            {dc.byCombo.map(([k, n]) => (
+                              <li key={k} className="flex items-baseline justify-between gap-2">
+                                <span className="text-[11px] text-zinc-600 truncate font-mono">{k}</span>
+                                <span className="text-xs text-zinc-400 tabular-nums shrink-0">{n}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </Section>
 
                 {/* ── UNIT ECONOMICS DO ADVISOR ─────────────────────── */}
