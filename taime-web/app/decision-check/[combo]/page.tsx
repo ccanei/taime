@@ -1,14 +1,22 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import {
   parseComboSlug, themeLabel, labelFor, ORG_SIZES, HORIZONS,
   MOVE_LABEL, MOVE_STYLE, scoreBarClass, type Lang,
 } from '@/lib/decision-check'
+import { detectLocale } from '@/lib/i18n'
 import { getDecisionResult } from '@/lib/decision-check-core'
 import DecisionShareButton from '@/components/DecisionShareButton'
 
-function langOf(sp: { lang?: string }): Lang { return sp.lang === 'en' ? 'en' : 'pt' }
+// Mesmo mecanismo do site: ?lang=en|pt e override manual; senao o cookie taime-locale
+// (gravado pelo proxy a partir do Accept-Language na 1a visita) via detectLocale.
+async function resolveLang(spLang: string | undefined): Promise<Lang> {
+  if (spLang === 'en') return 'en'
+  if (spLang === 'pt') return 'pt'
+  return detectLocale((await cookies()).get('taime-locale')?.value)
+}
 
 export async function generateMetadata({
   params, searchParams,
@@ -19,7 +27,7 @@ export async function generateMetadata({
   const { combo } = await params
   const c = parseComboSlug(combo)
   if (!c) return { title: 'TAIME Decision Check' }
-  const lang = langOf(await searchParams)
+  const lang = await resolveLang((await searchParams).lang)
   const res = await getDecisionResult(combo, c)
   const theme = themeLabel(c.theme, lang)
   const size = labelFor(ORG_SIZES, c.size, lang)
@@ -51,7 +59,7 @@ export default async function DecisionCheckResult({
   const { combo } = await params
   const c = parseComboSlug(combo)
   if (!c) notFound()
-  const lang = langOf(await searchParams)
+  const lang = await resolveLang((await searchParams).lang)
   const res = await getDecisionResult(combo, c)
 
   const theme   = themeLabel(c.theme, lang)

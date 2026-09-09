@@ -21,9 +21,11 @@ const T = {
   err:     { pt: 'Algo deu errado. Tente novamente.',       en: 'Something went wrong. Please try again.' },
 }
 
-export default function DecisionCheckForm() {
+export default function DecisionCheckForm({ lang: langProp }: { lang?: Lang }) {
+  // lang vem resolvido do server (detectLocale(cookie) + override ?lang), para casar
+  // com o idioma da pagina. Fallback ao useLocale (cookie) se nao vier prop.
   const { locale } = useLocale()
-  const lang = (locale === 'en' ? 'en' : 'pt') as Lang
+  const lang = (langProp ?? (locale === 'en' ? 'en' : 'pt')) as Lang
   const router = useRouter()
 
   const [theme, setTheme]         = useState('')

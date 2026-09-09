@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
+import { detectLocale } from '@/lib/i18n'
 import DecisionCheckForm from '@/components/DecisionCheckForm'
 
 export const metadata: Metadata = {
@@ -14,8 +15,11 @@ export default async function DecisionCheckLanding({
   searchParams: Promise<{ lang?: string }>
 }) {
   const sp = await searchParams
-  const cookieLang = (await cookies()).get('taime-locale')?.value
-  const isPt = (sp.lang ?? cookieLang) !== 'en'
+  // Mesmo mecanismo do site: cookie taime-locale (gravado pelo proxy a partir do
+  // Accept-Language na 1a visita) via detectLocale; ?lang=en|pt e override manual.
+  const cookieLoc = detectLocale((await cookies()).get('taime-locale')?.value)
+  const lang: 'pt' | 'en' = sp.lang === 'en' ? 'en' : sp.lang === 'pt' ? 'pt' : cookieLoc
+  const isPt = lang === 'pt'
 
   const t = {
     kicker:   isPt ? 'DECISION CHECK' : 'DECISION CHECK',
@@ -33,7 +37,7 @@ export default async function DecisionCheckLanding({
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight mb-4">{t.title}</h1>
         <p className="text-base text-white/60 leading-relaxed max-w-2xl mb-10">{t.sub}</p>
 
-        <DecisionCheckForm />
+        <DecisionCheckForm lang={lang} />
 
         <p className="mt-10 text-center text-[11px] uppercase tracking-[0.15em] text-white/30">
           TAIME Tech · {t.tagline}

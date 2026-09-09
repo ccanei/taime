@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import { Analytics } from '@vercel/analytics/next'
 import JsonLd from '@/components/JsonLd'
 import AskFloatingGate from '@/components/AskFloatingGate'
 import { globalGraph } from '@/lib/structured-data'
+import { detectLocale } from '@/lib/i18n'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -44,9 +46,12 @@ export const metadata: Metadata = {
   // Canonical é definida por página (cada rota tem sua URL própria).
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // <html lang> segue o mesmo mecanismo do site: o proxy.ts grava taime-locale a
+  // partir do Accept-Language na 1a visita; aqui so lemos via detectLocale. pt -> pt-BR.
+  const htmlLang = detectLocale((await cookies()).get('taime-locale')?.value) === 'pt' ? 'pt-BR' : 'en'
   return (
-    <html lang="en">
+    <html lang={htmlLang}>
       <head>
         <link rel="icon" href="/taime-icon.svg" type="image/svg+xml" />
         <JsonLd data={globalGraph()} />
