@@ -10,6 +10,7 @@ export const en: Translations = {
     access:     'Sign in →',
     reports:    'Dashboard',
     signOut:    'Sign out',
+    linkedin:   'TAIME Tech on LinkedIn',
   },
 
   home: {

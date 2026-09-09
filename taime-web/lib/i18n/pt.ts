@@ -8,6 +8,7 @@ export const pt = {
     access:     'Acessar →',
     reports:    'Dashboard',
     signOut:    'Sair',
+    linkedin:   'TAIME Tech no LinkedIn',
   },
 
   home: {

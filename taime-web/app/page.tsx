@@ -333,14 +333,19 @@ export default async function LandingPage() {
     ?? recentRows.find(r => r.theme_slug === SHOWCASE_THEME_SLUG && hasFull(r))
     ?? recentRows.find(hasFull)
     ?? null
+  // O showcase e a AMOSTRA PUBLICA (is_public=true) quando foi ela a escolhida acima
+  // (mesma referencia de objeto). So nesse caso o CTA anonimo abre a rota curta publica.
+  const isPublicShowcase = !!showcase && showcase === publicSample
   const showcaseFw     = showcase ? (isEn ? showcase.taime_framework_en : showcase.taime_framework_pt_br) : null
   const showcaseTnn    = showcase ? (isEn ? showcase.then_now_next_en   : showcase.then_now_next_pt_br)   : null
   const showcaseTitle  = showcase ? (isEn ? showcase.title_en           : showcase.title_pt_br)           : ''
-  // Nao logado: o CTA da amostra passa a levar ao login (com origem para futura
-  // mensagem contextual), em vez do report publico /r/{sample}. Logado segue direto
-  // ao report completo.
+  // Logado: report completo. Anonimo: se o showcase e a amostra publica curada
+  // (is_public=true), abre a rota curta /r/{id} SEM gate de login (o mecanismo de
+  // amostra publica). Sem amostra publica (fallback), mantem o gate de login.
   const showcaseHref   = showcase
-    ? (isLoggedIn ? `/reports/${showcase.report_id}` : '/login?from=report')
+    ? (isLoggedIn
+        ? `/reports/${showcase.report_id}`
+        : (isPublicShowcase ? `/r/${showcase.report_id}` : '/login?from=report'))
     : '/login?from=report'
 
   // Dimensoes de score do showcase como [label, score][] para o ScoreBars animado.
