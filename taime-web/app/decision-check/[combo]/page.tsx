@@ -15,6 +15,11 @@ import OgCardPreview from '@/components/OgCardPreview'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 
+// Versao da imagem do Report Card no CDN. Bump muda a URL do og:image (e da previa/
+// download), invalidando o PNG cacheado apos a correcao do MOVE (v2: MOVE agora vem do
+// getDecisionResult, igual a pagina, nao mais recalculado por faixa de score).
+const OG_V = 2
+
 // Mesmo mecanismo do site: ?lang=en|pt e override manual; senao o cookie taime-locale
 // (gravado pelo proxy a partir do Accept-Language na 1a visita) via detectLocale.
 async function resolveLang(spLang: string | undefined): Promise<Lang> {
@@ -50,7 +55,7 @@ export async function generateMetadata({
         ? `${theme}: tema em desenvolvimento no arquivo TAIME Tech. Strategic Technology Intelligence.`
         : `${theme}: theme in development in the TAIME Tech archive. Strategic Technology Intelligence.`)
   // og:image dinamico (Report Card real do tema). Absoluto para os crawlers.
-  const ogImg = `${SITE_URL}/api/og/decision-check/${combo}?lang=${lang}`
+  const ogImg = `${SITE_URL}/api/og/decision-check/${combo}?lang=${lang}&v=${OG_V}`
   return {
     title, description: desc,
     alternates: { canonical: `/decision-check/${combo}` },
@@ -189,14 +194,14 @@ export default async function DecisionCheckResult({
 
             {/* Previa do Report Card compartilhavel (complementar ao conteudo acima) */}
             <OgCardPreview
-              src={`/api/og/decision-check/${combo}?lang=${lang}`}
+              src={`/api/og/decision-check/${combo}?lang=${lang}&v=${OG_V}`}
               label={tx.previewLabel}
               openLabel={tx.previewOpen}
               alt={tx.previewAlt}
             />
             <div className="flex items-center gap-3 mb-4">
               <DecisionShareButton label={tx.share} copied={tx.copied} />
-              <OgDownloadButton href={`/api/og/decision-check/${combo}?lang=${lang}`} label={tx.download} variant="dark" />
+              <OgDownloadButton href={`/api/og/decision-check/${combo}?lang=${lang}&v=${OG_V}`} label={tx.download} variant="dark" />
             </div>
           </>
         )}

@@ -20,7 +20,6 @@ import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
 import TrendRadar from '@/components/home/TrendRadar'
 import TrendTicker from '@/components/home/TrendTicker'
-import ScrollConnector from '@/components/home/ScrollConnector'
 import FrameworkSection from '@/components/home/FrameworkSection'
 import ThemeTimeline from '@/components/home/ThemeTimeline'
 import NewsletterSignup from '@/components/NewsletterSignup'
@@ -441,7 +440,6 @@ export default async function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <ScrollConnector />
       <Navbar />
 
       {/* ── SEÇÃO 1: HERO ESCURO COM MOCKUP DE PRODUTO ─────────────────── */}
