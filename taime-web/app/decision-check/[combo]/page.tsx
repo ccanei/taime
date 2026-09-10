@@ -9,6 +9,8 @@ import {
 import { detectLocale } from '@/lib/i18n'
 import { getDecisionResult } from '@/lib/decision-check-core'
 import DecisionShareButton from '@/components/DecisionShareButton'
+import Navbar from '@/components/Navbar'
+import Footer from '@/components/Footer'
 
 // Mesmo mecanismo do site: ?lang=en|pt e override manual; senao o cookie taime-locale
 // (gravado pelo proxy a partir do Accept-Language na 1a visita) via detectLocale.
@@ -26,7 +28,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { combo } = await params
   const c = parseComboSlug(combo)
-  if (!c) return { title: 'TAIME Decision Check' }
+  // Combo invalido (inclui URLs de faixas ANTIGAS 100/1000/10k/10000): noindex para
+  // nao prejudicar SEO. A pagina retorna 404 (notFound) de qualquer forma.
+  if (!c) return { title: 'TAIME Decision Check', robots: { index: false, follow: false } }
   const lang = await resolveLang((await searchParams).lang)
   const res = await getDecisionResult(combo, c)
   const theme = themeLabel(c.theme, lang)
@@ -84,7 +88,9 @@ export default async function DecisionCheckResult({
   }
 
   return (
-    <main className="min-h-screen bg-taime-900 text-white">
+    <>
+      <Navbar />
+      <main className="min-h-screen bg-taime-900 text-white">
       <div className="max-w-3xl mx-auto px-6 py-14 sm:py-20">
         <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-taime-400 mb-8">
           {tx.kicker} · {theme.toUpperCase()}
@@ -157,6 +163,8 @@ export default async function DecisionCheckResult({
           TAIME Tech · {tx.tagline}
         </p>
       </div>
-    </main>
+      </main>
+      <Footer />
+    </>
   )
 }

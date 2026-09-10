@@ -54,12 +54,23 @@ export const THEMES: Record<string, Bi> = Object.fromEntries(
 export const THEME_SLUGS = Object.keys(THEMES)
 
 // ── Porte, objetivo, horizonte (chave canonica -> rotulo PT/EN) ──────────────
+// Faixas recalibradas (2026-09-10) para a realidade do ICP brasileiro: mais
+// granularidade no pequeno-medio, sem a faixa "mais de 10.000" (rara no Brasil).
 export const ORG_SIZES: Array<{ key: string; label: Bi }> = [
-  { key: '100',   label: { pt: 'Até 100 funcionários', en: 'Up to 100 employees' } },
-  { key: '1000',  label: { pt: '100 a 1.000',          en: '100 to 1,000' } },
-  { key: '10k',   label: { pt: '1.000 a 10.000',       en: '1,000 to 10,000' } },
-  { key: '10000', label: { pt: 'Mais de 10.000',       en: 'More than 10,000' } },
+  { key: 'ate-50',    label: { pt: 'Até 50 funcionários', en: 'Up to 50 employees' } },
+  { key: '50-200',    label: { pt: '50 a 200',            en: '50 to 200' } },
+  { key: '200-1000',  label: { pt: '200 a 1.000',         en: '200 to 1,000' } },
+  { key: '1000-5000', label: { pt: '1.000 a 5.000',       en: '1,000 to 5,000' } },
+  { key: '5000-mais', label: { pt: 'Mais de 5.000',       en: 'More than 5,000' } },
 ]
+// Framing por faixa (PT) para orientar a geracao THEN/NOW/NEXT do Haiku conforme o porte.
+export const SIZE_FRAMING: Record<string, string> = {
+  'ate-50':    'empresa em estágio inicial de estruturação tecnológica',
+  '50-200':    'empresa média com time de tecnologia estabelecendo processos',
+  '200-1000':  'empresa média-grande com liderança de tecnologia consolidada',
+  '1000-5000': 'grande empresa com estrutura formal de tecnologia e inovação',
+  '5000-mais': 'grande corporação com múltiplas unidades de tecnologia',
+}
 export const OBJECTIVES: Array<{ key: string; label: Bi }> = [
   { key: 'adotar',    label: { pt: 'Adotar',    en: 'Adopt' } },
   { key: 'preparar',  label: { pt: 'Preparar',  en: 'Prepare' } },
@@ -78,22 +89,28 @@ const HOR_KEYS  = new Set(HORIZONS.map(h => h.key))
 
 export interface Combo { theme: string; size: string; objective: string; horizon: string }
 
-// slug canonico: {theme_slug}-{size}-{objective}-{horizon}. Ex.: ia-agentes-autonomos-1000-adotar-12m
+// slug canonico: {theme_slug}-{size}-{objective}-{horizon}. Ex.: ia-agentes-autonomos-50-200-adotar-12m
 export function buildComboSlug(c: Combo): string {
   return `${c.theme}-${c.size}-${c.objective}-${c.horizon}`
 }
 
-// Parse robusto (o theme_slug tem hifens): consome da DIREITA horizonte, objetivo e
-// porte (enums conhecidos); o resto e o theme_slug, validado contra os 12. null se invalido.
+// Parse robusto: TANTO o theme_slug QUANTO o size podem ter hifens (ex.: 50-200). Ancora
+// no theme (conjunto conhecido de 12): acha o theme que prefixa o slug; do resto, tira
+// horizonte e objetivo (tokens unicos) da direita; o meio e o size. null se invalido
+// (inclui as faixas ANTIGAS 100/1000/10k/10000, que agora nao existem -> 404 na rota).
 export function parseComboSlug(slug: string): Combo | null {
-  const parts = slug.split('-')
-  if (parts.length < 4) return null
-  const horizon = parts.pop()!
-  const objective = parts.pop()!
-  const size = parts.pop()!
-  const theme = parts.join('-')
-  if (!HOR_KEYS.has(horizon) || !OBJ_KEYS.has(objective) || !SIZE_KEYS.has(size) || !THEMES[theme]) return null
-  return { theme, size, objective, horizon }
+  for (const theme of THEME_SLUGS) {
+    if (slug !== theme && !slug.startsWith(theme + '-')) continue
+    const parts = slug.slice(theme.length + 1).split('-')
+    if (parts.length < 3) continue
+    const horizon = parts.pop()!
+    const objective = parts.pop()!
+    const size = parts.join('-')
+    if (HOR_KEYS.has(horizon) && OBJ_KEYS.has(objective) && SIZE_KEYS.has(size)) {
+      return { theme, size, objective, horizon }
+    }
+  }
+  return null
 }
 
 export function labelFor(list: Array<{ key: string; label: Bi }>, key: string, lang: Lang): string {

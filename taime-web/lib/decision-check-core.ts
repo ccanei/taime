@@ -4,7 +4,7 @@ import { stripEmDash } from '@/lib/strip-markdown'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import {
-  type Combo, type DecisionResult, type Move, isMove, FALLBACK_MSG, themeLabel,
+  type Combo, type DecisionResult, type Move, isMove, FALLBACK_MSG, themeLabel, SIZE_FRAMING,
 } from '@/lib/decision-check'
 
 // Nucleo do /decision-check: consolida as trends do tema num snapshot (score/move/
@@ -126,7 +126,8 @@ async function callHaiku(theme: string, c: Combo, trends: TrendRow[]): Promise<R
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return null
   const t0 = Date.now()
-  const user = `THEME: ${themeLabel(theme, 'pt')}\nCLIENT LENS: objetivo=${c.objective}, horizonte=${c.horizon}, porte=${c.size}\n\nTRENDS (most relevant, last 24 months):\n${trendContext(trends)}`
+  const porteFraming = SIZE_FRAMING[c.size] ?? c.size
+  const user = `THEME: ${themeLabel(theme, 'pt')}\nCLIENT LENS: objetivo=${c.objective}, horizonte=${c.horizon}, porte=${porteFraming}\n\nTRENDS (most relevant, last 24 months):\n${trendContext(trends)}`
   try {
     const res = await fetch(ANTHROPIC_API, {
       method: 'POST',

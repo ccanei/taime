@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { detectLocale } from '@/lib/i18n'
+import Navbar from '@/components/Navbar'
+import Footer from '@/components/Footer'
 import DecisionCheckForm from '@/components/DecisionCheckForm'
 
 export const metadata: Metadata = {
@@ -31,7 +33,9 @@ export default async function DecisionCheckLanding({
   }
 
   return (
-    <main className="min-h-screen bg-taime-900 text-white">
+    <>
+      <Navbar />
+      <main className="min-h-screen bg-taime-900 text-white">
       <div className="max-w-3xl mx-auto px-6 py-16 sm:py-24">
         <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-taime-400 mb-4">{t.kicker}</p>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight mb-4">{t.title}</h1>
@@ -43,6 +47,8 @@ export default async function DecisionCheckLanding({
           TAIME Tech · {t.tagline}
         </p>
       </div>
-    </main>
+      </main>
+      <Footer />
+    </>
   )
 }
