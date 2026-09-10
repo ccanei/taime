@@ -16,9 +16,10 @@ import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 
 // Versao da imagem do Report Card no CDN. Bump muda a URL do og:image (e da previa/
-// download), invalidando o PNG cacheado apos a correcao do MOVE (v2: MOVE agora vem do
-// getDecisionResult, igual a pagina, nao mais recalculado por faixa de score).
-const OG_V = 2
+// download), invalidando o PNG cacheado. v2: MOVE passou a vir do getDecisionResult
+// (igual a pagina). v3: busca de trends ampliada para o arquivo completo (score, rodape
+// e radar mudam), entao os PNGs antigos precisam ser regenerados.
+const OG_V = 3
 
 // Mesmo mecanismo do site: ?lang=en|pt e override manual; senao o cookie taime-locale
 // (gravado pelo proxy a partir do Accept-Language na 1a visita) via detectLocale.

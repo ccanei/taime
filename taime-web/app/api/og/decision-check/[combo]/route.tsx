@@ -18,12 +18,6 @@ interface Row {
   taime_framework_en: TaimeFramework | null
 }
 
-function twoYearsAgoKey(): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() - 2)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
-}
-
 // Media de cada uma das 5 dimensoes (0-100) atraves das trends do tema. Fallback: score.
 function avgDims(rows: Row[], lang: Lang, score: number): number[] {
   return DIM_ORDER.map(k => {
@@ -49,14 +43,15 @@ export async function GET(
   const res = await getDecisionResult(combo, c)
   if (!res.ok) return new Response('Not found', { status: 404 })
 
-  // Radar: media das dimensoes das trends do tema (so para o desenho, nao muda score/move).
+  // Radar: media das dimensoes das mesmas 5 trends de maior score do arquivo COMPLETO
+  // (sem janela de 24 meses), alinhado a busca do core. So para o desenho, nao muda
+  // score/move (que vem do getDecisionResult).
   const supabase = createSupabaseService()
   const { data } = await supabase
     .from('report_trends')
     .select('taime_framework_pt_br, taime_framework_en, reports!inner(period, status)')
     .eq('theme_slug', c.theme)
     .eq('reports.status', 'published')
-    .gte('reports.period', twoYearsAgoKey())
     .order('taime_score', { ascending: false })
     .limit(5)
   const rows = (data ?? []) as unknown as Row[]

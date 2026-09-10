@@ -23,10 +23,14 @@ export default async function DecisionCheckLanding({
   const lang: 'pt' | 'en' = sp.lang === 'en' ? 'en' : sp.lang === 'pt' ? 'pt' : cookieLoc
   const isPt = lang === 'pt'
 
+  // Anos de cobertura do arquivo: de 2015 ate o ano corrente. Calculado dinamicamente
+  // para nunca desatualizar (em 2026 = 11 anos). O arquivo TAIME comeca em 2015.
+  const archiveYears = new Date().getFullYear() - 2015
+
   const t = {
     kicker:   isPt ? 'DECISION CHECK' : 'DECISION CHECK',
-    title:    isPt ? 'Sua decisão de tecnologia, checada contra 25 anos de arquivo.'
-                   : 'Your technology decision, checked against 25 years of archive.',
+    title:    isPt ? `Sua decisão de tecnologia, checada contra ${archiveYears} anos de arquivo.`
+                   : `Your technology decision, checked against ${archiveYears} years of archive.`,
     sub:      isPt ? 'Quatro perguntas. Um veredito com score, movimento recomendado e a trajetória THEN / NOW / NEXT do tema.'
                    : 'Four questions. A verdict with a score, the recommended move, and the THEN / NOW / NEXT arc of the theme.',
     tagline:  'Strategic Technology Intelligence. Since 2015. From signal to decision.',

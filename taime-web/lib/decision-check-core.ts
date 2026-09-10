@@ -34,19 +34,18 @@ interface TrendRow {
   reports:               { period: string; status: string; is_public: boolean | null } | null
 }
 
-function twoYearsAgoKey(): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() - 2)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
-}
-
 async function fetchThemeTrends(theme: string): Promise<TrendRow[]> {
   const c = supa(); if (!c) return []
   const h = { apikey: c.key, Authorization: `Bearer ${c.key}` }
   const fields = 'taime_score,title_pt_br,title_en,taime_framework_pt_br,taime_framework_en,' +
     'then_now_next_pt_br,then_now_next_en,report_id,reports!inner(period,status,is_public)'
+  // Arquivo COMPLETO (desde 2015), sem janela temporal: as 5 trends de MAIOR
+  // taime_score do tema em todo o publicado. Assim o rodape reflete a profundidade
+  // real do tema (pode remontar a 2015 para temas antigos) e o diferencial do arquivo
+  // nao e desperdicado. A recencia nao exclui trends antigas: ela entra so como peso
+  // no score agregado (weightedScore) e como ancora do NOW no prompt do Haiku.
   const url = `${c.url}/rest/v1/report_trends?theme_slug=eq.${theme}` +
-    `&reports.status=eq.published&reports.period=gte.${twoYearsAgoKey()}` +
+    `&reports.status=eq.published` +
     `&order=taime_score.desc&limit=5&select=${fields}`
   try {
     const r = await fetch(url, { headers: h, cache: 'no-store' })
@@ -84,8 +83,9 @@ function trendContext(trends: TrendRow[]): string {
   return trends.map((t, i) => {
     const fw = t.taime_framework_pt_br
     const tnn = t.then_now_next_pt_br
+    const period = (t.reports?.period ?? '').slice(0, 7) // YYYY-MM: marca a recencia de cada trend
     const parts = [
-      `TREND ${i + 1} (score ${t.taime_score}): ${t.title_pt_br}`,
+      `TREND ${i + 1} (score ${t.taime_score}${period ? `, period ${period}` : ''}): ${t.title_pt_br}`,
       fw?.act ? `  ACT: ${fw.act}` : '',
       fw?.move ? `  MOVE: ${fw.move}` : '',
       tnn?.then ? `  THEN: ${tnn.then}` : '',
@@ -105,6 +105,7 @@ INVIOLABLE RULES:
 - No monetary values in any currency.
 - Write BOTH Portuguese (pt) and English (en), each native, not a translation of the other.
 - Executive register, concise.
+- The trends may span several years of the archive (each is tagged with its period). Anchor NOW on the MOST RECENT trend by period; use older trends to build THEN and the trajectory, never to describe the present. NEXT is a projection forward from the most recent state.
 
 The user ALSO picked an OBJECTIVE for this technology (in the CLIENT LENS below):
 adotar (adopt, go now) maps to move act; preparar to prepare; monitorar to monitor;
@@ -129,7 +130,7 @@ async function callHaiku(theme: string, c: Combo, trends: TrendRow[]): Promise<R
   if (!key) return null
   const t0 = Date.now()
   const porteFraming = SIZE_FRAMING[c.size] ?? c.size
-  const user = `THEME: ${themeLabel(theme, 'pt')}\nCLIENT LENS: objetivo=${c.objective}, horizonte=${c.horizon}, porte=${porteFraming}\n\nTRENDS (most relevant, last 24 months):\n${trendContext(trends)}`
+  const user = `THEME: ${themeLabel(theme, 'pt')}\nCLIENT LENS: objetivo=${c.objective}, horizonte=${c.horizon}, porte=${porteFraming}\n\nTRENDS (highest TAIME Score across the full archive, each tagged with its period):\n${trendContext(trends)}`
   try {
     const res = await fetch(ANTHROPIC_API, {
       method: 'POST',
@@ -199,11 +200,12 @@ async function computeResult(slug: string, c: Combo): Promise<DecisionResult> {
 // Cache por combinacao (24h). Chave = slug. 2a chamada da mesma combinacao NAO chama
 // Haiku (sub-segundo). unstable_cache serializa o DecisionResult (JSON puro).
 export function getDecisionResult(slug: string, c: Combo): Promise<DecisionResult> {
-  // v2: bump da chave apos adicionar objetivo x leitura + alignment ao snapshot
-  // (invalida entradas antigas que nao tinham esses campos).
+  // v3: bump da chave apos remover a janela de 24 meses (busca agora cobre o arquivo
+  // completo desde 2015). Invalida snapshots antigos calculados com a janela curta,
+  // que traziam score/rodape/then-now-next de uma amostra mais rasa do tema.
   return unstable_cache(
     () => computeResult(slug, c),
-    ['decision-check', 'v2', slug],
-    { revalidate: 86400, tags: [`decision-check:v2:${slug}`] },
+    ['decision-check', 'v3', slug],
+    { revalidate: 86400, tags: [`decision-check:v3:${slug}`] },
   )()
 }
