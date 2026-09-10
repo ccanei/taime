@@ -1,31 +1,31 @@
 'use client'
 
 import { useState } from 'react'
-import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
-import { detectRoi, detectChecklist } from '@/lib/advisor-export-detect'
-import { exportRoiPDF, exportRoiXLSX, exportChecklistPDF, exportChecklistXLSX } from '@/lib/advisor-export'
+import { FileSpreadsheet, FileText, Table, Loader2 } from 'lucide-react'
+import { detectRoi, detectChecklist, detectCsv } from '@/lib/advisor-export-detect'
+import {
+  exportRoiPDF, exportRoiXLSX, exportChecklistPDF, exportChecklistXLSX,
+  exportCsvXLSX, exportCsvRaw,
+} from '@/lib/advisor-export'
 
 // Botoes de exportacao que aparecem SO quando a resposta contem conteudo exportavel
-// (ROI e/ou checklist), ao lado dos botoes de feedback. Deteccao client-side sobre o
-// markdown bruto da resposta. Geracao sob demanda (import dinamico no clique). Nunca
-// aparece quando nao ha sinal claro (deteccao conservadora).
+// (ROI, checklist markdown, ou CSV inline), ao lado do feedback. Deteccao client-side
+// sobre o markdown bruto. Geracao sob demanda (import dinamico no clique). Conservador:
+// nada aparece sem sinal claro.
 
-type Fmt = 'pdf' | 'xlsx'
+type IconKind = 'xlsx' | 'pdf' | 'csv'
+interface ExportAction { key: string; label: string; icon: IconKind; run: () => Promise<void> }
 
-function ExportGroup({
-  label, isPt, onExport,
-}: {
-  label: string
-  isPt: boolean
-  onExport: (fmt: Fmt) => Promise<void>
-}) {
-  const [busy, setBusy] = useState<Fmt | null>(null)
+const ICON: Record<IconKind, typeof FileSpreadsheet> = { xlsx: FileSpreadsheet, pdf: FileText, csv: Table }
+
+function ExportGroup({ label, isPt, actions }: { label: string; isPt: boolean; actions: ExportAction[] }) {
+  const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr]   = useState(false)
 
-  async function run(fmt: Fmt) {
+  async function run(a: ExportAction) {
     if (busy) return
-    setErr(false); setBusy(fmt)
-    try { await onExport(fmt) }
+    setErr(false); setBusy(a.key)
+    try { await a.run() }
     catch { setErr(true) }
     finally { setBusy(null) }
   }
@@ -33,24 +33,21 @@ function ExportGroup({
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="text-[11px] font-medium text-zinc-400">{label}</span>
-      <button
-        onClick={() => void run('xlsx')}
-        disabled={busy !== null}
-        className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-semibold
-                   text-zinc-600 hover:text-taime-700 hover:border-taime-200 disabled:opacity-50 transition-colors"
-      >
-        {busy === 'xlsx' ? <Loader2 size={12} className="animate-spin" /> : <FileSpreadsheet size={12} />}
-        XLSX
-      </button>
-      <button
-        onClick={() => void run('pdf')}
-        disabled={busy !== null}
-        className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-semibold
-                   text-zinc-600 hover:text-taime-700 hover:border-taime-200 disabled:opacity-50 transition-colors"
-      >
-        {busy === 'pdf' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
-        PDF
-      </button>
+      {actions.map(a => {
+        const Icon = ICON[a.icon]
+        return (
+          <button
+            key={a.key}
+            onClick={() => void run(a)}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-semibold
+                       text-zinc-600 hover:text-taime-700 hover:border-taime-200 disabled:opacity-50 transition-colors"
+          >
+            {busy === a.key ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />}
+            {a.label}
+          </button>
+        )
+      })}
       {err && <span className="text-[11px] text-red-500">{isPt ? 'Falhou, tente de novo' : 'Failed, try again'}</span>}
     </span>
   )
@@ -63,9 +60,27 @@ export default function AdvisorExportButtons({
   theme:  string
   isPt:   boolean
 }) {
-  const hasRoi = detectRoi(answer)
+  const hasRoi       = detectRoi(answer)
   const hasChecklist = detectChecklist(answer)
-  if (!hasRoi && !hasChecklist) return null
+  const hasCsv       = detectCsv(answer)
+  if (!hasRoi && !hasChecklist && !hasCsv) return null
+
+  // Grupo checklist: XLSX sempre. PDF quando ha checklist markdown (lista/tabela). CSV
+  // quando ha CSV inline. Se so ha CSV, o XLSX vem do grid do CSV; senao, das colunas
+  // do checklist (Responsavel/Prazo/Status).
+  const checklistActions: ExportAction[] = []
+  if (hasChecklist || hasCsv) {
+    checklistActions.push({
+      key: 'chk-xlsx', label: 'XLSX', icon: 'xlsx',
+      run: () => (hasCsv ? exportCsvXLSX(answer, theme, isPt) : exportChecklistXLSX(answer, theme, isPt)),
+    })
+    if (hasChecklist) {
+      checklistActions.push({ key: 'chk-pdf', label: 'PDF', icon: 'pdf', run: () => exportChecklistPDF(answer, theme, isPt) })
+    }
+    if (hasCsv) {
+      checklistActions.push({ key: 'chk-csv', label: 'CSV', icon: 'csv', run: () => exportCsvRaw(answer, theme, isPt) })
+    }
+  }
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -73,15 +88,14 @@ export default function AdvisorExportButtons({
         <ExportGroup
           label={isPt ? 'Exportar ROI' : 'Export ROI'}
           isPt={isPt}
-          onExport={fmt => (fmt === 'pdf' ? exportRoiPDF(answer, theme, isPt) : exportRoiXLSX(answer, theme, isPt))}
+          actions={[
+            { key: 'roi-xlsx', label: 'XLSX', icon: 'xlsx', run: () => exportRoiXLSX(answer, theme, isPt) },
+            { key: 'roi-pdf',  label: 'PDF',  icon: 'pdf',  run: () => exportRoiPDF(answer, theme, isPt) },
+          ]}
         />
       )}
-      {hasChecklist && (
-        <ExportGroup
-          label={isPt ? 'Exportar checklist' : 'Export checklist'}
-          isPt={isPt}
-          onExport={fmt => (fmt === 'pdf' ? exportChecklistPDF(answer, theme, isPt) : exportChecklistXLSX(answer, theme, isPt))}
-        />
+      {checklistActions.length > 0 && (
+        <ExportGroup label={isPt ? 'Exportar checklist' : 'Export checklist'} isPt={isPt} actions={checklistActions} />
       )}
     </div>
   )

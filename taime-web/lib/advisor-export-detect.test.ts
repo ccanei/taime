@@ -3,7 +3,7 @@
 //   node lib/advisor-export-detect.test.ts
 // Sai != 0 se qualquer caso falhar.
 import assert from 'node:assert'
-import { detectRoi, detectChecklist, extractRoi, extractChecklist } from './advisor-export-detect.ts'
+import { detectRoi, detectChecklist, extractRoi, extractChecklist, detectCsv, extractCsv } from './advisor-export-detect.ts'
 
 let pass = 0
 const fails: string[] = []
@@ -62,6 +62,32 @@ check('checklist via tabela de acao', () => assert.strictEqual(detectChecklist(C
 
 // ── Falso positivo de checklist: lista curta ─────────────────────────────────
 check('lista de 3 itens NAO e checklist', () => assert.strictEqual(detectChecklist('- a\n- b\n- c'), false))
+
+// ── CSV inline: bloco tabular copiavel (caso do checklist de agentes) ─────────
+const CSV_MD = `Aqui esta a planilha de governanca de agentes:
+
+agente_id,sistema_acessado,nivel_acesso,dono,gate_humano,frequencia,ultima_revisao,risco,mitigacao,status,observacoes
+ag-001,ERP financeiro,leitura,Financas,sim,diaria,2026-08-01,medio,revisao trimestral,ativo,piloto
+ag-002,CRM,escrita,Comercial,nao,semanal,2026-07-15,alto,gate obrigatorio,revisao,aguardando aprovacao
+
+Cada linha e um agente mapeado.`
+check('CSV inline detectado', () => assert.strictEqual(detectCsv(CSV_MD), true))
+check('CSV extrai 11 colunas', () => assert.strictEqual(extractCsv(CSV_MD)?.header.length, 11))
+check('CSV extrai 2 linhas de dados', () => assert.strictEqual(extractCsv(CSV_MD)?.rows.length, 2))
+check('CSV header primeiro campo', () => assert.strictEqual(extractCsv(CSV_MD)?.header[0], 'agente_id'))
+
+// ── CSV com campo entre aspas (virgula interna) ───────────────────────────────
+const CSV_Q = `nome,papel,notas
+Ana,Lider,"foco em dados, cloud"
+Bruno,Analista,"seguranca, IAM"
+Carla,Eng,"MLOps, observabilidade"`
+check('CSV com aspas: 3 colunas', () => assert.strictEqual(extractCsv(CSV_Q)?.header.length, 3))
+check('CSV com aspas preserva virgula interna', () => assert.strictEqual(extractCsv(CSV_Q)?.rows[0][2], 'foco em dados, cloud'))
+
+// ── Falsos positivos de CSV ───────────────────────────────────────────────────
+check('prosa com virgulas NAO e CSV', () => assert.strictEqual(detectCsv('Usamos AWS, Azure e GCP, alem de um data lake.'), false))
+check('so cabecalho + 1 linha NAO e CSV', () => assert.strictEqual(detectCsv('a,b,c\n1,2,3'), false))
+check('markdown table NAO vira CSV', () => assert.strictEqual(detectCsv('| a | b | c |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |'), false))
 
 console.log(`\n${pass} passed, ${fails.length} failed`)
 if (fails.length) { console.error('\nFAILURES:\n' + fails.join('\n')); process.exit(1) }

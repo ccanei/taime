@@ -5,7 +5,7 @@
 // campo ausente vira celula vazia com placeholder editavel.
 import type { jsPDF as JsPDFType, jsPDFOptions } from 'jspdf'
 import type ExcelJS from 'exceljs'
-import type { RoiData, ChecklistData } from '@/lib/advisor-export-detect'
+import type { RoiData, ChecklistData, CsvData } from '@/lib/advisor-export-detect'
 
 type JsPDFCtor = new (opts?: jsPDFOptions) => JsPDFType
 
@@ -371,6 +371,37 @@ export function buildChecklistWorkbook(ExcelJSNS: typeof ExcelJS, list: Checklis
     ws.getCell(`${stCol}${rr}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`"${opts.join(',')}"`] }
   }
   return wb
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CSV inline (planilha copiavel entregue pelo Advisor)
+// ════════════════════════════════════════════════════════════════════════════
+
+// XLSX: cada campo do CSV vira uma celula; cabecalho destacado e congelado.
+export function buildCsvWorkbook(ExcelJSNS: typeof ExcelJS, csv: CsvData, meta: RoiExportMeta): ExcelJS.Workbook {
+  const isPt = meta.isPt
+  const wb = new ExcelJSNS.Workbook()
+  wb.creator = 'TAIME Executive Advisor'
+  const ws = wb.addWorksheet(isPt ? 'Planilha' : 'Sheet', { views: [{ state: 'frozen', ySplit: 1 }] })
+  ws.addRow(csv.header)
+  for (const row of csv.rows) ws.addRow(row)
+  const head = ws.getRow(1)
+  head.height = 18
+  head.eachCell(c => { c.font = HEADER_FONT; c.fill = HEADER_FILL; c.alignment = { vertical: 'middle' } })
+  csv.header.forEach((h, idx) => {
+    const maxLen = Math.max(h.length, ...csv.rows.map(r => (r[idx] ?? '').length))
+    const col = ws.getColumn(idx + 1)
+    col.width = Math.min(44, Math.max(12, maxLen + 2))
+    col.alignment = { wrapText: true, vertical: 'top' }
+  })
+  return wb
+}
+
+// CSV bruto (texto): reconstroi o CSV com aspas onde necessario (virgula, aspas ou
+// quebra de linha no campo). Para o cliente colar direto no Excel.
+export function csvToString(csv: CsvData): string {
+  const esc = (f: string) => /[",\n\r]/.test(f) ? `"${f.replace(/"/g, '""')}"` : f
+  return [csv.header, ...csv.rows].map(row => row.map(esc).join(',')).join('\r\n')
 }
 
 // ── util ──────────────────────────────────────────────────────────────────────

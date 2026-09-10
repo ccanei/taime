@@ -190,3 +190,76 @@ export function detectChecklist(md: string): boolean {
   if (!md) return false
   return extractChecklist(md).items.length >= 5
 }
+
+// ── CSV inline ────────────────────────────────────────────────────────────────
+// Bloco de texto claramente tabular (o Advisor entrega templates como "bloco CSV
+// copiavel"). Deteccao conservadora: >=3 linhas com virgula, >=3 colunas CONSISTENTES,
+// primeira linha parecendo cabecalho (descritivo, sem valores puramente numericos), e
+// pelo menos 2 linhas de dados alem do cabecalho.
+export interface CsvData { header: string[]; rows: string[][] }
+
+// Parser de UMA linha CSV com suporte a campos entre aspas (virgula interna, aspas
+// escapadas como "").
+function parseCsvLine(line: string): string[] {
+  const out: string[] = []
+  let cur = '', inQ = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQ) {
+      if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++ } else inQ = false }
+      else cur += ch
+    } else if (ch === '"') { inQ = true }
+    else if (ch === ',') { out.push(cur.trim()); cur = '' }
+    else cur += ch
+  }
+  out.push(cur.trim())
+  return out
+}
+
+function isCsvLine(line: string): boolean {
+  const t = line.trim()
+  if (!t) return false
+  if (t.includes('|')) return false          // tabela markdown, nao CSV
+  if (/^```/.test(t)) return false            // cerca de codigo
+  if (LIST_ITEM.test(line)) return false      // item de lista
+  if (/^#{1,6}\s/.test(t)) return false       // heading
+  return (t.match(/,/g)?.length ?? 0) >= 2    // pelo menos 3 campos
+}
+
+function looksLikeHeader(fields: string[]): boolean {
+  if (fields.length < 3) return false
+  let withLetter = 0
+  for (const f of fields) {
+    if (f === '') return false
+    if (/^-?\d[\d.,]*%?$/.test(f)) return false           // campo puramente numerico no cabecalho
+    if (/[a-zA-ZÀ-ÿ]/.test(f)) withLetter++
+  }
+  return withLetter >= Math.ceil(fields.length * 0.6)
+}
+
+export function extractCsv(md: string): CsvData | null {
+  const lines = md.split('\n')
+  let best: { start: number; count: number; cols: number } | null = null
+  let i = 0
+  while (i < lines.length) {
+    if (!isCsvLine(lines[i])) { i++; continue }
+    const cols = parseCsvLine(lines[i]).length
+    let j = i + 1
+    while (j < lines.length && isCsvLine(lines[j]) && parseCsvLine(lines[j]).length === cols) j++
+    const count = j - i
+    if (cols >= 3 && count >= 3 && (!best || count > best.count)) best = { start: i, count, cols }
+    i = j
+  }
+  if (!best) return null
+  const block = lines.slice(best.start, best.start + best.count).map(parseCsvLine)
+  const header = block[0]
+  if (!looksLikeHeader(header)) return null
+  const rows = block.slice(1)
+  if (rows.length < 2) return null // >=2 linhas de dados alem do cabecalho
+  return { header, rows }
+}
+
+export function detectCsv(md: string): boolean {
+  if (!md) return false
+  return extractCsv(md) !== null
+}

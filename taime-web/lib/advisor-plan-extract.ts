@@ -32,20 +32,31 @@ const COL_DECIDE  = /decid|decis|decide|decision/
 const COL_ACTION  = /iniciar|a[çc][aã]o|a[çc][õo]es|\bacao\b|\baction\b|\bstart\b|fazer agora|do now|\bto do\b/
 const COL_AVOID   = /n[aã]o fazer|ainda n[aã]o|\bn[aã]o\b.*\bainda\b|evit|avoid|not yet|don'?t|do not/
 const COL_EXIT    = /crit[eé]rio|sa[ií]da|\bexit\b|done when|definition of done|conclu[ií]|complete when/
+// Colunas de DIMENSIONAMENTO do roadmap (esforco/duracao/investimento). Um roadmap
+// dimensionado pode nao ter coluna de "nao fazer"/"criterio", mas quase sempre traz
+// estas. Contam como sinal de roadmap junto com a coluna de fase/horizonte.
+const COL_EFFORT   = /esfor[çc]o|\beffort\b/
+const COL_DURATION = /dura[çc][aã]o|\bduration\b/
+const COL_INVEST   = /investiment|\binvestment\b/
 
 // Detecta uma tabela markdown de roadmap: uma linha-cabecalho com coluna de horizonte
-// + ao menos 2 colunas de roadmap (decidir/iniciar/nao-fazer/criterio). Conservador:
-// uma tabela comum (ex: comparacao de ferramentas) nao casa horizonte + essas colunas.
+// ou FASE + ao menos 2 colunas de roadmap (decidir / iniciar / nao-fazer / criterio /
+// esforco / duracao / investimento). Reconhece o roadmap DIMENSIONADO por fases mesmo
+// sem os marcadores temporais classicos. Conservador: uma tabela comum (ex: comparacao
+// de ferramentas) nao casa fase/horizonte + 2 dessas colunas.
 function detectRoadmapTable(text: string): boolean {
   for (const line of text.split('\n')) {
     if ((line.match(/\|/g)?.length ?? 0) < 3) continue   // precisa de tabela multi-coluna
     const joined = line.toLowerCase()
     if (!COL_HORIZON.test(joined)) continue
     let cols = 0
-    if (COL_DECIDE.test(joined)) cols++
-    if (COL_ACTION.test(joined)) cols++
-    if (COL_AVOID.test(joined))  cols++
-    if (COL_EXIT.test(joined))   cols++
+    if (COL_DECIDE.test(joined))   cols++
+    if (COL_ACTION.test(joined))   cols++
+    if (COL_AVOID.test(joined))    cols++
+    if (COL_EXIT.test(joined))     cols++
+    if (COL_EFFORT.test(joined))   cols++
+    if (COL_DURATION.test(joined)) cols++
+    if (COL_INVEST.test(joined))   cols++
     if (cols >= 2) return true
   }
   return false
