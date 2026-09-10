@@ -19,6 +19,7 @@ import { detectRoadmap, extractRoadmap, type PlanOffer } from '@/lib/advisor-pla
 import { loadActiveAssessment, saveAnswers } from '@/lib/assessment-store'
 import { detectDomains, computeDomainScore, nextUnansweredInDomain, questionById, questionsByDomain, type AssessmentQuestion, type Level } from '@/lib/assessment-model'
 import { buildAskInstruction, mapAnswerToLevel, buildAssessmentContextBlock } from '@/lib/assessment-capture'
+import { FACT_CATEGORIES, isFactCategory, factSimilarity, normalizeFact, MAX_FACT_LENGTH, type FactCategory } from '@/lib/company-facts'
 
 // Folga de tempo para a geracao: o Sonnet 5 roda adaptive thinking por padrao e o
 // teto de max_tokens subiu, entao uma resposta longa pode levar mais que o default
@@ -629,6 +630,168 @@ async function persistExtractedContext(
   } catch (e) {
     console.warn('[advisor-context] persist failed:', e)
   }
+}
+
+// ── Memoria livre da empresa (advisor_company_facts) ─────────────────────────
+// Fatos ricos que o cliente revela na conversa e que o perfil estruturado nao
+// captura ("usam n8n", "data lake parado ha 6 meses", "board aprovou budget para
+// IA"). Duas metades: (1) leitura para o CONTEXTO do turno; (2) captura passiva
+// (Haiku) do turno do usuario ao fim, fora do caminho critico. Tabela ausente
+// (migration nao aplicada) degrada para vazio/no-op, nunca quebra o chat.
+
+interface FactContextRow { category: string; fact: string }
+
+async function loadActiveFactsForContext(
+  service: ReturnType<typeof createSupabaseService>,
+  userId: string,
+): Promise<FactContextRow[]> {
+  try {
+    const { data, error } = await service
+      .from('advisor_company_facts')
+      .select('category, fact')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('category', { ascending: true })
+      .order('created_at', { ascending: true })
+    if (error) return []
+    return (data ?? []) as FactContextRow[]
+  } catch { return [] }
+}
+
+// Bloco de contexto: fatos ativos agrupados por categoria. Entra no system prompt
+// como contexto conhecido do cliente (mesmo estatuto do perfil e da memoria), para
+// o Advisor usar sem o cliente repetir. Vazio quando nao ha fatos (bloco omitido).
+function buildCompanyFactsBlock(facts: FactContextRow[]): string {
+  if (facts.length === 0) return ''
+  const byCat = new Map<string, string[]>()
+  for (const f of facts) {
+    const cat = isFactCategory(f.category) ? f.category : 'other'
+    const list = byCat.get(cat) ?? []
+    list.push(f.fact)
+    byCat.set(cat, list)
+  }
+  const lines: string[] = []
+  for (const cat of FACT_CATEGORIES) {
+    const items = byCat.get(cat)
+    if (items && items.length > 0) lines.push(`[${cat.toUpperCase()}] ${items.join('; ')}`)
+  }
+  return `COMPANY FACTS (concrete things THIS client has told you about their organization across conversations). Treat these as established, known context about the client, with the SAME standing as the CLIENT PROFILE and the MEMORY block: use them silently to sharpen the answer and to avoid re-asking what you already know. They are facts about the client's own world (rule 4b), not archive findings, so never present them as a TAIME report datum.
+${lines.join('\n')}`
+}
+
+interface CapturedFact { category: FactCategory; fact: string; confidence: 'high' | 'medium' }
+interface FactCaptureLog {
+  model:              string
+  considered:         number
+  inserted:           number
+  skipped_duplicates: number
+  captured:           CapturedFact[]
+  reason:             string | null
+}
+
+const CAPTURE_INSTRUCTIONS = `You extract concrete, verifiable FACTS about the client's own organization that the client stated in a SINGLE message to a strategic advisor. Return STRICT JSON: an array of objects, or [] if there is nothing to capture. No prose, no code fences.
+
+Each object: { "category": one of ["technology","system","project","priority","constraint","decision","budget","other"], "fact": "a concise fact in natural language, in the language the client used", "confidence": "high" or "medium" }.
+
+CAPTURE ONLY:
+- Concrete, verifiable facts the CLIENT asserted about THEIR company: technologies in use, named systems or tools, projects underway or stalled, decisions taken, constraints, priorities, budgets tied to a purpose.
+- category guide: technology (a technology or stack they use), system (a named system/tool/platform), project (an initiative underway, planned or stalled), priority (a stated strategic priority), constraint (a limitation: regulatory, team, legacy, time), decision (a decision already taken or approved), budget (money tied to a clear purpose), other (a concrete fact that fits none of the above).
+- confidence "high" for direct assertions ("we use AWS"); "medium" for clearly implied ones.
+
+NEVER CAPTURE:
+- Anything the ADVISOR inferred or suggested; only what the CLIENT stated about their own reality.
+- Vague impressions ("they seem to struggle", "maybe we should") are NOT facts.
+- Sensitive personal data or the names of individual people.
+- A bare monetary figure with no purpose ("R$2M" alone is NOT useful); a budget tied to a purpose IS ("the board approved a budget for AI").
+- Questions the client asked, hypotheticals, or general industry commentary.
+- Anything already present in the ALREADY KNOWN list provided below (do not duplicate).
+
+If the message contains no new concrete fact about the client's organization, return [].`
+
+async function captureCompanyFacts(
+  service: ReturnType<typeof createSupabaseService>,
+  userId: string,
+  message: string,
+): Promise<FactCaptureLog> {
+  const empty = (reason: string): FactCaptureLog => ({ model: ROUTER_MODEL, considered: 0, inserted: 0, skipped_duplicates: 0, captured: [], reason })
+
+  // Fatos ja registrados (ativos e inativos): dedupe e para nao pedir ao Haiku o que ja existe.
+  let existing: string[] = []
+  try {
+    const { data, error } = await service
+      .from('advisor_company_facts').select('fact').eq('user_id', userId)
+    if (error) return empty('table_unavailable')
+    existing = ((data ?? []) as Array<{ fact: string }>).map(r => r.fact)
+  } catch { return empty('table_unavailable') }
+
+  const knownBlock = existing.length > 0
+    ? `ALREADY KNOWN (do not repeat any of these):\n${existing.map(f => `- ${f}`).join('\n')}`
+    : 'ALREADY KNOWN: (none yet)'
+
+  const t0 = Date.now()
+  let parsed: unknown
+  try {
+    const res = await fetch(ANTHROPIC_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta':    'prompt-caching-2024-07-31',
+      },
+      body: JSON.stringify({
+        model:      ROUTER_MODEL,
+        max_tokens: 512,
+        system:     [{ type: 'text', text: CAPTURE_INSTRUCTIONS, cache_control: { type: 'ephemeral' } }],
+        messages:   [{ role: 'user', content: `${knownBlock}\n\nCLIENT MESSAGE:\n${message}` }],
+      }),
+    })
+    const data = res.ok ? (await res.json()) as { content?: Array<{ type: string; text: string }>; usage?: Record<string, number> } : null
+    logLlmCall({ caller: 'advisor', model: ROUTER_MODEL, ...usageTokens(data?.usage ?? null), latency_ms: Date.now() - t0, success: res.ok, error_code: res.ok ? null : 'api_error', user_id: userId, meta: { step: 'fact_capture' } })
+    if (!data) return empty('api_error')
+    const raw  = data.content?.find(b => b.type === 'text')?.text?.trim() ?? ''
+    const json = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
+    parsed = JSON.parse(json)
+  } catch {
+    logLlmCall({ caller: 'advisor', model: ROUTER_MODEL, ...usageTokens(null), latency_ms: Date.now() - t0, success: false, error_code: 'exception', user_id: userId, meta: { step: 'fact_capture' } })
+    return empty('exception')
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) return empty('nothing_extracted')
+
+  // Validacao + dedupe (contra o que ja existe e dentro do proprio lote).
+  const accepted: CapturedFact[] = []
+  const seen = existing.slice()
+  let skipped = 0
+  for (const item of parsed) {
+    const o = item as { category?: unknown; fact?: unknown; confidence?: unknown }
+    if (!isFactCategory(o.category)) { skipped++; continue }
+    const fact = typeof o.fact === 'string' ? stripEmDash(o.fact.trim()).slice(0, MAX_FACT_LENGTH) : ''
+    if (fact.length < 2 || !normalizeFact(fact)) { skipped++; continue }
+    const dup = seen.some(e => factSimilarity(e, fact) >= 0.6)
+    if (dup) { skipped++; continue }
+    const confidence: 'high' | 'medium' = o.confidence === 'medium' ? 'medium' : 'high'
+    accepted.push({ category: o.category, fact, confidence })
+    seen.push(fact)
+  }
+
+  const considered = parsed.length
+  if (accepted.length === 0) {
+    return { model: ROUTER_MODEL, considered, inserted: 0, skipped_duplicates: skipped, captured: [], reason: 'no_new_facts' }
+  }
+
+  try {
+    const { error } = await service.from('advisor_company_facts').insert(
+      accepted.map(f => ({ user_id: userId, category: f.category, fact: f.fact, source: 'conversation', confidence: f.confidence, is_active: true })),
+    )
+    if (error) {
+      return { model: ROUTER_MODEL, considered, inserted: 0, skipped_duplicates: skipped, captured: [], reason: `insert_failed:${error.code ?? 'unknown'}` }
+    }
+  } catch (e) {
+    return { model: ROUTER_MODEL, considered, inserted: 0, skipped_duplicates: skipped, captured: [], reason: 'insert_exception' }
+  }
+
+  return { model: ROUTER_MODEL, considered, inserted: accepted.length, skipped_duplicates: skipped, captured: accepted, reason: null }
 }
 
 // ── Memoria de cliente (Fase 2) ─────────────────────────────────────────────
@@ -1430,6 +1593,11 @@ async function handleChat(req: NextRequest): Promise<Response> {
 
   const profile = profileData as AdvisorProfile | null
 
+  // ── Load company facts (memoria livre da empresa) para o contexto deste turno.
+  //    Ativos apenas. Fatos capturados em turnos anteriores; a captura DESTE turno
+  //    roda apos a resposta (nao entra aqui). Tabela ausente degrada para vazio.
+  const companyFacts = await loadActiveFactsForContext(service, user.id)
+
   // ── Load conversation history (last 20 messages) ──────────────────────────
   // v4.2: ordena desc para que o limit pegue as MAIS RECENTES (asc cortava a
   // ponta e perdia a última resposta). Tiebreaker por id porque user e assistant
@@ -1871,6 +2039,13 @@ async function handleChat(req: NextRequest): Promise<Response> {
   if (memorySummaries.length > 0) {
     system.push({ type: 'text', text: buildMemoryBlock(memorySummaries) })
   }
+  // Memoria livre da empresa: fatos ativos do cliente (advisor_company_facts),
+  // agrupados por categoria. Contexto conhecido do cliente, fora do cache (muda por
+  // usuario e a cada captura). Omitido quando nao ha fatos.
+  const companyFactsBlock = buildCompanyFactsBlock(companyFacts)
+  if (companyFactsBlock) {
+    system.push({ type: 'text', text: companyFactsBlock })
+  }
   // Teaser TEMPORAL removido: sem janela por plano, nao ha "conteudo fora da
   // janela" a sinalizar. O arquivo completo ja esta acessivel a todos os planos.
   //
@@ -2280,10 +2455,33 @@ async function handleChat(req: NextRequest): Promise<Response> {
   send('meta', { reply, used: usage.used, limit: usage.limit, plan: usage.plan, history_saved: historySaved, citations, context_panel: contextPanel, plan_offer: planOffer })
   send('done', {})
 
-  // Best-effort DEPOIS do done (nao atrasa o cliente): auto-titulo. Awaited para o
-  // Vercel manter a funcao viva ate gravar. Isolado: nunca afeta a resposta ja entregue.
-  if (runAutoTitle) {
-    try { await runAutoTitle() } catch (e) { console.error('[advisor-title] EXCEPTION (ignored):', e) }
-  }
+  // ── Captura incremental de fatos da empresa (TASK 2). DEPOIS do done: nunca
+  //    atrasa a resposta. Analisa o turno do USUARIO (nao a resposta do Advisor),
+  //    extrai fatos novos, deduplica e insere. Grava o log em context_metadata
+  //    (campo fact_capture) do turno para auditoria por query. Fail-safe total:
+  //    qualquer erro e engolido e nao afeta a resposta nem a persistencia.
+  const runFactCapture = historySaved
+    ? async () => {
+        const log = await captureCompanyFacts(service, user.id, userMessage)
+        await service.from('advisory_memory')
+          .update({ context_metadata: { ...contextMeta, fact_capture: log } })
+          .eq('user_id', user.id)
+          .eq('session_id', sessionId)
+          .eq('role', 'assistant')
+          .eq('created_at', assistantTs.toISOString())
+      }
+    : null
+
+  // Best-effort DEPOIS do done (nao atrasa o cliente): auto-titulo + captura de
+  // fatos. Awaited para o Vercel manter a funcao viva ate gravar. Concorrentes e
+  // isolados: um erro num nunca afeta o outro nem a resposta ja entregue.
+  await Promise.allSettled([
+    runAutoTitle
+      ? runAutoTitle().catch((e: unknown) => console.error('[advisor-title] EXCEPTION (ignored):', e))
+      : Promise.resolve(),
+    runFactCapture
+      ? runFactCapture().catch((e: unknown) => console.error('[advisor-facts] capture EXCEPTION (ignored):', e))
+      : Promise.resolve(),
+  ])
   })
 }

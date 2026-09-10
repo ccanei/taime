@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { scoreColor, scoreRing } from '@/lib/types'
 import { type PlanRecord } from '@/lib/advisor-plan'
 import ActivePlansPanel from '@/components/ActivePlansPanel'
+import CompanyFactsSection from '@/components/CompanyFactsSection'
 import { DOMAINS, TOTAL_QUESTIONS, type DomainScore } from '@/lib/assessment-model'
 
 export interface AssessmentSummary { available: boolean; answered: number; domains: DomainScore[] }
@@ -226,6 +227,10 @@ export default function AdvisorContextPanel({
           </button>
         </Section>
       ) : null}
+
+      {/* ── Fatos da empresa (memoria livre, capturados da conversa + manuais) ──
+             Auto-suficiente: some quando nao ha fatos (sem placeholder). ─────── */}
+      <CompanyFactsSection isPt={isPt} variant="panel" />
 
       {/* ── FIXA: Temas que voce acompanha ───────────────────────────── */}
       {themes.length > 0 && (
