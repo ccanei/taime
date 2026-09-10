@@ -44,9 +44,14 @@ async function fetchThemeTrends(theme: string): Promise<TrendRow[]> {
   // real do tema (pode remontar a 2015 para temas antigos) e o diferencial do arquivo
   // nao e desperdicado. A recencia nao exclui trends antigas: ela entra so como peso
   // no score agregado (weightedScore) e como ancora do NOW no prompt do Haiku.
+  // Desempate EXPLICITO e deterministico: taime_score desc, depois period desc (a mais
+  // recente vence empates de score, favorecendo atualidade), e por fim o id da trend
+  // como chave estavel final (garante o MESMO top-5 em toda execucao, ate quando score
+  // E period empatam). Sem isto, empates de score (ex.: ia-assistentes-codificacao tem
+  // 8 trends com score 84) cortavam de forma nao deterministica.
   const url = `${c.url}/rest/v1/report_trends?theme_slug=eq.${theme}` +
     `&reports.status=eq.published` +
-    `&order=taime_score.desc&limit=5&select=${fields}`
+    `&order=taime_score.desc,reports(period).desc,id.desc&limit=5&select=${fields}`
   try {
     const r = await fetch(url, { headers: h, cache: 'no-store' })
     if (!r.ok) return []
@@ -200,12 +205,12 @@ async function computeResult(slug: string, c: Combo): Promise<DecisionResult> {
 // Cache por combinacao (24h). Chave = slug. 2a chamada da mesma combinacao NAO chama
 // Haiku (sub-segundo). unstable_cache serializa o DecisionResult (JSON puro).
 export function getDecisionResult(slug: string, c: Combo): Promise<DecisionResult> {
-  // v3: bump da chave apos remover a janela de 24 meses (busca agora cobre o arquivo
-  // completo desde 2015). Invalida snapshots antigos calculados com a janela curta,
-  // que traziam score/rodape/then-now-next de uma amostra mais rasa do tema.
+  // v3: busca ampliada para o arquivo completo. v4: desempate deterministico do top-5
+  // (score desc, period desc, id desc) invalida snapshots calculados com a ordem antiga
+  // nao deterministica, que podiam variar as 5 trends escolhidas em empates de score.
   return unstable_cache(
     () => computeResult(slug, c),
-    ['decision-check', 'v3', slug],
-    { revalidate: 86400, tags: [`decision-check:v3:${slug}`] },
+    ['decision-check', 'v4', slug],
+    { revalidate: 86400, tags: [`decision-check:v4:${slug}`] },
   )()
 }

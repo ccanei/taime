@@ -52,7 +52,11 @@ export async function GET(
     .select('taime_framework_pt_br, taime_framework_en, reports!inner(period, status)')
     .eq('theme_slug', c.theme)
     .eq('reports.status', 'published')
+    // Mesmo desempate deterministico do core (score desc, period desc, id desc): o radar
+    // reflete exatamente as 5 trends que a pagina usa, sem variar em empates de score.
     .order('taime_score', { ascending: false })
+    .order('period', { referencedTable: 'reports', ascending: false })
+    .order('id', { ascending: false })
     .limit(5)
   const rows = (data ?? []) as unknown as Row[]
 
