@@ -18,7 +18,7 @@ export const en: Translations = {
     hero:       ['No one can keep up with everything', 'happening in technology.', 'TAIME can.'],
     heroTitle:  'Wrong technology decisions are expensive.',
     heroBody:   'Strategic intelligence that turns what changes in technology into a decision, with score and horizon. For those who decide before investing.',
-    heroSub:    'Start with free access.',
+    heroSub:    'Start deciding with real data.',
     ctaPrimary: 'Create free account →',
 
     // ── Reformulated home: dynamic blocks fed by real data ──
@@ -94,7 +94,7 @@ export const en: Translations = {
     },
     ask: {
       title:        'Ask the Executive Advisor a strategic question',
-      subtitle:     'No sign up. Describe what is at stake and get a strategic partner\'s read, grounded in the TAIME archive intelligence.',
+      subtitle:     'Describe what is at stake and get a strategic partner\'s read, grounded in the TAIME archive intelligence.',
       placeholder:  'E.g.: should I put AI agents into production this year, or wait for governance to mature?',
       send:         'Ask',
       sending:      'Analyzing...',
@@ -117,7 +117,7 @@ export const en: Translations = {
         'What does data sovereignty change in my cloud architecture decision?',
       ],
       metaLimit:        'You have explored TAIME quite a bit. To continue and put the Advisor to real work, create your free account: two full analyses per month and Advisor test messages with the same depth as the paid plan.',
-      arrivalSubtitle:  'Strategic intelligence applied to your company reality, no sign up',
+      arrivalSubtitle:  'Strategic intelligence applied to your company reality',
       // /ask desktop: side-column content (aggregates and institutional only).
       columns: {
         archiveTitle:    'The archive',
@@ -262,7 +262,7 @@ export const en: Translations = {
     plansLabel:  'Plans and access',
     plansTitle:  'Strategic intelligence for every profile.',
     plansSub:    'Pick a plan and start now. Instant activation, no waiting.',
-    plansNote:   'Instant activation on signup. No credit card required.',
+    plansNote:   'Instant activation on signup.',
     plans: [
       {
         name: 'Free', price: 'Free', priceOriginal: null, priceNote: null, freeNote: null, badge: null,
@@ -278,7 +278,7 @@ export const en: Translations = {
         badge: 'Free for a limited time',
         desc: 'For the executive who decides.',
         features: ['Unlimited access to the full archive', 'Executive Advisor with 250 messages per month'],
-        trustNote: 'Instant activation at signup. No credit card.',
+        trustNote: 'Instant activation at signup.',
         finePrint: 'Reference price after launch: from US$ 97/month',
         cta: 'Start with Essential', href: '/login', highlight: true,
       },
@@ -417,7 +417,7 @@ export const en: Translations = {
     subtitle: 'Pick a plan and start now. Instant activation, no waiting.',
     planCards: [
       { name: 'Free',       price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'Start deciding with real data',   badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Create account →'    },
-      { name: 'Essential',  price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Free for a limited time', highlight: true,  trustNote: 'Instant activation at signup. No credit card.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
+      { name: 'Essential',  price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Free for a limited time', highlight: true,  trustNote: 'Instant activation at signup.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
       { name: 'Strategic',  price: 'Custom',     priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For organizations.',              badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Contact us'          },
     ],
     planFeatures: [

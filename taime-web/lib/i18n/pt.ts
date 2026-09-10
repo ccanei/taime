@@ -16,7 +16,7 @@ export const pt = {
     hero:       ['Ninguém consegue acompanhar tudo', 'o que acontece em tecnologia.', 'O TAIME consegue.'],
     heroTitle:  'Decisões de tecnologia erradas custam caro.',
     heroBody:   'Inteligência estratégica que traduz o que muda na tecnologia em decisão, com score e horizonte. Para quem decide antes de investir.',
-    heroSub:    'Comece com acesso gratuito.',
+    heroSub:    'Comece a decidir com dados reais.',
     ctaPrimary: 'Criar conta gratuita →',
     ctaSecondary: 'Solicitar acesso →',
 
@@ -93,7 +93,7 @@ export const pt = {
     },
     ask: {
       title:        'Faça uma pergunta estratégica ao Executive Advisor',
-      subtitle:     'Sem cadastro. Descreva o que está em jogo e receba a leitura de um parceiro estratégico, com base na inteligência do arquivo TAIME.',
+      subtitle:     'Descreva o que está em jogo e receba a leitura de um parceiro estratégico, com base na inteligência do arquivo TAIME.',
       placeholder:  'Ex: devo colocar agentes de IA em produção este ano, ou espero a governança amadurecer?',
       send:         'Perguntar',
       sending:      'Analisando...',
@@ -116,7 +116,7 @@ export const pt = {
         'O que a soberania de dados muda na minha decisão de arquitetura de cloud?',
       ],
       metaLimit:        'Você já explorou bastante sobre o TAIME. Para continuar e colocar o Advisor para trabalhar de verdade, crie sua conta gratuita: são 2 análises completas por mês e mensagens de teste do Advisor com a mesma profundidade do plano pago.',
-      arrivalSubtitle:  'Inteligência estratégica aplicada à realidade da sua empresa, sem cadastro',
+      arrivalSubtitle:  'Inteligência estratégica aplicada à realidade da sua empresa',
       // /ask desktop: conteudo das colunas laterais (so agregados e institucional).
       columns: {
         archiveTitle:    'O acervo',
@@ -260,7 +260,7 @@ export const pt = {
     plansLabel:  'Planos e acesso',
     plansTitle:  'Inteligência estratégica para cada perfil.',
     plansSub:    'Escolha o plano e comece agora. Ativação imediata, sem espera.',
-    plansNote:   'Ativação imediata no cadastro. Sem cartão de crédito.',
+    plansNote:   'Ativação imediata no cadastro.',
     plans: [
       {
         name: 'Gratuito', price: 'Grátis', priceOriginal: null, priceNote: null, freeNote: null, badge: null,
@@ -276,7 +276,7 @@ export const pt = {
         badge: 'Grátis por tempo limitado',
         desc: 'Para o executivo que decide.',
         features: ['Acesso ilimitado a todo o arquivo', 'Executive Advisor com 250 mensagens por mês'],
-        trustNote: 'Ativação imediata no cadastro. Sem cartão de crédito.',
+        trustNote: 'Ativação imediata no cadastro.',
         finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês',
         cta: 'Começar com o Essential', href: '/login', highlight: true,
       },
@@ -415,7 +415,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Comece a decidir com dados reais', badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Grátis por tempo limitado', highlight: true,  trustNote: 'Ativação imediata no cadastro. Sem cartão de crédito.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Grátis por tempo limitado', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
       { name: 'Estratégico', price: 'Sob consulta', priceOriginal: null,         priceNote: null,                                                 freeNote: null,                                                       desc: 'Para organizações.',               badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Fale conosco'              },
     ],
     planFeatures: [

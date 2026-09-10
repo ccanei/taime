@@ -664,7 +664,7 @@ export default async function LandingPage() {
                   ? "A strategic advisor that connects years of analysis to your company's context."
                   : 'Um conselheiro estratégico que conecta anos de análise ao contexto da sua empresa.',
                 soon: false,
-                cta:  { href: '/ask', label: isEn ? 'Try it now, no signup' : 'Experimente agora, sem cadastro' },
+                cta:  { href: '/ask', label: isEn ? 'Try it now' : 'Experimente agora' },
               },
             ].map(({ icon, title, desc, soon, cta }) => (
               <div key={title}

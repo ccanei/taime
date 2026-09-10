@@ -7,7 +7,7 @@ import DecisionCheckForm from '@/components/DecisionCheckForm'
 
 export const metadata: Metadata = {
   title: 'TAIME Decision Check: sua decisão de tecnologia em 4 perguntas',
-  description: 'Score, MOVE e THEN/NOW/NEXT sobre a tecnologia que você está avaliando, baseado no arquivo TAIME Tech. Gratuito, sem cadastro. Strategic Technology Intelligence since 2015.',
+  description: 'Score, MOVE e THEN/NOW/NEXT sobre a tecnologia que você está avaliando, baseado no arquivo TAIME Tech. Strategic Technology Intelligence since 2015.',
   alternates: { canonical: '/decision-check' },
 }
 
@@ -27,8 +27,8 @@ export default async function DecisionCheckLanding({
     kicker:   isPt ? 'DECISION CHECK' : 'DECISION CHECK',
     title:    isPt ? 'Sua decisão de tecnologia, checada contra 25 anos de arquivo.'
                    : 'Your technology decision, checked against 25 years of archive.',
-    sub:      isPt ? 'Quatro perguntas. Um veredito com score, movimento recomendado e a trajetória THEN / NOW / NEXT do tema. Grátis, sem cadastro.'
-                   : 'Four questions. A verdict with a score, the recommended move, and the THEN / NOW / NEXT arc of the theme. Free, no signup.',
+    sub:      isPt ? 'Quatro perguntas. Um veredito com score, movimento recomendado e a trajetória THEN / NOW / NEXT do tema.'
+                   : 'Four questions. A verdict with a score, the recommended move, and the THEN / NOW / NEXT arc of the theme.',
     tagline:  'Strategic Technology Intelligence. Since 2015. From signal to decision.',
   }
 
