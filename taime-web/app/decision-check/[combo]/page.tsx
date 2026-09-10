@@ -11,6 +11,7 @@ import { getDecisionResult } from '@/lib/decision-check-core'
 import { SITE_URL } from '@/lib/structured-data'
 import DecisionShareButton from '@/components/DecisionShareButton'
 import OgDownloadButton from '@/components/OgDownloadButton'
+import OgCardPreview from '@/components/OgCardPreview'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 
@@ -82,6 +83,9 @@ export default async function DecisionCheckResult({
     share:       lang === 'pt' ? 'Compartilhar' : 'Share',
     copied:      lang === 'pt' ? 'Link copiado' : 'Link copied',
     download:    lang === 'pt' ? 'Baixar imagem' : 'Download image',
+    previewLabel: lang === 'pt' ? 'Prévia do card para compartilhar' : 'Preview of the shareable card',
+    previewOpen:  lang === 'pt' ? 'Abrir em tamanho real' : 'Open full size',
+    previewAlt:   lang === 'pt' ? `Report Card do TAIME: ${theme}` : `TAIME Report Card: ${theme}`,
     risk:        lang === 'pt' ? 'RISCO PRINCIPAL' : 'MAIN RISK',
     then:        'THEN', now: 'NOW', next: 'NEXT',
     move:        lang === 'pt' ? 'MOVIMENTO RECOMENDADO' : 'RECOMMENDED MOVE',
@@ -182,6 +186,18 @@ export default async function DecisionCheckResult({
             </div>
 
             <p className="text-xs text-white/40 mb-10">{tx.basis(res.trendCount, res.oldestYear)}</p>
+
+            {/* Previa do Report Card compartilhavel (complementar ao conteudo acima) */}
+            <OgCardPreview
+              src={`/api/og/decision-check/${combo}?lang=${lang}`}
+              label={tx.previewLabel}
+              openLabel={tx.previewOpen}
+              alt={tx.previewAlt}
+            />
+            <div className="flex items-center gap-3 mb-4">
+              <DecisionShareButton label={tx.share} copied={tx.copied} />
+              <OgDownloadButton href={`/api/og/decision-check/${combo}?lang=${lang}`} label={tx.download} variant="dark" />
+            </div>
           </>
         )}
 
@@ -195,12 +211,11 @@ export default async function DecisionCheckResult({
           <Link href={secondaryHref} className="text-sm text-white/50 hover:text-white underline underline-offset-4 transition-colors">
             {tx.ctaRead}
           </Link>
-          <div className="mt-2 flex items-center gap-3">
-            <DecisionShareButton label={tx.share} copied={tx.copied} />
-            {res.ok && (
-              <OgDownloadButton href={`/api/og/decision-check/${combo}?lang=${lang}`} label={tx.download} variant="dark" />
-            )}
-          </div>
+          {!res.ok && (
+            <div className="mt-2 flex items-center gap-3">
+              <DecisionShareButton label={tx.share} copied={tx.copied} />
+            </div>
+          )}
         </div>
 
         <p className="mt-14 text-center text-[11px] uppercase tracking-[0.15em] text-white/30">

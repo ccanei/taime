@@ -18,10 +18,14 @@ import AdvisorDemo from '@/components/AdvisorDemo'
 import CountUp from '@/components/home/CountUp'
 import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
-import SignatureGraphic from '@/components/home/SignatureGraphic'
+import TrendRadar from '@/components/home/TrendRadar'
+import TrendTicker from '@/components/home/TrendTicker'
+import ScrollConnector from '@/components/home/ScrollConnector'
 import FrameworkSection from '@/components/home/FrameworkSection'
 import ThemeTimeline from '@/components/home/ThemeTimeline'
 import NewsletterSignup from '@/components/NewsletterSignup'
+import { moveFromScore, MOVE_LABEL, MOVE_STYLE, type Move } from '@/lib/decision-check'
+import { DIM_ORDER } from '@/lib/radar-geometry'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -241,6 +245,15 @@ function stripPeriodLabel(text: string | null | undefined): string {
   return text
 }
 
+// Estilo do chip de MOVE em fundo claro (cards de tendencia da home). O MOVE_STYLE
+// de lib/decision-check e calibrado para fundo escuro; aqui usamos tons 700/50/200.
+const MOVE_LIGHT: Record<Move, string> = {
+  act:     'text-emerald-700 bg-emerald-50 ring-emerald-200',
+  prepare: 'text-taime-700 bg-taime-50 ring-taime-200',
+  monitor: 'text-amber-700 bg-amber-50 ring-amber-200',
+  avoid:   'text-red-700 bg-red-50 ring-red-200',
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function LandingPage() {
@@ -296,7 +309,7 @@ export default async function LandingPage() {
     /agent|ag[eê]ntic/i.test(`${r.theme_slug ?? ''} ${r.title_en} ${r.title_pt_br}`)
   const divKey = (r: RecentTrendRow): string => (isAgentic(r) ? 'AGENTIC' : (r.category ?? '?'))
 
-  const CARD_COUNT = 4
+  const CARD_COUNT = 9
   const trendCardRows: typeof dedupedRows = []
   const keyCount = new Map<string, number>()
   const takeUnderCap = (cap: number) => {
@@ -407,27 +420,28 @@ export default async function LandingPage() {
         { step: 'MOVE',   val: isEn ? 'Deploy'     : 'Implantar' },
         { step: 'EXIT',   val: isEn ? 'NPS < 40'   : 'NPS < 40' },
       ]
-  // 4 mini-cards de dimensão para o mockup do hero (dados reais quando há)
-  const heroDimLabels = isEn
-    ? { cp: 'Competitive Pressure', si: 'Strategic Impact', lr: 'Lag Risk',           mm: 'Market Maturity' }
-    : { cp: 'Pressão Competitiva',  si: 'Impacto Estratégico', lr: 'Risco de Atraso', mm: 'Maturidade' }
+  // Radar inline do hero: as 5 dimensoes reais da trend HERO (is_hero -> [0]) na
+  // ordem canonica DIM_ORDER, e o MOVE derivado do score (mesma regua do OG card).
+  const heroRadarValues: number[] = fwMockup?.score_dimensions
+    ? DIM_ORDER.map(k => fwMockup!.score_dimensions![k]?.score ?? mockupScore)
+    : [79, 87, 92, 72, 84]
+  const heroMove: Move = moveFromScore(mockupScore)
 
-  const heroDims: [string, number][] = fwMockup?.score_dimensions
-    ? [
-        [heroDimLabels.cp, fwMockup.score_dimensions.competitive_pressure.score],
-        [heroDimLabels.si, fwMockup.score_dimensions.strategic_impact.score],
-        [heroDimLabels.lr, fwMockup.score_dimensions.competitive_lag_risk.score],
-        [heroDimLabels.mm, fwMockup.score_dimensions.market_maturity.score],
-      ]
-    : [
-        [heroDimLabels.cp, 87],
-        [heroDimLabels.si, 92],
-        [heroDimLabels.lr, 84],
-        [heroDimLabels.mm, 79],
-      ]
+  // Ticker: trends publicadas mais recentes (periodo desc, depois score), reusando
+  // os dados ja carregados (sem query extra). O report gate mora na propria pagina.
+  const tickerItems = [...recentRows]
+    .sort((a, b) =>
+      (b.reports?.period ?? '').localeCompare(a.reports?.period ?? '') || b.taime_score - a.taime_score)
+    .slice(0, 12)
+    .map(r => ({
+      title: isEn ? r.title_en : r.title_pt_br,
+      score: r.taime_score,
+      href:  `/reports/${r.report_id}`,
+    }))
 
   return (
     <div className="min-h-screen bg-white">
+      <ScrollConnector />
       <Navbar />
 
       {/* ── SEÇÃO 1: HERO ESCURO COM MOCKUP DE PRODUTO ─────────────────── */}
@@ -497,62 +511,71 @@ export default async function LandingPage() {
             <div className="relative lg:pl-4 lg:-mr-6 xl:-mr-16">
               <div className="rounded-2xl bg-zinc-900/70 border border-white/10 shadow-2xl ring-1 ring-white/5
                               p-6 sm:p-7 backdrop-blur-sm">
-                {/* Grafico-assinatura da metodologia: a trajetoria de uma tecnologia */}
-                <p className="text-[10px] font-bold tracking-widest uppercase text-taime-300 mb-1.5">
-                  {h.heroGraph.title}
-                </p>
-                <p className="text-xs text-white/55 leading-relaxed mb-5 max-w-sm">
-                  {h.heroGraph.subtitle}
-                </p>
-                <SignatureGraphic
-                  labels={{ then: h.tempo.then, now: h.tempo.now, next: h.tempo.next }}
-                  className="w-full h-auto mb-6"
-                />
-
-                {/* Faixa compacta da ultima analise (report integrado, menor) */}
-                <div className="border-t border-white/10 pt-5">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <p className="text-[9px] font-bold tracking-widest text-zinc-500">
-                          {isEn ? 'LATEST ANALYSIS' : 'ÚLTIMA ANÁLISE'}
-                        </p>
-                        {heroPeriod && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold
-                                           tracking-wide tabular-nums bg-taime-500/15 text-taime-200 ring-1 ring-taime-400/25">
-                            {heroPeriod}
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="text-sm font-bold text-white leading-snug line-clamp-2">{mockupTitle}</h3>
-                    </div>
-                    <span className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl
-                                     bg-taime-500 text-white shadow-lg shadow-taime-500/30 ring-4 ring-taime-900">
-                      <span className="text-lg font-bold leading-none">{mockupScore}</span>
-                      <span className="text-[7px] font-bold tracking-widest opacity-80">SCORE</span>
+                {/* Cabecalho: ultima analise + periodo */}
+                <div className="flex items-center gap-2 mb-3">
+                  <p className="text-[10px] font-bold tracking-widest uppercase text-taime-300">
+                    {isEn ? 'LATEST ANALYSIS' : 'ÚLTIMA ANÁLISE'}
+                  </p>
+                  {heroPeriod && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold
+                                     tracking-wide tabular-nums bg-taime-500/15 text-taime-200 ring-1 ring-taime-400/25">
+                      {heroPeriod}
                     </span>
-                  </div>
-                  <ScoreBars dims={heroDims} variant="hero" />
-                  {heroReportHref && (
-                    <Link
-                      href={heroReportHref}
-                      className="mt-5 inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
-                                 rounded-lg bg-taime-500 text-white text-xs font-semibold
-                                 hover:bg-taime-400 transition-colors"
-                    >
-                      {isEn ? 'Read the analysis' : 'Leia a análise'}
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14M13 6l6 6-6 6" />
-                      </svg>
-                    </Link>
                   )}
                 </div>
+
+                {/* Titulo da trend hero (marcada is_hero no admin) */}
+                <h3 className="text-base sm:text-lg font-bold text-white leading-snug line-clamp-2 mb-5">
+                  {mockupTitle}
+                </h3>
+
+                {/* Score grande + MOVE colorido */}
+                <div className="flex items-end gap-4 mb-1">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold tracking-widest text-white/40 uppercase mb-1">
+                      {isEn ? 'TAIME SCORE' : 'TAIME SCORE'}
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-5xl font-black tabular-nums leading-none text-white">{mockupScore}</span>
+                      <span className="text-base font-bold text-white/30">/100</span>
+                    </div>
+                  </div>
+                  <div className={`inline-flex items-center rounded-xl px-3.5 py-2 ring-1 ${MOVE_STYLE[heroMove].ring} ${MOVE_STYLE[heroMove].bg}`}>
+                    <span className={`text-lg font-black tracking-wide ${MOVE_STYLE[heroMove].text}`}>
+                      {MOVE_LABEL[heroMove][locale]}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Radar real das 5 dimensoes do score */}
+                <TrendRadar values={heroRadarValues} move={heroMove} lang={locale} className="w-full h-auto" />
+
+                {/* Link para a analise completa */}
+                {heroReportHref && (
+                  <Link
+                    href={heroReportHref}
+                    className="mt-1 inline-flex items-center justify-center gap-2 w-full px-4 py-2.5
+                               rounded-lg bg-taime-500 text-white text-xs font-semibold
+                               hover:bg-taime-400 transition-colors"
+                  >
+                    {isEn ? 'Read the analysis' : 'Leia a análise'}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </Link>
+                )}
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      {/* ── SEÇÃO 1a-2: TICKER DE TRENDS RECENTES (marquee) ─────────────── */}
+      <TrendTicker
+        items={tickerItems}
+        label={isEn ? 'Recent published trends' : 'Trends publicadas recentes'}
+      />
 
       {/* ── SEÇÃO 1c: FAIXA DE PROVA (contadores animados + micro-grafico) ── */}
       <section className="border-t border-zinc-100 bg-white">
@@ -1014,12 +1037,15 @@ export default async function LandingPage() {
           <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.trendCards.title}</h2>
 
           {trendCardRows.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
               {trendCardRows.map((r, i) => {
                 const score = r.taime_score
                 const fw    = isEn ? r.taime_framework_en : r.taime_framework_pt_br
                 const tnn   = isEn ? r.then_now_next_en   : r.then_now_next_pt_br
-                const line  = firstWords(fw?.executive_snapshot ?? tnn?.now ?? '', 24)
+                // Resumo de 1-2 linhas: prioriza o NOW do THEN/NOW/NEXT (o estado atual),
+                // com fallback no executive_snapshot quando o NOW nao existir.
+                const line  = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 26)
+                const move  = moveFromScore(score)
                 const title = isEn ? r.title_en : r.title_pt_br
                 const scoreTone = score >= 80
                   ? 'text-emerald-700 bg-emerald-50 ring-emerald-100'
@@ -1040,6 +1066,10 @@ export default async function LandingPage() {
                       </span>
                     </div>
                     <h3 className="text-lg font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
+                    <span className={`self-start inline-flex items-center rounded-md px-2 py-0.5 text-[10px]
+                                      font-bold tracking-wide uppercase ring-1 ${MOVE_LIGHT[move]}`}>
+                      {MOVE_LABEL[move][locale]}
+                    </span>
                     <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
                     <Link
                       href={isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'}

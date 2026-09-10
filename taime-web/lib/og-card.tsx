@@ -1,5 +1,8 @@
 import type { ReactElement } from 'react'
 import { type Lang, type Move, MOVE_LABEL } from '@/lib/decision-check'
+import { DIM_ORDER, DIM_LABELS, MOVE_HEX, radarPoint, radarPolygonPoints, radarDataPoints } from '@/lib/radar-geometry'
+
+export { DIM_ORDER }
 
 // Report Card compartilhavel (1200x630, padrao OG): fundo azul-marinho da marca,
 // TAIME Score grande, MOVE com cor semantica, radar SVG de 5 dimensoes (gerado a
@@ -17,44 +20,18 @@ const NAVY_DEEP = '#0a1330'
 const TAIME_300 = '#93b0ff'
 const TAIME_400 = '#5479ff'
 
-// Cor semantica por MOVE (mesma leitura de cor do /decision-check).
-const MOVE_HEX: Record<Move, { color: string; fill: string; border: string }> = {
-  act:     { color: '#34d399', fill: 'rgba(52,211,153,0.14)',  border: 'rgba(52,211,153,0.45)' },
-  prepare: { color: '#5479ff', fill: 'rgba(84,121,255,0.16)',  border: 'rgba(84,121,255,0.50)' },
-  monitor: { color: '#fbbf24', fill: 'rgba(251,191,36,0.14)',  border: 'rgba(251,191,36,0.45)' },
-  avoid:   { color: '#f87171', fill: 'rgba(248,113,113,0.14)', border: 'rgba(248,113,113,0.45)' },
-}
-
-// Ordem canonica das 5 dimensoes (mesma do ScoreDimensions em lib/types) e seus
-// rotulos PT/EN. Os valores chegam SEMPRE nesta ordem.
-export const DIM_ORDER = [
-  'market_maturity', 'competitive_pressure', 'strategic_impact', 'execution_complexity', 'competitive_lag_risk',
-] as const
-const DIM_LABELS: Record<Lang, string[]> = {
-  pt: ['Maturidade', 'Pressão Competitiva', 'Impacto Estratégico', 'Complexidade', 'Risco de Atraso'],
-  en: ['Maturity', 'Competitive Pressure', 'Strategic Impact', 'Execution Complexity', 'Lag Risk'],
-}
-
-// ── Geometria do radar (pentagono, topo ao centro, sentido horario) ──────────
+// ── Geometria do radar (compartilhada em lib/radar-geometry) ─────────────────
 const RC = 230            // centro x/y (viewBox 460x460)
 const RR = 140            // raio 100%
 const LABEL_R = RR + 30   // raio dos rotulos
-const ANGLES = [0, 1, 2, 3, 4].map(i => (-90 + i * 72) * Math.PI / 180)
-
-function ptAt(i: number, radius: number): [number, number] {
-  return [RC + radius * Math.cos(ANGLES[i]), RC + radius * Math.sin(ANGLES[i])]
-}
-function poly(radius: number): string {
-  return ANGLES.map((_, i) => ptAt(i, radius).map(n => n.toFixed(1)).join(',')).join(' ')
-}
+const ptAt = (i: number, radius: number): [number, number] => radarPoint(RC, RC, radius, i)
 
 function radarDataUri(values: number[], move: Move): string {
   const m = MOVE_HEX[move]
-  const clamp = (v: number) => Math.max(0, Math.min(100, v))
-  const dataPts = values.map((v, i) => ptAt(i, RR * clamp(v) / 100))
+  const dataPts = radarDataPoints(RC, RC, RR, values)
   const rings = [0.25, 0.5, 0.75, 1].map(f =>
-    `<polygon points="${poly(RR * f)}" fill="none" stroke="rgba(255,255,255,${f === 1 ? 0.22 : 0.10})" stroke-width="1"/>`).join('')
-  const axes = ANGLES.map((_, i) => {
+    `<polygon points="${radarPolygonPoints(RC, RC, RR * f)}" fill="none" stroke="rgba(255,255,255,${f === 1 ? 0.22 : 0.10})" stroke-width="1"/>`).join('')
+  const axes = [0, 1, 2, 3, 4].map(i => {
     const [x, y] = ptAt(i, RR)
     return `<line x1="${RC}" y1="${RC}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>`
   }).join('')
