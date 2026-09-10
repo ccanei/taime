@@ -56,6 +56,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description = summary.split('\n').find(s => s.trim().length > 60)?.slice(0, 200)
     ?? summary.slice(0, 200)
 
+  // og:image dinamico (Report Card real da trend em destaque). Absoluto para os crawlers.
+  const ogImg = `${SITE_URL}/api/og/report/${report.id}?lang=${isEn ? 'en' : 'pt'}`
+
   return {
     title,
     description,
@@ -64,13 +67,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       siteName:    'TAIME',
-      images:      [{ url: '/og-image.png', width: 1200, height: 630, alt: 'TAIME' }],
+      images:      [{ url: ogImg, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card:        'summary_large_image',
       title,
       description,
-      images:      ['/og-image.png'],
+      images:      [ogImg],
     },
   }
 }

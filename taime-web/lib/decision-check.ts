@@ -135,6 +135,16 @@ export const MOVE_STYLE: Record<Move, { text: string; ring: string; bg: string }
 }
 export function isMove(v: unknown): v is Move { return v === 'act' || v === 'prepare' || v === 'monitor' || v === 'avoid' }
 
+// Faixa de score -> move deterministico. Fonte unica: usado no fallback do Haiku
+// (decision-check-core) E na geracao do Report Card (que nao chama LLM). >=85 agir,
+// >=70 preparar, >=55 monitorar, senao evitar.
+export function moveFromScore(score: number): Move {
+  if (score >= 85) return 'act'
+  if (score >= 70) return 'prepare'
+  if (score >= 55) return 'monitor'
+  return 'avoid'
+}
+
 // ── Alinhamento entre o OBJETIVO do usuario e a LEITURA do TAIME (o MOVE) ─────
 export type AlignmentStatus = 'aligned' | 'tension'
 // O objetivo do usuario mapeia 1:1 num MOVE equivalente. ALINHADO quando o MOVE

@@ -6,6 +6,7 @@ import type { Report, ReportTrend, Lang, TaimeFramework, OrgImplications, ThenNo
 import { formatPeriod, formatPeriodFull, scoreColor, scoreBg, scoreRing } from '@/lib/types'
 import type { AccessLevel, AccessReason, Plan } from '@/lib/access'
 import LanguageSelector from '@/components/LanguageSelector'
+import OgDownloadButton from '@/components/OgDownloadButton'
 import { ScoreGauge, ScoreDimensionsPanel, ThenNowNextPanel } from '@/components/ReportVisuals'
 import ReportWatermark from '@/components/ReportWatermark'
 
@@ -653,6 +654,17 @@ export default function ReportClient({
               <p key={i}>{p}</p>
             ))}
           </div>
+
+          {/* Amostra publica: baixar o Report Card (imagem para LinkedIn) da trend em destaque */}
+          {isPublic && publicUnlock && (
+            <div className="mt-6 pt-5 border-t border-zinc-100">
+              <OgDownloadButton
+                href={`/api/og/report/${report.id}?lang=${isPt ? 'pt' : 'en'}&rank=${publicUnlock.unlockedRank}`}
+                label={isPt ? 'Baixar imagem' : 'Download image'}
+                variant="light"
+              />
+            </div>
+          )}
         </div>
 
         {/* Trends */}

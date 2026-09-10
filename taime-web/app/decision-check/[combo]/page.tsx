@@ -8,7 +8,9 @@ import {
 } from '@/lib/decision-check'
 import { detectLocale } from '@/lib/i18n'
 import { getDecisionResult } from '@/lib/decision-check-core'
+import { SITE_URL } from '@/lib/structured-data'
 import DecisionShareButton from '@/components/DecisionShareButton'
+import OgDownloadButton from '@/components/OgDownloadButton'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 
@@ -46,11 +48,13 @@ export async function generateMetadata({
     : (lang === 'pt'
         ? `${theme}: tema em desenvolvimento no arquivo TAIME Tech. Strategic Technology Intelligence.`
         : `${theme}: theme in development in the TAIME Tech archive. Strategic Technology Intelligence.`)
+  // og:image dinamico (Report Card real do tema). Absoluto para os crawlers.
+  const ogImg = `${SITE_URL}/api/og/decision-check/${combo}?lang=${lang}`
   return {
     title, description: desc,
     alternates: { canonical: `/decision-check/${combo}` },
-    openGraph: { title, description: desc, type: 'website', images: ['/og-image.png'] },
-    twitter: { card: 'summary_large_image', title, description: desc, images: ['/og-image.png'] },
+    openGraph: { title, description: desc, type: 'website', images: [{ url: ogImg, width: 1200, height: 630, alt: title }] },
+    twitter: { card: 'summary_large_image', title, description: desc, images: [ogImg] },
   }
 }
 
@@ -77,6 +81,7 @@ export default async function DecisionCheckResult({
     ctaRead:     lang === 'pt' ? 'Ou leia a análise completa' : 'Or read the full analysis',
     share:       lang === 'pt' ? 'Compartilhar' : 'Share',
     copied:      lang === 'pt' ? 'Link copiado' : 'Link copied',
+    download:    lang === 'pt' ? 'Baixar imagem' : 'Download image',
     risk:        lang === 'pt' ? 'RISCO PRINCIPAL' : 'MAIN RISK',
     then:        'THEN', now: 'NOW', next: 'NEXT',
     move:        lang === 'pt' ? 'MOVIMENTO RECOMENDADO' : 'RECOMMENDED MOVE',
@@ -190,8 +195,11 @@ export default async function DecisionCheckResult({
           <Link href={secondaryHref} className="text-sm text-white/50 hover:text-white underline underline-offset-4 transition-colors">
             {tx.ctaRead}
           </Link>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-3">
             <DecisionShareButton label={tx.share} copied={tx.copied} />
+            {res.ok && (
+              <OgDownloadButton href={`/api/og/decision-check/${combo}?lang=${lang}`} label={tx.download} variant="dark" />
+            )}
           </div>
         </div>
 

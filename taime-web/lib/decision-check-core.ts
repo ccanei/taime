@@ -4,7 +4,7 @@ import { stripEmDash } from '@/lib/strip-markdown'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import {
-  type Combo, type DecisionResult, type Move, isMove, FALLBACK_MSG, themeLabel, SIZE_FRAMING,
+  type Combo, type DecisionResult, type Move, isMove, moveFromScore, FALLBACK_MSG, themeLabel, SIZE_FRAMING,
   computeAlignment, ALIGNMENT_FALLBACK,
 } from '@/lib/decision-check'
 
@@ -78,14 +78,6 @@ function weightedScore(trends: TrendRow[]): number {
   let num = 0, den = 0
   asc.forEach((t, i) => { const w = i + 1; num += t.taime_score * w; den += w })
   return den ? Math.round(num / den) : 0
-}
-
-// Faixa de score -> move deterministico (fallback quando o Haiku nao classifica).
-function moveFromScore(score: number): Move {
-  if (score >= 85) return 'act'
-  if (score >= 70) return 'prepare'
-  if (score >= 55) return 'monitor'
-  return 'avoid'
 }
 
 function trendContext(trends: TrendRow[]): string {
