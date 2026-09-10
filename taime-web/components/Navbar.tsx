@@ -23,9 +23,12 @@ export default function Navbar() {
     window.location.href = '/'
   }
 
-  const NAV_LINKS = [
+  // "Decision Check" e nome de produto: identico em PT e EN. highlight=true da a cor
+  // sutil da marca (e gratuito, vale destacar). Entre Radar e Planos.
+  const NAV_LINKS: Array<{ label: string; href: string; highlight?: boolean }> = [
     { label: t.nav.howItWorks, href: '/#como-funciona' },
     { label: t.nav.radar,      href: '/radar'           },
+    { label: 'Decision Check', href: '/decision-check', highlight: true },
     { label: t.nav.plans,      href: '/planos'          },
     { label: t.nav.about,      href: '/sobre'           },
     { label: t.nav.contact,    href: '/contato'         },
@@ -41,9 +44,9 @@ export default function Navbar() {
 
         {/* Desktop */}
         <div className="hidden sm:flex items-center gap-5">
-          {NAV_LINKS.map(({ label, href }) => (
+          {NAV_LINKS.map(({ label, href, highlight }) => (
             <Link key={href} href={href}
-              className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors">
+              className={`text-sm transition-colors ${highlight ? 'text-taime-600 hover:text-taime-700 font-medium' : 'text-zinc-500 hover:text-zinc-900'}`}>
               {label}
             </Link>
           ))}
@@ -98,9 +101,9 @@ export default function Navbar() {
       {/* Mobile menu */}
       {open && (
         <div className="sm:hidden border-t border-zinc-100 mt-4 pt-4 pb-3 px-2 space-y-1">
-          {NAV_LINKS.map(({ label, href }) => (
+          {NAV_LINKS.map(({ label, href, highlight }) => (
             <Link key={href} href={href} onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-sm text-zinc-700 rounded-lg hover:bg-zinc-50">
+              className={`block px-4 py-2.5 text-sm rounded-lg hover:bg-zinc-50 ${highlight ? 'text-taime-700 font-medium' : 'text-zinc-700'}`}>
               {label}
             </Link>
           ))}
