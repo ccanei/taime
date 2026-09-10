@@ -5,6 +5,7 @@ import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
 import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import {
   type Combo, type DecisionResult, type Move, isMove, FALLBACK_MSG, themeLabel, SIZE_FRAMING,
+  computeAlignment, ALIGNMENT_FALLBACK,
 } from '@/lib/decision-check'
 
 // Nucleo do /decision-check: consolida as trends do tema num snapshot (score/move/
@@ -113,9 +114,18 @@ INVIOLABLE RULES:
 - Write BOTH Portuguese (pt) and English (en), each native, not a translation of the other.
 - Executive register, concise.
 
+The user ALSO picked an OBJECTIVE for this technology (in the CLIENT LENS below):
+adotar (adopt, go now) maps to move act; preparar to prepare; monitorar to monitor;
+evitar (avoid) to avoid. Compare that objective with the dominant MOVE you read from the
+trends and judge the fit:
+- alignment_status = "aligned" when the objective points the SAME way as the move; "tension" when they diverge.
+- alignment_pt / alignment_en = 1 to 2 lines explaining WHY the archive supports the objective (aligned) or WHY it pulls against it (tension), grounded ONLY in the trends. This is the part that must change with the objective.
+
 Return this shape and nothing else:
 {
   "move": "act | prepare | monitor | avoid (the dominant strategic posture across the trends)",
+  "alignment_status": "aligned | tension",
+  "alignment_pt": "1 to 2 lines", "alignment_en": "1 to 2 lines",
   "risk_pt": "1 to 2 lines, the single main risk", "risk_en": "1 to 2 lines",
   "then_pt": "2 to 3 lines", "then_en": "2 to 3 lines",
   "now_pt": "2 to 3 lines", "now_en": "2 to 3 lines",
@@ -159,6 +169,7 @@ async function computeResult(slug: string, c: Combo): Promise<DecisionResult> {
       risk: { pt: '', en: '' },
       tnn: { then: { pt: '', en: '' }, now: { pt: '', en: '' }, next: { pt: '', en: '' } },
       trendCount: trends.length, oldestYear: null, reportId, fallbackMsg: FALLBACK_MSG,
+      alignmentStatus: 'aligned', alignment: { pt: '', en: '' },
     }
   }
 
@@ -182,15 +193,25 @@ async function computeResult(slug: string, c: Combo): Promise<DecisionResult> {
     next: { pt: (gen && s(gen.next_pt)) || s(topTnnPt?.next), en: (gen && s(gen.next_en)) || s(topTnnEn?.next) },
   }
 
-  return { ok: true, score, move, risk, tnn, trendCount: trends.length, oldestYear, reportId, fallbackMsg: FALLBACK_MSG }
+  // Alinhamento objetivo x leitura do TAIME: STATUS deterministico (objetivo↔move),
+  // TEXTO do Haiku (grounded) com fallback generico seguro. O status governa cor/icone.
+  const alignmentStatus = computeAlignment(c.objective, move)
+  const alignment = {
+    pt: (gen && s(gen.alignment_pt)) || ALIGNMENT_FALLBACK[alignmentStatus].pt,
+    en: (gen && s(gen.alignment_en)) || ALIGNMENT_FALLBACK[alignmentStatus].en,
+  }
+
+  return { ok: true, score, move, risk, tnn, trendCount: trends.length, oldestYear, reportId, fallbackMsg: FALLBACK_MSG, alignmentStatus, alignment }
 }
 
 // Cache por combinacao (24h). Chave = slug. 2a chamada da mesma combinacao NAO chama
 // Haiku (sub-segundo). unstable_cache serializa o DecisionResult (JSON puro).
 export function getDecisionResult(slug: string, c: Combo): Promise<DecisionResult> {
+  // v2: bump da chave apos adicionar objetivo x leitura + alignment ao snapshot
+  // (invalida entradas antigas que nao tinham esses campos).
   return unstable_cache(
     () => computeResult(slug, c),
-    ['decision-check', slug],
-    { revalidate: 86400, tags: [`decision-check:${slug}`] },
+    ['decision-check', 'v2', slug],
+    { revalidate: 86400, tags: [`decision-check:v2:${slug}`] },
   )()
 }

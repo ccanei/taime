@@ -135,6 +135,21 @@ export const MOVE_STYLE: Record<Move, { text: string; ring: string; bg: string }
 }
 export function isMove(v: unknown): v is Move { return v === 'act' || v === 'prepare' || v === 'monitor' || v === 'avoid' }
 
+// ── Alinhamento entre o OBJETIVO do usuario e a LEITURA do TAIME (o MOVE) ─────
+export type AlignmentStatus = 'aligned' | 'tension'
+// O objetivo do usuario mapeia 1:1 num MOVE equivalente. ALINHADO quando o MOVE
+// calculado das trends bate com esse equivalente; TENSAO quando divergem.
+export const OBJ_TO_MOVE: Record<string, Move> = {
+  adotar:    'act',
+  preparar:  'prepare',
+  monitorar: 'monitor',
+  evitar:    'avoid',
+}
+export function computeAlignment(objectiveKey: string, move: Move): AlignmentStatus {
+  return OBJ_TO_MOVE[objectiveKey] === move ? 'aligned' : 'tension'
+}
+export function isAlignment(v: unknown): v is AlignmentStatus { return v === 'aligned' || v === 'tension' }
+
 // Cor da barra de score por faixa: <60 vermelho, 60-75 ambar, 75-90 azul, >90 verde.
 export function scoreBarClass(score: number): string {
   if (score < 60) return 'bg-red-500'
@@ -154,9 +169,25 @@ export interface DecisionResult {
   oldestYear:  number | null    // ano mais antigo das trends
   reportId:    string | null    // report da amostra publica mais relacionada (para "leia a analise completa")
   fallbackMsg: Bi               // mensagem educada quando ok=false
+  // Objetivo do usuario x leitura do TAIME (MOVE): status + explicacao bilingue.
+  alignmentStatus: AlignmentStatus
+  alignment:       Bi
 }
 
 export const FALLBACK_MSG: Bi = {
   pt: 'Este tema ainda está sendo desenvolvido no arquivo TAIME. Para uma análise específica, converse com o Executive Advisor.',
   en: 'This theme is still being developed in the TAIME archive. For a specific analysis, talk to the Executive Advisor.',
+}
+
+// Texto de reserva do alinhamento (quando o Haiku nao retorna): generico, sem
+// afirmar fato do arquivo. Serve so como fallback seguro.
+export const ALIGNMENT_FALLBACK: Record<AlignmentStatus, Bi> = {
+  aligned: {
+    pt: 'Seu objetivo e a leitura do arquivo apontam na mesma direção.',
+    en: 'Your objective and the archive read point in the same direction.',
+  },
+  tension: {
+    pt: 'Seu objetivo diverge da leitura do arquivo: vale revisar a premissa antes de decidir.',
+    en: 'Your objective diverges from the archive read: worth revisiting the premise before deciding.',
+  },
 }

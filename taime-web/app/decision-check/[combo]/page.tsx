@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import {
-  parseComboSlug, themeLabel, labelFor, ORG_SIZES, HORIZONS,
+  parseComboSlug, themeLabel, labelFor, ORG_SIZES, HORIZONS, OBJECTIVES, OBJ_TO_MOVE,
   MOVE_LABEL, MOVE_STYLE, scoreBarClass, type Lang,
 } from '@/lib/decision-check'
 import { detectLocale } from '@/lib/i18n'
@@ -80,6 +80,10 @@ export default async function DecisionCheckResult({
     risk:        lang === 'pt' ? 'RISCO PRINCIPAL' : 'MAIN RISK',
     then:        'THEN', now: 'NOW', next: 'NEXT',
     move:        lang === 'pt' ? 'MOVIMENTO RECOMENDADO' : 'RECOMMENDED MOVE',
+    yourObjective: lang === 'pt' ? 'SEU OBJETIVO' : 'YOUR OBJECTIVE',
+    taimeRead:     lang === 'pt' ? 'LEITURA DO TAIME' : 'TAIME READ',
+    aligned:       lang === 'pt' ? 'ALINHADO' : 'ALIGNED',
+    tension:       lang === 'pt' ? 'TENSÃO' : 'TENSION',
     score:       'TAIME SCORE',
     tagline:     'Strategic Technology Intelligence. Since 2015. From signal to decision.',
     basis: (n: number, y: number | null) => lang === 'pt'
@@ -103,13 +107,45 @@ export default async function DecisionCheckResult({
           </div>
         ) : (
           <>
-            {/* MOVE em destaque, cor semantica */}
-            <div className={`rounded-2xl ring-1 ${MOVE_STYLE[res.move].ring} ${MOVE_STYLE[res.move].bg} p-8 mb-6`}>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50 mb-2">{tx.move}</p>
-              <p className={`text-5xl sm:text-6xl font-black tracking-tight ${MOVE_STYLE[res.move].text}`}>
-                {MOVE_LABEL[res.move][lang]}
-              </p>
+            {/* SEU OBJETIVO x LEITURA DO TAIME, lado a lado (nao fundidos) */}
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+              <div className={`rounded-2xl ring-1 ${MOVE_STYLE[OBJ_TO_MOVE[c.objective]].ring} ${MOVE_STYLE[OBJ_TO_MOVE[c.objective]].bg} p-6`}>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50 mb-2">{tx.yourObjective}</p>
+                <p className={`text-3xl sm:text-4xl font-black tracking-tight ${MOVE_STYLE[OBJ_TO_MOVE[c.objective]].text}`}>
+                  {labelFor(OBJECTIVES, c.objective, lang).toUpperCase()}
+                </p>
+              </div>
+              <div className={`rounded-2xl ring-1 ${MOVE_STYLE[res.move].ring} ${MOVE_STYLE[res.move].bg} p-6`}>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50 mb-2">{tx.taimeRead}</p>
+                <p className={`text-3xl sm:text-4xl font-black tracking-tight ${MOVE_STYLE[res.move].text}`}>
+                  {MOVE_LABEL[res.move][lang]}
+                </p>
+              </div>
             </div>
+
+            {/* Alinhamento: verde+check (ALINHADO) ou ambar+atencao (TENSAO) */}
+            {res.alignment[lang] && (
+              <div className={`rounded-2xl ring-1 p-5 mb-6 flex items-start gap-3 ${
+                res.alignmentStatus === 'tension' ? 'ring-amber-500/30 bg-amber-500/10' : 'ring-emerald-500/30 bg-emerald-500/10'}`}>
+                <span className={`mt-0.5 shrink-0 ${res.alignmentStatus === 'tension' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {res.alignmentStatus === 'tension' ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  )}
+                </span>
+                <div>
+                  <p className={`text-[11px] font-bold uppercase tracking-[0.18em] mb-1 ${res.alignmentStatus === 'tension' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                    {res.alignmentStatus === 'tension' ? tx.tension : tx.aligned}
+                  </p>
+                  <p className="text-sm text-white/80 leading-relaxed">{res.alignment[lang]}</p>
+                </div>
+              </div>
+            )}
 
             {/* Score grande + barra proporcional */}
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 mb-6">
