@@ -26,6 +26,13 @@ const TRAJECTORY_RE = /(desde quando|ha quanto tempo|quando (?:comec|surg|deve|d
 // recencia + teto maior, ambos seguros; nunca prejudica uma pergunta factual.
 const PROSPECTIVE_RE = /(\bnext\b|then\s*now\s*next|then\/now\/next|thennownext|\bframework\b|proximo(?:s)? passo|next (?:move|step)|o que vem (?:a seguir|pela frente|depois)|para onde (?:vai|caminha|ir)|no futuro|\bfuturo\b|\bfuture\b|projec(?:ao|oes)|projection|projetar|forecast|outlook|onde (?:focar|investir|apostar)|where (?:to|should i) (?:focus|invest|bet)|investiment|investment|priorizar|prioridade|prioriti|veredito|verdict|devo (?:seguir|focar|investir|priorizar|apostar)|deveria (?:seguir|focar|investir|priorizar|apostar)|should i\b|o que (?:priorizar|seguir|fazer a seguir)|onde devo|para onde vamos)/i
 
+// Automacao de processo + dimensionamento (esforco/custo/horas/pessoas) + roadmap
+// faseado/dimensionado. Respostas assim sao DENSAS (calculo + fases + tabela de
+// dimensionamento) e precisam do teto pesado; caindo no teto leve elas TRUNCAVAM
+// (defeito: is_strategic=false, output_tokens=5120, truncated=true). Inclusivo de
+// proposito: super-classificar so ativa reserva de recencia + teto maior (seguros).
+const DIMENSIONING_RE = /(automat\w*|dimension\w*|\besforco\b|custo[- ]?hora|homem[- ]?hora|pessoa[- ]?dia|\bheadcount\b|horas?\s*(?:\/|por)\s*(?:mes|semana|dia)|\broadmap\b|plano\s+(?:de\s+acao|faseado)|business case|caso de negocio|\bpayback\b)/i
+
 export function isTrajectoryQuestion(message: string): boolean {
   return TRAJECTORY_RE.test(normalize(message))
 }
@@ -34,9 +41,15 @@ export function isProspectiveQuestion(message: string): boolean {
   return PROSPECTIVE_RE.test(normalize(message))
 }
 
+// Automacao/dimensionamento/roadmap dimensionado: pede resposta densa (teto pesado).
+export function isDimensioningQuestion(message: string): boolean {
+  return DIMENSIONING_RE.test(normalize(message))
+}
+
 // Gate unico: qualquer pergunta que exige a selecao estrategica (reserva de
-// recencia + espinha) e o teto de tokens pesado.
+// recencia + espinha) e o teto de tokens pesado. Inclui trajetoria, prospectiva E
+// dimensionamento/automacao (que antes caia no teto leve e truncava).
 export function isStrategicQuestion(message: string): boolean {
   const m = normalize(message)
-  return TRAJECTORY_RE.test(m) || PROSPECTIVE_RE.test(m)
+  return TRAJECTORY_RE.test(m) || PROSPECTIVE_RE.test(m) || DIMENSIONING_RE.test(m)
 }

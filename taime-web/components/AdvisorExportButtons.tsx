@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FileSpreadsheet, FileText, Table, Loader2 } from 'lucide-react'
 import { detectRoi, detectChecklist, detectCsv } from '@/lib/advisor-export-detect'
 import {
@@ -63,6 +63,13 @@ export default function AdvisorExportButtons({
   const hasRoi       = detectRoi(answer)
   const hasChecklist = detectChecklist(answer)
   const hasCsv       = detectCsv(answer)
+
+  // Log de diagnostico da deteccao por resposta (visivel no console do browser). Ajuda
+  // a investigar futuros casos onde um botao esperado nao aparece. Uma vez por resposta.
+  useEffect(() => {
+    console.debug('[advisor-export] detect', { roi: hasRoi, checklist: hasChecklist, csv: hasCsv, len: answer.length })
+  }, [answer, hasRoi, hasChecklist, hasCsv])
+
   if (!hasRoi && !hasChecklist && !hasCsv) return null
 
   // Grupo checklist: XLSX sempre. PDF quando ha checklist markdown (lista/tabela). CSV

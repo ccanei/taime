@@ -11,7 +11,7 @@ import { runGroundingChecks, type GroundingViolation } from '@/lib/advisor-groun
 import { embedQuery } from '@/lib/embeddings'
 import { detectLanguage } from '@/lib/detect-language'
 import { checkAndConsumeMessage } from '@/lib/advisorUsage'
-import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from '@/lib/question-intent'
+import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion, isDimensioningQuestion } from '@/lib/question-intent'
 import { detectPeriodIntent, rangeSpanMonths } from '@/lib/period-intent'
 import { selectTrajectoryChunks, yearDistribution, scoreTieBreakSort, firstOfMonthUTC } from '@/lib/trajectory-select'
 import { logLlmCall, usageTokens } from '@/lib/llm-telemetry'
@@ -1684,7 +1684,10 @@ async function handleChat(req: NextRequest): Promise<Response> {
   //   ignorava 2025/2026 (defeito 2026-07-28).
   const trajectory  = isTrajectoryQuestion(userMessage)
   const prospective = isProspectiveQuestion(userMessage)
-  const strategic   = trajectory || prospective
+  // Dimensionamento/automacao/roadmap dimensionado tambem e estrategico: pede o teto
+  // pesado. Sem isso caia no teto leve (5120) e truncava (BUG de classificacao).
+  const dimensioning = isDimensioningQuestion(userMessage)
+  const strategic   = trajectory || prospective || dimensioning
   let reqFrom: string | null = null
   let reqTo:   string | null = null
   let narrowPeriod = false
@@ -2172,12 +2175,23 @@ async function handleChat(req: NextRequest): Promise<Response> {
   //    (o thinking ja "pensou"; a 2a passada tende a ir direto ao texto). So
   //    dispara no caso severo (< ~200 chars), entao nao pesa no caminho normal.
   const SEVERE_TRUNCATION_CHARS = 200
-  if (stopReason === 'max_tokens' && reply.trim().length < SEVERE_TRUNCATION_CHARS) {
-    console.warn(`[advisor-truncation] corte severo (${reply.trim().length} chars, max_tokens=${maxTokens}); regenerando com teto ${HEAVY_MAX_TOKENS}. pergunta="${userMessage.slice(0, 120)}"`)
+  // Regenera com o teto pesado quando (a) corte SEVERO (< 200 chars, o thinking comeu
+  // quase tudo) OU (b) a resposta bateu no teto LEVE (a pergunta era densa mas nao foi
+  // classificada como estrategica: rede de seguranca do BUG de classificacao, mesmo
+  // quando o texto ja passou de 200 chars mas ficou truncado no meio). So dispara em
+  // stop_reason=max_tokens (raro), nunca no caminho normal.
+  const hitLightCeiling = stopReason === 'max_tokens' && maxTokens < HEAVY_MAX_TOKENS
+  const severeTruncation = stopReason === 'max_tokens' && reply.trim().length < SEVERE_TRUNCATION_CHARS
+  if (severeTruncation || hitLightCeiling) {
+    console.warn(`[advisor-truncation] corte (${reply.trim().length} chars, max_tokens=${maxTokens}, severe=${severeTruncation}); regenerando com teto ${HEAVY_MAX_TOKENS}. pergunta="${userMessage.slice(0, 120)}"`)
     const _tRegen = Date.now()
     const regen = await callMain(system, conversationMessages, HEAVY_MAX_TOKENS)
     logLlmCall({ caller: 'advisor', model: ADVISOR_MODEL, ...usageTokens(regen.usage), latency_ms: Date.now() - _tRegen, success: regen.ok, error_code: regen.ok ? null : 'api_error', user_id: user.id, meta: { step: 'truncation_regen', session_id: sessionId } })
-    if (regen.ok && regen.reply.trim().length >= SEVERE_TRUNCATION_CHARS) {
+    // Aceita a regeneracao se ela completou (nao truncou) OU ficou mais completa que a
+    // original. Nunca troca uma resposta boa por uma pior.
+    const regenBetter = regen.ok && regen.reply.trim().length > 0 &&
+      (regen.stopReason !== 'max_tokens' || regen.reply.trim().length > reply.trim().length)
+    if (regenBetter) {
       reply      = regen.reply
       stopReason = regen.stopReason
       mainUsage  = regen.usage
@@ -2224,11 +2238,14 @@ async function handleChat(req: NextRequest): Promise<Response> {
   //    persistido em advisor_plans antes da confirmacao).
   const roadmapDet = detectRoadmap(reply)
   let planOffer: PlanOffer | null = null
-  const planDetection: { heuristic: boolean; via: string | null; extracted: boolean; reason: string } = {
-    heuristic: roadmapDet.matched,
-    via:       roadmapDet.via,
-    extracted: false,
-    reason:    roadmapDet.matched ? `heuristic_${roadmapDet.via}` : 'no_roadmap',
+  // offer_reason torna VISIVEL o gap entre "detectou" e "construiu a oferta" (antes
+  // invisivel): no_roadmap | built_N_phases | extract_returned_null | extract_exception.
+  const planDetection: { heuristic: boolean; via: string | null; extracted: boolean; reason: string; offer_reason: string } = {
+    heuristic:   roadmapDet.matched,
+    via:         roadmapDet.via,
+    extracted:   false,
+    reason:      roadmapDet.matched ? `heuristic_${roadmapDet.via}` : 'no_roadmap',
+    offer_reason: roadmapDet.matched ? 'pending_extraction' : 'no_roadmap',
   }
   if (roadmapDet.matched) {
     try {
@@ -2238,10 +2255,16 @@ async function handleChat(req: NextRequest): Promise<Response> {
         null,
       )
       planDetection.extracted = planOffer !== null
-      if (!planOffer) planDetection.reason = 'extract_failed_or_timeout'
+      if (planOffer) {
+        planDetection.offer_reason = `built_${planOffer.phases.length}_phases`
+      } else {
+        planDetection.reason = 'extract_failed_or_timeout'
+        planDetection.offer_reason = 'extract_returned_null_or_timeout'
+      }
     } catch (e) {
       planOffer = null
       planDetection.reason = 'extract_exception'
+      planDetection.offer_reason = 'extract_exception'
       console.error('[advisor-plan-offer] extracao ignorada (nao afeta a resposta):', e instanceof Error ? e.message : e)
     }
   }
@@ -2310,6 +2333,7 @@ async function handleChat(req: NextRequest): Promise<Response> {
     // Task 5: termometro da busca (observabilidade).
     is_trajectory:        trajectory,
     is_prospective:       prospective,
+    is_dimensioning:      dimensioning,
     is_strategic:         strategic,
     retrieved_chunks_total: retrievedTotal,
     delivered_year_distribution: deliveredYearDist,

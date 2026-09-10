@@ -1,7 +1,7 @@
 // Testes do classificador unico de intencao (v5.1). Roda com Node 24:
 //   node lib/question-intent.test.ts
 import assert from 'node:assert'
-import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion } from './question-intent.ts'
+import { isTrajectoryQuestion, isProspectiveQuestion, isStrategicQuestion, isDimensioningQuestion } from './question-intent.ts'
 
 let pass = 0
 const fails: string[] = []
@@ -20,6 +20,21 @@ check('evidencia: NAO e trajetoria historica pura (mas e estrategica via prospec
   // nao precisa ser trajetoria; o gate estrategico ja garante a reserva de recencia
   assert.strictEqual(isStrategicQuestion(EVIDENCE), true)
 })
+
+// ── Dimensionamento / automacao / roadmap dimensionado (BUG do teto leve) ─────
+// Antes caiam no teto leve (5120) e truncavam. Devem ser ESTRATEGICAS (teto pesado).
+for (const q of [
+  'vale a pena automatizar o fechamento financeiro mensal?',
+  'me ajuda a dimensionar o esforco desse projeto de automacao',
+  'sao 12h por mes e custo-hora de R$90, calcula o retorno',
+  'monta um roadmap dimensionado com esforco e investimento por fase',
+  'quanto esforco em horas para automatizar isso?',
+]) {
+  check('dimensionamento (estrategica): "' + q + '"', () => {
+    assert.strictEqual(isDimensioningQuestion(q), true, 'deve ser dimensionamento')
+    assert.strictEqual(isStrategicQuestion(q), true, 'deve ativar o teto pesado')
+  })
+}
 
 // ── Prospectivas diversas (PT + EN) ──────────────────────────────────────────
 for (const q of [

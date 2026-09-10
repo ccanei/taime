@@ -84,9 +84,22 @@ Carla,Eng,"MLOps, observabilidade"`
 check('CSV com aspas: 3 colunas', () => assert.strictEqual(extractCsv(CSV_Q)?.header.length, 3))
 check('CSV com aspas preserva virgula interna', () => assert.strictEqual(extractCsv(CSV_Q)?.rows[0][2], 'foco em dados, cloud'))
 
+// ── CSV com UMA linha de dados + cabecalho forte (caso real do checklist de agentes) ──
+const CSV_1ROW = `Checklist, um agente por linha (copiável para planilha):
+agente_id,sistema_acessado,dados_acessados,escopo_permissao,credencial_dedicada,supervisao_humana,protocolo_falha,dono,frequencia_uso,ultima_revisao,status
+agente-vendas,Supabase,dados de vendas,leitura,nao,aprovacao,rollback,Comercial,diario,2026-08,ativo`
+check('CSV 1 linha de dados + cabecalho forte detectado', () => assert.strictEqual(detectCsv(CSV_1ROW), true))
+check('CSV 1 linha extrai 11 cols x 1 row', () => {
+  const x = extractCsv(CSV_1ROW)
+  assert.strictEqual(x?.header.length, 11)
+  assert.strictEqual(x?.rows.length, 1)
+})
+
 // ── Falsos positivos de CSV ───────────────────────────────────────────────────
 check('prosa com virgulas NAO e CSV', () => assert.strictEqual(detectCsv('Usamos AWS, Azure e GCP, alem de um data lake.'), false))
-check('so cabecalho + 1 linha NAO e CSV', () => assert.strictEqual(detectCsv('a,b,c\n1,2,3'), false))
+check('so cabecalho 3 cols + 1 linha NAO e CSV (cabecalho fraco)', () => assert.strictEqual(detectCsv('a,b,c\n1,2,3'), false))
+check('prosa em 2 linhas com virgulas NAO e CSV', () => assert.strictEqual(detectCsv(
+  'Primeiro, avaliamos o custo, o prazo e o risco de cada opcao.\nDepois, decidimos com base no impacto, na urgencia e no orcamento.'), false))
 check('markdown table NAO vira CSV', () => assert.strictEqual(detectCsv('| a | b | c |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |'), false))
 
 console.log(`\n${pass} passed, ${fails.length} failed`)

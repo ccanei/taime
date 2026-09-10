@@ -237,6 +237,19 @@ function looksLikeHeader(fields: string[]): boolean {
   return withLetter >= Math.ceil(fields.length * 0.6)
 }
 
+// Cabecalho FORTE: campos curtos, tipo nome de coluna (identificadores), nao frases de
+// prosa. Usado para aceitar um CSV com UMA UNICA linha de dados (o Advisor entrega
+// planilhas com so uma linha de exemplo) sem abrir a porta a prosa com virgulas, cujos
+// "campos" sao frases longas.
+function looksLikeStrongHeader(fields: string[]): boolean {
+  if (fields.length < 4) return false
+  for (const f of fields) {
+    if (f.length > 40) return false
+    if (f.split(/\s+/).filter(Boolean).length > 4) return false
+  }
+  return looksLikeHeader(fields)
+}
+
 export function extractCsv(md: string): CsvData | null {
   const lines = md.split('\n')
   let best: { start: number; count: number; cols: number } | null = null
@@ -247,15 +260,19 @@ export function extractCsv(md: string): CsvData | null {
     let j = i + 1
     while (j < lines.length && isCsvLine(lines[j]) && parseCsvLine(lines[j]).length === cols) j++
     const count = j - i
-    if (cols >= 3 && count >= 3 && (!best || count > best.count)) best = { start: i, count, cols }
+    if (cols >= 3 && count >= 2 && (!best || count > best.count)) best = { start: i, count, cols }
     i = j
   }
   if (!best) return null
   const block = lines.slice(best.start, best.start + best.count).map(parseCsvLine)
   const header = block[0]
-  if (!looksLikeHeader(header)) return null
   const rows = block.slice(1)
-  if (rows.length < 2) return null // >=2 linhas de dados alem do cabecalho
+  if (rows.length < 1) return null
+  // >=2 linhas de dados: cabecalho comum basta. Exatamente 1 linha de dados (planilha
+  // com uma linha de exemplo, caso real do checklist de agentes): exige cabecalho FORTE
+  // para nao casar prosa com virgulas.
+  if (rows.length === 1) { if (!looksLikeStrongHeader(header)) return null }
+  else if (!looksLikeHeader(header)) return null
   return { header, rows }
 }
 
