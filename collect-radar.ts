@@ -249,9 +249,14 @@ async function main(): Promise<void> {
   console.log('╚══════════════════════════════════╝');
   console.log(`Coletando sinais das últimas 24h...\n`);
 
+  // RADAR: coleta APENAS de fontes noticiosas (category media + vendor): notícia do
+  // dia e anúncios diretos de empresa. Fontes de pesquisa/análise nao rendem noticia e
+  // deixavam a coleta lenta (~10 min sobre 175 fontes). Filtro so na LEITURA do Radar;
+  // NAO muda o campo active no banco: o pipeline de reports (collect-signals.ts) segue
+  // usando todas as 175 fontes ativas.
   let sources: Source[];
   try {
-    sources = await dbGet<Source>('sources?active=eq.true&order=tier.asc,name.asc');
+    sources = await dbGet<Source>('sources?active=eq.true&category=in.(media,vendor)&order=tier.asc,name.asc');
   } catch (err) {
     console.error(`✗ Falha ao carregar fontes: ${err}`);
     process.exit(1);

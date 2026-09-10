@@ -34,13 +34,13 @@ A pergunta que originou o TAIME foi simples: e se fosse possível pegar o histó
 
 ### Camada 1 — Radar TAIME (feed diário)
 
-Notícias das últimas 24h das 110 fontes globais validadas, processadas por IA:
+Notícias das últimas 24h processadas por IA. FONTES DO RADAR (2026-09-09): a coleta por-fonte (collect-radar.ts) passou a usar APENAS as fontes de categoria `media` e `vendor` (o subconjunto NOTICIOSO das 175 fontes ativas: notícia do dia + anúncios diretos de empresa), 63 fontes no total. Fontes de pesquisa/análise não rendem notícia e deixavam a coleta lenta (~10 min sobre 175). O filtro é só na LEITURA do Radar: o campo `active` no banco não muda e o pipeline de reports (collect-signals.ts) segue usando TODAS as 175 fontes ativas. O caminho de produção (Vercel Cron) é topic-based (Google News por tópico), naturalmente noticioso e rápido.
 
 - Título + resumo de 2 linhas
 - Categoria: exatamente uma de 14 categorias PRÓPRIAS do Radar (IA, Cloud, Cybersecurity, Regulation, Infrastructure, Market, Fintech, Data, Robotics, Quantum, AI Governance, Networks, Automation, Healthtech). Expandidas de 7 para 14 em 2026-08-26 para acompanhar a granularidade do fluxo de notícia. São orientadas a notícia do dia e INDEPENDENTES das 14 categorias de trend dos relatórios: não espelham a taxonomia dos relatórios. O Haiku escolhe uma por sinal e nunca cria rótulo fora da lista.
 - Fonte por categoria (nunca por nome)
 - Link para a fonte original
-- Atualizado automaticamente 2x ao dia (07h e 14h BRT) via Vercel Cron
+- Atualizado automaticamente via Vercel Cron às 07h BRT (0 10 UTC). A coleta voltou para o Vercel Cron (o cron `/api/cron/radar` foi reativado no vercel.json, com maxDuration=60 dentro do teto do Hobby). O crontab local do Mac (run-radar.sh) foi APOSENTADO: ver LOG.md para o comando de remoção manual.
 
 ### Camada 2 — Relatórios de Inteligência (quinzenal)
 

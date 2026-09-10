@@ -2,6 +2,41 @@
 
 ---
 
+## [2026-09-09] - Radar restrito a fontes noticiosas (media+vendor) + cron de volta na Vercel
+
+O Radar coletava sobre TODAS as 175 fontes ativas (collect-radar.ts, site: por fonte),
+levando ~10 min e estourando o teto de 60s do Vercel Hobby, alem de trazer conteudo
+pouco noticioso (fontes de pesquisa/analise nao rendem noticia do dia). Por isso o cron
+tinha sido desativado (renomeado `/api/cron/radar-DISABLED` no vercel.json) e a coleta
+migrada para um crontab local no Mac (run-radar.sh, ~06:55), que passou a dar problema.
+
+**O que mudou:**
+- `collect-radar.ts`: a query de fontes passou de `sources?active=eq.true` para
+  `sources?active=eq.true&category=in.(media,vendor)`. Restringe o Radar ao subconjunto
+  NOTICIOSO: **63 fontes** (media=37 + vendor=26) das 175. Filtro so na LEITURA do Radar.
+- **NAO** mexe no campo `active` de nenhuma fonte no banco: as 175 seguem ativas e o
+  pipeline de reports (`collect-signals.ts`) continua usando TODAS elas, sem qualquer
+  relacao com o Radar.
+- `vercel.json`: cron `/api/cron/radar` REATIVADO em `0 10 * * *` (07h BRT). radar-briefing
+  (0 11), newsletter-weekly (0 12 * * 1) e advisor-alerts (0 9) intactos.
+- `taime-web/app/api/cron/radar/route.ts`: caminho de PRODUCAO (Vercel Cron) e topic-based
+  (Google News via serper /news por tópico), naturalmente noticioso e rapido, cabendo nos
+  60s do Hobby. NAO itera a tabela sources, entao nao ha filtro de categoria ali (nada a
+  filtrar); ja tinha `export const maxDuration = 60`. So documentado com comentario.
+- Classificacao Haiku (14 categorias), dedup por URL, regra anti-alucinacao (descartar
+  sinal sem URL https), briefing e newsletter: TODOS intactos.
+
+**ACAO MANUAL DO USUARIO (aposentar o crontab local do Mac):** a coleta voltou para a
+Vercel, entao o run-radar.sh agendado no crontab do Mac deve ser removido. No terminal:
+
+    crontab -e     # e apagar a linha que chama run-radar.sh (salvar e sair)
+
+Se o run-radar.sh for a UNICA entrada do crontab, pode usar `crontab -r` (remove tudo).
+Conferir depois com `crontab -l`. (Nao executado aqui: e acao na maquina do usuario.)
+
+**Estimativa de tempo:** de 175 -> 63 fontes no collect-radar (manual) reduz a coleta a
+~1/3. O caminho de producao (cron topic-based) ja roda em poucos segundos.
+
 ## [2026-08-26] - Radar: taxonomia de classificacao expandida de 7 para 14 categorias
 
 O Haiku que classifica cada sinal do Radar escolhia entre 7 categorias (IA, Cloud,

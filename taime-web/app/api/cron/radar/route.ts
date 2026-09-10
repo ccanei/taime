@@ -37,6 +37,12 @@ export async function GET(request: Request) {
     const anthropicKey = process.env.ANTHROPIC_API_KEY ?? ''
 
     // ── 1. Busca notícias via Serper das últimas 24h ────────────────────────
+    // Este caminho de PRODUCAO (Vercel Cron) e topic-based: consulta o Google News
+    // (serper /news) por tópicos amplos, entao ja e naturalmente NOTICIOSO e rapido
+    // (poucas chamadas), cabendo no teto de 60s do Hobby. NAO itera a tabela sources,
+    // por isso nao ha filtro de categoria aqui. O caminho por-fonte e o collect-radar.ts
+    // (manual), esse sim restrito a category media+vendor. Reports (collect-signals.ts)
+    // seguem usando todas as 175 fontes ativas, sem relacao com o Radar.
     const queries = [
       'AI artificial intelligence enterprise technology',
       'cloud computing infrastructure technology',
