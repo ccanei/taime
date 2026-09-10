@@ -6,6 +6,7 @@ import { useLocale } from '@/lib/useLocale'
 import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
+import AdvisorExportButtons from '@/components/AdvisorExportButtons'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext, type AssessmentSummary } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
@@ -1328,6 +1329,13 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                             question={messages[i - 1]?.role === 'user' ? messages[i - 1].content : ''}
                             answer={msg.content}
                             source="advisor"
+                            isPt={isPt}
+                          />
+                          {/* Exportaveis (ROI / checklist): so aparecem quando a resposta
+                              tem esse conteudo. Tema da conversa = a pergunta anterior. */}
+                          <AdvisorExportButtons
+                            answer={msg.content}
+                            theme={messages[i - 1]?.role === 'user' ? messages[i - 1].content : (profile?.company_name ?? '')}
                             isPt={isPt}
                           />
                           {msg.planOffer && msg.planOffer.phases.length > 0 && (
