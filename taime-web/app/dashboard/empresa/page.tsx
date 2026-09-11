@@ -12,7 +12,14 @@ export const metadata = { title: 'Minha Empresa · TAIME' }
 // Acessivel do dashboard E do Advisor (dois pontos de entrada, uma fonte). So carrega
 // o RESUMO do perfil no server (para decidir Completar vs Editar e mostrar os valores);
 // cada bloco faz o proprio fetch no cliente ao expandir.
-export default async function MinhaEmpresaPage() {
+const BLOCK_KEYS = ['profile', 'maturity', 'facts', 'plans'] as const
+type BlockKey = typeof BLOCK_KEYS[number]
+
+export default async function MinhaEmpresaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ b?: string }>
+}) {
   const supabase = await createSupabaseServer()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -22,6 +29,13 @@ export default async function MinhaEmpresaPage() {
   if (!hasAdvisorAccess(plan)) redirect('/dashboard')
 
   const isPt = (await cookies()).get('taime-locale')?.value !== 'en'
+
+  // Bloco alvo (?b=): governa qual das 4 seccoes abre em foco. Cada resumo do painel
+  // lateral do chat aponta para o seu bloco. Invalido/ausente -> perfil (padrao).
+  const bParam = (await searchParams).b
+  const initialBlock: BlockKey = (BLOCK_KEYS as readonly string[]).includes(bParam ?? '')
+    ? (bParam as BlockKey)
+    : 'profile'
 
   const service = createSupabaseService()
   const { data: profileRow } = await service
@@ -60,7 +74,7 @@ export default async function MinhaEmpresaPage() {
           </Link>
         </div>
 
-        <MinhaEmpresaView userId={user.id} isPt={isPt} profile={profile} />
+        <MinhaEmpresaView userId={user.id} isPt={isPt} profile={profile} initialBlock={initialBlock} />
       </main>
     </div>
   )

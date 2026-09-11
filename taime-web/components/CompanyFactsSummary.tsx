@@ -36,7 +36,7 @@ export default function CompanyFactsSummary({ isPt }: { isPt: boolean }) {
       <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-600 mb-2.5">
         {isPt ? 'Fatos da empresa' : 'Company facts'}
       </h3>
-      <Link href="/dashboard/empresa" className="group block">
+      <Link href="/dashboard/empresa?b=facts" className="group block">
         <p className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-800 group-hover:text-taime-700 transition-colors">
           <ListChecks size={14} className="text-taime-600" />
           {countLabel}

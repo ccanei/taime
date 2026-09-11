@@ -67,12 +67,24 @@ const PROFILE_ORDER = ['sector', 'company_size', 'maturity_level', 'strategic_ob
 // Cada bloco do painel e um CARD proprio (superficie branca sobre o fundo tonal),
 // mesmos tokens de borda/raio/sombra dos cards da aba Inicio e do dashboard. O
 // titulo de seccao tem peso e cor mais fortes que o corpo (hierarquia clara).
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, badge, children }: { title: string; badge?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-600 mb-2.5">{title}</h3>
+      <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.1em] text-zinc-600 mb-2.5">
+        {title}{badge}
+      </h3>
       {children}
     </section>
+  )
+}
+
+// Selo discreto "Em evolução": tom de "construindo com você", nunca de erro. Reusado
+// no resumo do painel e no bloco expandido da aba unificada.
+function InProgressBadge({ isPt }: { isPt: boolean }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-taime-50 text-taime-600 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide normal-case">
+      {isPt ? 'Em evolução' : 'In progress'}
+    </span>
   )
 }
 
@@ -82,11 +94,11 @@ function AssessmentBlock({ a, isPt }: { a: AssessmentSummary; isPt: boolean }) {
   if (!a.available) return null
   const completed = a.domains.filter(d => d.complete).map(d => DOMAINS.find(x => x.id === d.domain)?.short[isPt ? 'pt' : 'en'] ?? d.domain)
   return (
-    <Section title={isPt ? 'Maturidade' : 'Maturity'}>
+    <Section title={isPt ? 'Maturidade' : 'Maturity'} badge={<InProgressBadge isPt={isPt} />}>
       {a.answered === 0 ? (
         <>
           <p className="text-[11px] text-zinc-500 leading-snug mb-1.5">{isPt ? 'Mapeie seu estágio por domínio.' : 'Map your stage by domain.'}</p>
-          <Link href="/dashboard/empresa" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+          <Link href="/dashboard/empresa?b=maturity" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">
             {isPt ? 'Mapear maturidade →' : 'Map maturity →'}
           </Link>
         </>
@@ -96,7 +108,7 @@ function AssessmentBlock({ a, isPt }: { a: AssessmentSummary; isPt: boolean }) {
             {a.answered} {isPt ? `de ${TOTAL_QUESTIONS} respondidas` : `of ${TOTAL_QUESTIONS} answered`}
             {completed.length > 0 && <> · {completed.join(', ')} {isPt ? (completed.length === 1 ? 'completo' : 'completos') : 'complete'}</>}
           </p>
-          <Link href="/dashboard/empresa" className="mt-1.5 inline-block text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+          <Link href="/dashboard/empresa?b=maturity" className="mt-1.5 inline-block text-[11px] font-semibold text-taime-600 hover:text-taime-800">
             {isPt ? 'Ver maturidade →' : 'View maturity →'}
           </Link>
         </>
@@ -228,13 +240,13 @@ export default function AdvisorContextPanel({
                   ))}
                 </dl>
               )}
-              <Link href="/dashboard/empresa" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">{cta}</Link>
+              <Link href="/dashboard/empresa?b=profile" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">{cta}</Link>
             </Section>
           )
         }
         return fixed ? (
           <Section title={isPt ? 'Sua empresa' : 'Your company'}>
-            <Link href="/dashboard/empresa" className="text-xs font-medium text-taime-600 hover:text-taime-800">{cta}</Link>
+            <Link href="/dashboard/empresa?b=profile" className="text-xs font-medium text-taime-600 hover:text-taime-800">{cta}</Link>
           </Section>
         ) : null
       })()}
@@ -271,7 +283,7 @@ export default function AdvisorContextPanel({
           planos nunca ficam inacessiveis. No mobile, o painel abre pelo botao
           "Contexto" do header. */}
       {activePlans.length === 0 && (
-        <Link href="/dashboard/empresa"
+        <Link href="/dashboard/empresa?b=plans"
           className="px-1 text-[11px] font-semibold text-taime-600 hover:text-taime-800">
           {isPt ? 'Minha Empresa →' : 'My Company →'}
         </Link>

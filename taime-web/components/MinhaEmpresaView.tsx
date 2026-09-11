@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Building2, Gauge, ListChecks, Map, ChevronDown } from 'lucide-react'
 import AdvisorOnboarding from '@/components/AdvisorOnboarding'
 import AssessmentView from '@/components/AssessmentView'
@@ -29,17 +29,19 @@ function isProfileFilled(p: ProfileSummary | null): boolean {
 }
 
 function Section({
-  icon, title, summary, open, onToggle, children,
+  icon, title, badge, summary, open, onToggle, sectionRef, children,
 }: {
   icon: React.ReactNode
   title: string
+  badge?: React.ReactNode
   summary: string
   open: boolean
   onToggle: () => void
+  sectionRef?: React.Ref<HTMLElement>
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
+    <section ref={sectionRef} className="rounded-2xl border border-zinc-200 bg-white overflow-hidden scroll-mt-24">
       <button
         onClick={onToggle}
         aria-expanded={open}
@@ -49,7 +51,7 @@ function Section({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-zinc-900">{title}</span>
+          <span className="flex items-center gap-2 text-sm font-bold text-zinc-900">{title}{badge}</span>
           <span className="block text-xs text-zinc-500 truncate">{summary}</span>
         </span>
         <ChevronDown size={18} className={`shrink-0 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -59,16 +61,35 @@ function Section({
   )
 }
 
+// Selo discreto "Em evolução" (mesmo tom do painel): construindo com o cliente, sem
+// soar como erro. NAO desabilita nada.
+function InProgressBadge({ isPt }: { isPt: boolean }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-taime-50 text-taime-600 px-2 py-0.5 text-[10px] font-semibold">
+      {isPt ? 'Em evolução' : 'In progress'}
+    </span>
+  )
+}
+
 export default function MinhaEmpresaView({
-  userId, isPt, profile,
+  userId, isPt, profile, initialBlock,
 }: {
   userId: string
   isPt: boolean
   profile: ProfileSummary | null
+  initialBlock?: SectionKey
 }) {
-  const [open, setOpen] = useState<SectionKey>('profile')
+  const [open, setOpen] = useState<SectionKey>(initialBlock ?? 'profile')
   const toggle = (k: SectionKey) => setOpen(prev => (prev === k ? ('' as SectionKey) : k))
   const filled = isProfileFilled(profile)
+
+  // Ao chegar com um bloco alvo diferente do padrao, rola ate ele (ja expandido).
+  const focusRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (initialBlock && initialBlock !== 'profile' && focusRef.current) {
+      focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [initialBlock])
 
   const profileSummary = filled
     ? [profile!.company_name, profile!.sector, profile!.company_size].filter(Boolean).join(' · ')
@@ -94,6 +115,7 @@ export default function MinhaEmpresaView({
         summary={profileSummary}
         open={open === 'profile'}
         onToggle={() => toggle('profile')}
+        sectionRef={initialBlock === 'profile' ? focusRef : undefined}
       >
         <div className="mb-3 flex items-center gap-2">
           <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold
@@ -107,9 +129,11 @@ export default function MinhaEmpresaView({
       <Section
         icon={<Gauge size={18} />}
         title={t.maturity}
+        badge={<InProgressBadge isPt={isPt} />}
         summary={t.matSummary}
         open={open === 'maturity'}
         onToggle={() => toggle('maturity')}
+        sectionRef={initialBlock === 'maturity' ? focusRef : undefined}
       >
         <AssessmentView />
       </Section>
@@ -120,6 +144,7 @@ export default function MinhaEmpresaView({
         summary={t.factsSummary}
         open={open === 'facts'}
         onToggle={() => toggle('facts')}
+        sectionRef={initialBlock === 'facts' ? focusRef : undefined}
       >
         <CompanyFactsSection isPt={isPt} variant="full" />
       </Section>
@@ -130,6 +155,7 @@ export default function MinhaEmpresaView({
         summary={t.plansSummary}
         open={open === 'plans'}
         onToggle={() => toggle('plans')}
+        sectionRef={initialBlock === 'plans' ? focusRef : undefined}
       >
         <PlansManager />
       </Section>
