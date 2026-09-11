@@ -317,32 +317,97 @@ export default async function LandingPage() {
     seenTheme.add(key)
     return true
   })
-  // Chave de diversidade = categoria (as 19), MAS trends de IA agentica colapsam
-  // numa unica chave 'AGENTIC'. No arquivo atual, o tema agentico e classificado em
-  // varias categorias (Automation, IA, Cybersecurity, Fintech), entao a regra so por
-  // categoria ainda deixaria 3 cards agenticos; colapsar garante o resultado
-  // esperado: 1 agentico (o de maior score) + 3 de temas diferentes.
-  const isAgentic = (r: RecentTrendRow): boolean =>
-    /agent|ag[eê]ntic/i.test(`${r.theme_slug ?? ''} ${r.title_en} ${r.title_pt_br}`)
-  const divKey = (r: RecentTrendRow): string => (isAgentic(r) ? 'AGENTIC' : (r.category ?? '?'))
+  // ── Selecao das 7 trends do grid (3 linhas) com regras de diversidade ────────
+  //   Layout (ordem de leitura): [radar(P0,span2), plain(P1), barras(P2,span2),
+  //   plain(P3), plain(P4), plain(P5), plain(P6)].
+  //   Regras: (a) nenhuma categoria igual em posicoes ADJACENTES; (b) nenhum score
+  //   igual em posicoes adjacentes; (c) os 2 cards de grafico sao os de MAIOR score
+  //   com dimensoes; (d) a linha 3 (P4..P6) tem categorias diferentes das 4 primeiras.
+  //   Pool maior (top 15 por score) para ter folga; relaxa se os dados forem magros.
+  const hasDims = (r: RecentTrendRow): boolean =>
+    !!(r.taime_framework_pt_br?.score_dimensions || r.taime_framework_en?.score_dimensions)
+  // Regras de diversidade rodam sobre a categoria EXIBIDA (r.category) para bater com o
+  // que o leitor ve no chip. O dedupe por theme_slug ja evita repetir o mesmo tema.
+  const catKey = (r: RecentTrendRow): string => r.category ?? '?'
 
-  const CARD_COUNT = 6
-  const trendCardRows: typeof dedupedRows = []
-  const keyCount = new Map<string, number>()
-  const takeUnderCap = (cap: number) => {
-    for (const r of dedupedRows) {
-      if (trendCardRows.length >= CARD_COUNT) break
-      if (trendCardRows.includes(r)) continue
-      const k = divKey(r)
-      if ((keyCount.get(k) ?? 0) >= cap) continue
-      keyCount.set(k, (keyCount.get(k) ?? 0) + 1)
-      trendCardRows.push(r)
+  const pool = dedupedRows.slice(0, 15)
+  const withDims = pool.filter(hasDims)
+  const chartA = withDims[0] ?? pool[0]
+  // Candidatos a 2o grafico: com dimensoes, exceto chartA, categoria DIFERENTE primeiro
+  // (melhor diversidade), score desc. Tentamos cada um ate achar um layout que satisfaça
+  // todas as regras (backtracking abaixo).
+  const chartBOptions = withDims
+    .filter(r => r !== chartA)
+    .sort((a, b) => (Number(catKey(a) !== catKey(chartA)) - Number(catKey(b) !== catKey(chartA))) * -1 || b.taime_score - a.taime_score)
+
+  const placed: (RecentTrendRow | undefined)[] = new Array(7)
+  const used = new Set<RecentTrendRow>()
+  const firstFourCats = (): Set<string> => {
+    const s = new Set<string>()
+    for (const i of [0, 1, 2, 3]) if (placed[i]) s.add(catKey(placed[i]!))
+    return s
+  }
+  // Backtracking (DFS) sobre P1,P3,P4,P5,P6, ordem de leitura, respeitando TODAS as
+  // regras: categoria != vizinhos, score != vizinhos, e P4..P6 fora das 4 primeiras
+  // categorias. remaining vem em score desc, entao a 1a solucao completa prefere scores
+  // altos. Fixamos P0=radar; tentamos varios P2=barras ate uma solucao completa existir.
+  const POS = [1, 3, 4, 5, 6]
+  const solveFrom = (remaining: RecentTrendRow[]): boolean => {
+    const dfs = (k: number): boolean => {
+      if (k === POS.length) return true
+      const pos = POS[k]
+      const isRow3 = pos >= 4
+      const leftCat = placed[pos - 1] ? catKey(placed[pos - 1]!) : null
+      const rightCat = placed[pos + 1] ? catKey(placed[pos + 1]!) : null
+      const leftScore = placed[pos - 1]?.taime_score
+      const rightScore = placed[pos + 1]?.taime_score
+      const cats4 = isRow3 ? firstFourCats() : null
+      for (const cand of remaining) {
+        if (used.has(cand)) continue
+        if (catKey(cand) === leftCat || catKey(cand) === rightCat) continue
+        if (cand.taime_score === leftScore || cand.taime_score === rightScore) continue
+        if (isRow3 && cats4!.has(catKey(cand))) continue
+        placed[pos] = cand; used.add(cand)
+        if (dfs(k + 1)) return true
+        placed[pos] = undefined; used.delete(cand)
+      }
+      return false
+    }
+    return dfs(0)
+  }
+
+  let solved = false
+  if (chartA) {
+    for (const cB of chartBOptions) {
+      placed.fill(undefined); used.clear()
+      placed[0] = chartA; used.add(chartA)
+      placed[2] = cB;      used.add(cB)
+      if (solveFrom(pool.filter(r => !used.has(r)))) { solved = true; break }
     }
   }
-  takeUnderCap(1)                       // passo 1: no maximo 1 por chave (categoria / agentic)
-  if (trendCardRows.length < CARD_COUNT) takeUnderCap(2) // passo 2: relaxa para 2
-  if (trendCardRows.length < CARD_COUNT)                 // passo 3: completa com o que houver
-    for (const r of dedupedRows) { if (trendCardRows.length >= CARD_COUNT) break; if (!trendCardRows.includes(r)) trendCardRows.push(r) }
+  // Fallback (dados pouco diversos: nenhuma solucao completa): preenche em score desc
+  // relaxando as regras, so para nunca renderizar vazio.
+  if (!solved) {
+    placed.fill(undefined); used.clear()
+    if (chartA) { placed[0] = chartA; used.add(chartA) }
+    const cB = chartBOptions[0]
+    if (cB) { placed[2] = cB; used.add(cB) }
+    for (const pos of POS) {
+      const leftCat = placed[pos - 1] ? catKey(placed[pos - 1]!) : null
+      const chosen = pool.find(r => !used.has(r) && catKey(r) !== leftCat) ?? pool.find(r => !used.has(r))
+      if (chosen) { placed[pos] = chosen; used.add(chosen) }
+    }
+  }
+
+  // Plano final: linha + tipo de grafico + span. So P0/P2 tem grafico (e so se tiverem
+  // dimensoes). Filtra posicoes vazias (dados magros) preservando a ordem.
+  interface TrendSlot { row: RecentTrendRow; chart: 'radar' | 'bars' | null; span2: boolean }
+  const trendPlan: TrendSlot[] = placed
+    .map((row, i): TrendSlot | null => row
+      ? { row, chart: i === 0 && hasDims(row) ? 'radar' : i === 2 && hasDims(row) ? 'bars' : null, span2: i === 0 || i === 2 }
+      : null)
+    .filter((s): s is TrendSlot => s !== null)
+  const trendCardRows = trendPlan.map(s => s.row)
 
   // ── Tópicos em pauta: 3 temas reais dos últimos reports (rótulo do título). ──
   const topicLabels = trendCardRows.slice(0, 3).map(r => topicLabel(isEn ? r.title_en : r.title_pt_br))
@@ -1066,73 +1131,87 @@ export default async function LandingPage() {
           <p className="section-label mb-3">{h.trendCards.label}</p>
           <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.trendCards.title}</h2>
 
-          {trendCardRows.length > 0 && (() => {
-            // Tipos de grafico por RANK DE SCORE (nao por posicao no grid): o de maior
-            // score ganha o radar; o segundo maior, as barras verticais; os demais 4,
-            // texto. Referencia por objeto (linhas unicas por theme_slug).
-            const byScore = [...trendCardRows].sort((a, b) => b.taime_score - a.taime_score)
-            const radarRow = byScore[0]
-            const barsRow  = byScore[1]
+          {trendPlan.length > 0 && (() => {
             const dimsOf = (r: RecentTrendRow): number[] => {
               const fw = isEn ? r.taime_framework_en : r.taime_framework_pt_br
               return fw?.score_dimensions ? DIM_ORDER.map(k => fw.score_dimensions![k]?.score ?? r.taime_score) : []
             }
             return (
-            // Grid uniforme 3x2: todos os cards do MESMO tamanho (sem span-2). 2 deles
-            // trazem grafico (radar + barras), os outros 4, texto.
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12 items-stretch">
-              {trendCardRows.map((r, i) => {
+            // Grid de 3 linhas: L1 = radar(2 col) + plain(1); L2 = barras(2 col) +
+            // plain(1); L3 = 3 plain. Os cards com grafico ocupam 2 colunas (lg) e usam
+            // layout horizontal (texto + grafico). Responsivo: colapsa para 1 coluna.
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-12 items-stretch">
+              {trendPlan.map((slot, i) => {
+                const r = slot.row
                 const score = r.taime_score
                 const fw    = isEn ? r.taime_framework_en : r.taime_framework_pt_br
                 const tnn   = isEn ? r.then_now_next_en   : r.then_now_next_pt_br
                 const move  = moveFromScore(score)
                 const title = isEn ? r.title_en : r.title_pt_br
                 const href  = isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'
-                const line  = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 22)
-                const isRadar = r === radarRow && dimsOf(r).length > 0
-                const isBars  = !isRadar && r === barsRow && dimsOf(r).length > 0
+                const line  = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', slot.span2 ? 34 : 22)
                 const scoreTone = score >= 80
                   ? 'text-white bg-emerald-600'
                   : score >= 60 ? 'text-white bg-taime-600'
                   : 'text-white bg-amber-500'
+                const chip = (
+                  <span className={`shrink-0 flex flex-col items-center justify-center w-14 h-14 rounded-2xl
+                                    shadow-sm tabular-nums ${scoreTone}`}>
+                    <span className="text-2xl font-black leading-none">{score}</span>
+                    <span className="text-[7px] font-bold tracking-widest opacity-80">SCORE</span>
+                  </span>
+                )
+                const moveChip = (
+                  <span className={`self-start inline-flex items-center rounded-md px-2.5 py-1 text-[11px]
+                                    font-black tracking-wide uppercase ring-1 ${MOVE_LIGHT[move]}`}>
+                    {MOVE_LABEL[move][locale]}
+                  </span>
+                )
+                const cta = (
+                  <Link href={href}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-taime-700
+                               group-hover:text-taime-800 group-hover:gap-2 transition-all">
+                    {h.trendCards.cta}
+                  </Link>
+                )
+                const cardCls = `group rounded-2xl border border-zinc-200 bg-white p-6 transition-all
+                                 hover:border-taime-200 hover:shadow-lg hover:shadow-zinc-200/60 hover:-translate-y-0.5
+                                 ${slot.span2 ? 'lg:col-span-2' : ''}`
+
+                // Card COM grafico (span 2): texto a esquerda, grafico a direita.
+                if (slot.chart) {
+                  return (
+                    <div key={i} className={`${cardCls} flex flex-col sm:flex-row gap-5`}>
+                      <div className="min-w-0 flex-1 flex flex-col gap-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-2">{r.category ?? ''}</span>
+                          {chip}
+                        </div>
+                        <h3 className="text-lg font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
+                        {moveChip}
+                        <p className="text-sm text-zinc-500 leading-snug line-clamp-2 flex-1">{line}</p>
+                        {cta}
+                      </div>
+                      <div className="shrink-0 w-full sm:w-56 flex items-center justify-center">
+                        {slot.chart === 'radar'
+                          ? <TrendRadar values={dimsOf(r)} move={move} lang={locale} tone="light" className="w-full h-auto max-w-[14rem]" />
+                          : <TrendBars values={dimsOf(r)} lang={locale} tone="light" className="w-full" />}
+                      </div>
+                    </div>
+                  )
+                }
+
+                // Card padrao (span 1): texto.
                 return (
-                  <div key={i} className="group rounded-2xl border border-zinc-200 bg-white p-6 flex flex-col gap-3
-                                          transition-all hover:border-taime-200 hover:shadow-lg hover:shadow-zinc-200/60 hover:-translate-y-0.5">
+                  <div key={i} className={`${cardCls} flex flex-col gap-3`}>
                     <div className="flex items-start justify-between gap-3">
-                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-2">
-                        {r.category ?? ''}
-                      </span>
-                      {/* Score em chip maior e saturado (fundo solido) */}
-                      <span className={`shrink-0 flex flex-col items-center justify-center w-14 h-14 rounded-2xl
-                                        shadow-sm tabular-nums ${scoreTone}`}>
-                        <span className="text-2xl font-black leading-none">{score}</span>
-                        <span className="text-[7px] font-bold tracking-widest opacity-80">SCORE</span>
-                      </span>
+                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-2">{r.category ?? ''}</span>
+                      {chip}
                     </div>
                     <h3 className="text-lg font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
-                    <span className={`self-start inline-flex items-center rounded-md px-2.5 py-1 text-[11px]
-                                      font-black tracking-wide uppercase ring-1 ${MOVE_LIGHT[move]}`}>
-                      {MOVE_LABEL[move][locale]}
-                    </span>
-                    {/* Corpo: radar (maior score), barras (2o maior) ou resumo em texto */}
-                    {isRadar ? (
-                      <div className="flex-1 flex items-center justify-center">
-                        <TrendRadar values={dimsOf(r)} move={move} lang={locale} tone="light" className="w-full h-auto max-w-[13rem]" />
-                      </div>
-                    ) : isBars ? (
-                      <div className="flex-1 flex flex-col justify-center">
-                        <TrendBars values={dimsOf(r)} lang={locale} tone="light" />
-                      </div>
-                    ) : (
-                      <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
-                    )}
-                    <Link
-                      href={href}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-taime-700
-                                 group-hover:text-taime-800 group-hover:gap-2 transition-all"
-                    >
-                      {h.trendCards.cta}
-                    </Link>
+                    {moveChip}
+                    <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
+                    {cta}
                   </div>
                 )
               })}
