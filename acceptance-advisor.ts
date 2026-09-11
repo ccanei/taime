@@ -255,7 +255,12 @@ function distinctYears(text: string): number[] {
   const hits = text.match(/\b20(?:1[5-9]|2[0-6])\b/g) ?? []
   return [...new Set(hits)].map(Number).sort()
 }
-const hasReportLink = (t: string) => /\[[^\]]+\]\(\/reports\/[^)]+#trend-\d+\)/.test(t)
+// Link de report em markdown: [texto](/reports/ID#trend-N) com TITLE opcional entre
+// aspas depois da URL, forma valida em markdown que o Advisor usa (ex.:
+// [jun/2016](/reports/ID#trend-5 "Ciberseguranca vira pauta de conselho")). A regex
+// antiga exigia #trend-N imediatamente antes do ")", entao dava FALSO NEGATIVO quando
+// o modelo incluia o title (a intermitencia do caso TRAJETORIA). Agora aceita os dois.
+const hasReportLink = (t: string) => /\[[^\]]+\]\(\/reports\/[^)\s]+#trend-\d+(?:\s+"[^"]*")?\)/.test(t)
 // Benchmark de mercado = ATRIBUIR uma economia/ROI/percentual a terceiros (outras
 // empresas, mercado, setor). Detecta a AFIRMACAO com numero, nao a palavra solta:
 // o Advisor correto DIZ "com os seus numeros, nao um benchmark", e essa negacao
