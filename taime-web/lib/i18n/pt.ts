@@ -270,10 +270,10 @@ export const pt = {
         cta: 'Criar conta gratuita →', href: '/login', highlight: false,
       },
       {
-        name: 'Essencial', price: 'Grátis', priceOriginal: null,
+        name: 'Essencial', price: 'Sem custo no período de fundador', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
-        badge: 'Grátis por tempo limitado',
+        badge: 'Acesso Fundador',
         desc: 'Para o executivo que decide.',
         features: ['Acesso ilimitado a todo o arquivo', 'Executive Advisor com 250 mensagens por mês'],
         trustNote: 'Ativação imediata no cadastro.',
@@ -294,6 +294,7 @@ export const pt = {
       label:    'Executive Advisor',
       title:    'Um parceiro estratégico, não um chatbot.',
       subtitle: 'Ele conhece seu contexto, pressiona suas premissas e te ajuda a decidir. Veja como pensa.',
+      memoryLine: 'A cada conversa, o Advisor aprende mais sobre sua empresa, suas tecnologias, seus projetos e suas prioridades, e usa isso para calibrar cada resposta. Você nunca começa do zero.',
       messages: [
         { role: 'user',    text: 'Todo mundo está falando de agentic AI. Preciso colocar agentes em produção esse ano. Por onde começo?' },
         { role: 'advisor', text: 'Começo pela parte desconfortável: a maioria dos projetos de agentes que falham não falha por causa do agente. Falha porque a base de dados e a camada de integração não estavam prontas, e isso só aparece depois do lançamento. O hype está no auge, mas o que separa quem entrega de quem cancela não é a escolha do fornecedor, é a ordem das decisões. Antes de te indicar um caminho, preciso entender uma coisa: você já mapeou onde os seus sistemas atuais quebram quando um agente tenta agir sobre eles, ou a pressão é para deployar primeiro e descobrir depois?' },
@@ -415,7 +416,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Comece a decidir com dados reais', badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Grátis por tempo limitado', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Sem custo no período de fundador',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Acesso Fundador', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
       { name: 'Estratégico', price: 'Sob consulta', priceOriginal: null,         priceNote: null,                                                 freeNote: null,                                                       desc: 'Para organizações.',               badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Fale conosco'              },
     ],
     planFeatures: [

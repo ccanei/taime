@@ -19,6 +19,8 @@ import CountUp from '@/components/home/CountUp'
 import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
 import TrendRadar from '@/components/home/TrendRadar'
+import DecisionCheckCard from '@/components/home/DecisionCheckCard'
+import AdvisorPreviewCard from '@/components/home/AdvisorPreviewCard'
 import TrendTicker from '@/components/home/TrendTicker'
 import FrameworkSection from '@/components/home/FrameworkSection'
 import ThemeTimeline from '@/components/home/ThemeTimeline'
@@ -55,6 +57,18 @@ interface RadarBriefing {
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+
+// Combos curados do Decision Check para o card da home: 5 temas fortes de areas
+// DISTINTAS (Estrategia de IA, Ciberseguranca, Governanca, Infraestrutura, Aplicacao
+// setorial). Slugs reais e validos ({theme}-{size}-{objective}-{horizon}). A cada
+// request da home um e sorteado (rotacao server-side, sem JS de auto-troca).
+const DECISION_CHECK_COMBOS = [
+  'ia-agentes-autonomos-200-1000-adotar-12m',            // Estrategia de IA (agentica)
+  'arquitetura-zero-trust-seguranca-200-1000-adotar-12m', // Ciberseguranca
+  'governanca-ia-200-1000-preparar-12m',                  // Governanca
+  'infraestrutura-ia-nuvem-estrategica-200-1000-adotar-12m', // Infraestrutura e dados
+  'ia-servicos-financeiros-200-1000-preparar-12m',        // Aplicacao setorial
+] as const
 
 async function getTopTrends(): Promise<TopTrend[]> {
   try {
@@ -438,6 +452,11 @@ export default async function LandingPage() {
       href:  `/reports/${r.report_id}`,
     }))
 
+  // Rotacao server-side do combo do card Decision Check: um sorteado por request. A home
+  // ja e dinamica (le cookies), entao varia a cada carregamento; o compute e cacheado
+  // por combo (getDecisionResult), logo o sorteio nao pesa.
+  const decisionComboSlug = DECISION_CHECK_COMBOS[Math.floor(Math.random() * DECISION_CHECK_COMBOS.length)]
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -490,14 +509,20 @@ export default async function LandingPage() {
                 </span>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 mb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
                 <Link
-                  href={isLoggedIn ? '/dashboard' : '/login'}
+                  href="/decision-check"
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg
                              bg-taime-500 text-white text-sm font-semibold
                              hover:bg-taime-400 transition-colors shadow-lg shadow-taime-500/30"
                 >
-                  {h.ctaPrimary}
+                  {isEn ? 'Start Decision Check' : 'Iniciar Decision Check'}
+                </Link>
+                <Link
+                  href={isLoggedIn ? '/dashboard' : '/login'}
+                  className="text-sm text-white/60 hover:text-white underline underline-offset-4 transition-colors"
+                >
+                  {isEn ? 'or access your account' : 'ou acesse sua conta'}
                 </Link>
               </div>
               <p className="text-xs text-white/50 font-medium">{h.heroSub}</p>
@@ -574,6 +599,16 @@ export default async function LandingPage() {
         items={tickerItems}
         label={isEn ? 'Recent published trends' : 'Trends publicadas recentes'}
       />
+
+      {/* ── SEÇÃO 1a-3: DOIS CAMINHOS (Decision Check + Executive Advisor) ── */}
+      <section className="bg-taime-900 border-t border-white/10">
+        <div className="max-w-6xl mx-auto px-6 py-16 sm:py-20">
+          <div className="grid md:grid-cols-2 gap-5 items-stretch">
+            <DecisionCheckCard slug={decisionComboSlug} isEn={isEn} />
+            <AdvisorPreviewCard isEn={isEn} />
+          </div>
+        </div>
+      </section>
 
       {/* ── SEÇÃO 1c: FAIXA DE PROVA (contadores animados + micro-grafico) ── */}
       <section className="border-t border-zinc-100 bg-white">
@@ -1021,6 +1056,7 @@ export default async function LandingPage() {
         label={h.advisor.label}
         title={h.advisor.title}
         subtitle={h.advisor.subtitle}
+        memoryLine={h.advisor.memoryLine}
         messages={h.advisor.messages}
         ctaTitle={h.advisor.ctaTitle}
         ctaBody={h.advisor.ctaBody}

@@ -272,10 +272,10 @@ export const en: Translations = {
         cta: 'Create free account →', href: '/login', highlight: false,
       },
       {
-        name: 'Essential', price: 'Free', priceOriginal: null,
+        name: 'Essential', price: 'No cost during founding period', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
-        badge: 'Free for a limited time',
+        badge: 'Founding Access',
         desc: 'For the executive who decides.',
         features: ['Unlimited access to the full archive', 'Executive Advisor with 250 messages per month'],
         trustNote: 'Instant activation at signup.',
@@ -296,6 +296,7 @@ export const en: Translations = {
       label:    'Executive Advisor',
       title:    'A strategic partner, not a chatbot.',
       subtitle: 'It knows your context, challenges your assumptions and helps you decide. See how it thinks.',
+      memoryLine: 'With every conversation, the Advisor learns more about your company, your technologies, your projects and your priorities, and uses that to calibrate every response. You never start from zero.',
       messages: [
         { role: 'user',    text: 'Everyone is talking about agentic AI. I need to get agents into production this year. Where do I start?' },
         { role: 'advisor', text: 'Let me start with the uncomfortable part: most agent projects that fail do not fail because of the agent. They fail because the data foundation and the integration layer were not ready, and that only shows up after launch. The hype is at its peak, but what separates those who ship from those who cancel is not the vendor choice, it is the order of the decisions. Before I point you to a path, I need to understand one thing: have you already mapped where your current systems break when an agent tries to act on them, or is the pressure to deploy first and find out later?' },
@@ -417,7 +418,7 @@ export const en: Translations = {
     subtitle: 'Pick a plan and start now. Instant activation, no waiting.',
     planCards: [
       { name: 'Free',       price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'Start deciding with real data',   badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Create account →'    },
-      { name: 'Essential',  price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Free for a limited time', highlight: true,  trustNote: 'Instant activation at signup.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
+      { name: 'Essential',  price: 'No cost during founding period',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Founding Access', highlight: true,  trustNote: 'Instant activation at signup.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
       { name: 'Strategic',  price: 'Custom',     priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For organizations.',              badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Contact us'          },
     ],
     planFeatures: [

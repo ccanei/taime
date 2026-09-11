@@ -12,6 +12,7 @@ interface AdvisorDemoProps {
   label:    string
   title:    string
   subtitle: string
+  memoryLine?: string
   messages: AdvisorMessage[]
   ctaTitle: string
   ctaBody:  string
@@ -32,7 +33,7 @@ function isAdvisor(role: string): boolean {
 }
 
 export default function AdvisorDemo({
-  label, title, subtitle, messages, ctaTitle, ctaBody, cta, ctaHref,
+  label, title, subtitle, memoryLine, messages, ctaTitle, ctaBody, cta, ctaHref,
 }: AdvisorDemoProps) {
   const [visible, setVisible] = useState(0)
   const [typing, setTyping]   = useState(false)
@@ -113,6 +114,11 @@ export default function AdvisorDemo({
           <p className="text-base text-white/70 leading-relaxed max-w-xl mx-auto">
             {subtitle}
           </p>
+          {memoryLine && (
+            <p className="mt-3 text-sm text-white/55 leading-relaxed max-w-2xl mx-auto">
+              {memoryLine}
+            </p>
+          )}
         </div>
 
         {/* Janela de chat */}
