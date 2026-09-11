@@ -134,10 +134,12 @@ export default function AdvisorPreviewCard({ isEn }: { isEn: boolean }) {
       <h3 className="text-xl font-bold text-white leading-snug mb-1.5">{t.title}</h3>
       <p className="text-sm text-white/60 leading-relaxed mb-5">{t.subtitle}</p>
 
-      {/* Container de altura fixa: a conversa cresce por dentro (auto-scroll), a pagina nao. */}
+      {/* Wrapper de ALTURA FIXA: o scroll acontece DENTRO deste bloco (nao na pagina);
+          o card nunca cresce com novas mensagens. O fade no topo suaviza as que saem. */}
+      <div className="relative h-[300px] mb-6">
       <div
         ref={scrollRef}
-        className={`flex-1 h-[260px] overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-4 mb-6
+        className={`h-full overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-4
                     flex flex-col gap-3 transition-opacity [scrollbar-width:none] [-ms-overflow-style:none]
                     ${fading ? 'opacity-0' : 'opacity-100'}`}
         style={{ transitionDuration: `${FADE_MS}ms` }}
@@ -172,6 +174,10 @@ export default function AdvisorPreviewCard({ isEn }: { isEn: boolean }) {
             </div>
           </div>
         )}
+      </div>
+        {/* Fade no topo: mensagens saindo por cima somem suavemente sob o gradiente. */}
+        <div aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-xl bg-gradient-to-b from-zinc-900 to-transparent" />
       </div>
 
       <Link

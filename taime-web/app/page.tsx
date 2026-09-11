@@ -59,6 +59,10 @@ interface RadarBriefing {
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
+// Flag de exibicao da busca de tendencias na home. Ocultada por ora (o componente
+// HomeSearch, sua rota e sua logica permanecem intactos); reativar e so por true.
+const SHOW_TREND_SEARCH = false
+
 // Combos curados do Decision Check para o card da home: 5 temas fortes de areas
 // DISTINTAS (Estrategia de IA, Ciberseguranca, Governanca, Infraestrutura, Aplicacao
 // setorial). Slugs reais e validos ({theme}-{size}-{objective}-{horizon}). A cada
@@ -1219,7 +1223,11 @@ export default async function LandingPage() {
             )
           })()}
 
-          <HomeSearch trends={topTrends} isLoggedIn={isLoggedIn} locale={locale} trendsCta={h.trendsCta} trendsEmpty={h.trendsEmpty} />
+          {/* Busca de tendencias OCULTA por ora (SHOW_TREND_SEARCH=false). Componente,
+              rota e logica preservados: reativar e so ligar a flag. */}
+          {SHOW_TREND_SEARCH && (
+            <HomeSearch trends={topTrends} isLoggedIn={isLoggedIn} locale={locale} trendsCta={h.trendsCta} trendsEmpty={h.trendsEmpty} />
+          )}
         </div>
       </section>
 

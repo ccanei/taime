@@ -270,15 +270,15 @@ export const pt = {
         cta: 'Criar conta gratuita →', href: '/login', highlight: false,
       },
       {
-        name: 'Essencial', price: 'Sem custo pelos primeiros 30 dias', priceOriginal: null,
+        name: 'Essencial', price: 'Solicitar acesso antecipado', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
-        badge: 'Acesso Fundador',
+        badge: null,
         desc: 'Para o executivo que decide.',
         features: ['Acesso ilimitado a todo o arquivo', 'Executive Advisor com 250 mensagens por mês'],
-        trustNote: 'Ativação imediata no cadastro.',
+        trustNote: 'Vagas limitadas durante o período de avaliação.',
         finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês',
-        cta: 'Começar com o Essential', href: '/login', highlight: true,
+        cta: 'Solicitar acesso', href: '/login', highlight: false,
       },
       {
         name: 'Estratégico', price: 'Sob consulta', priceOriginal: null, priceNote: null, freeNote: null, badge: null,
@@ -417,7 +417,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Comece a decidir com dados reais', badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Sem custo pelos primeiros 30 dias',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Acesso Fundador', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Solicitar acesso antecipado',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: null, highlight: false,  trustNote: 'Vagas limitadas durante o período de avaliação.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Solicitar acesso →' },
       { name: 'Estratégico', price: 'Sob consulta', priceOriginal: null,         priceNote: null,                                                 freeNote: null,                                                       desc: 'Para organizações.',               badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Fale conosco'              },
     ],
     planFeatures: [

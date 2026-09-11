@@ -272,15 +272,15 @@ export const en: Translations = {
         cta: 'Create free account →', href: '/login', highlight: false,
       },
       {
-        name: 'Essential', price: 'No cost for the first 30 days', priceOriginal: null,
+        name: 'Essential', price: 'Request early access', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
-        badge: 'Founding Access',
+        badge: null,
         desc: 'For the executive who decides.',
         features: ['Unlimited access to the full archive', 'Executive Advisor with 250 messages per month'],
-        trustNote: 'Instant activation at signup.',
+        trustNote: 'Limited spots during the evaluation period.',
         finePrint: 'Reference price after launch: from US$ 97/month',
-        cta: 'Start with Essential', href: '/login', highlight: true,
+        cta: 'Request access', href: '/login', highlight: false,
       },
       {
         name: 'Strategic', price: 'Custom', priceOriginal: null, priceNote: null, freeNote: null, badge: null,
@@ -419,7 +419,7 @@ export const en: Translations = {
     subtitle: 'Pick a plan and start now. Instant activation, no waiting.',
     planCards: [
       { name: 'Free',       price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'Start deciding with real data',   badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Create account →'    },
-      { name: 'Essential',  price: 'No cost for the first 30 days',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Founding Access', highlight: true,  trustNote: 'Instant activation at signup.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
+      { name: 'Essential',  price: 'Request early access',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: null, highlight: false,  trustNote: 'Limited spots during the evaluation period.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Request access →' },
       { name: 'Strategic',  price: 'Custom',     priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For organizations.',              badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Contact us'          },
     ],
     planFeatures: [
