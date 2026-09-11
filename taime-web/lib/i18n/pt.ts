@@ -270,7 +270,7 @@ export const pt = {
         cta: 'Criar conta gratuita →', href: '/login', highlight: false,
       },
       {
-        name: 'Essencial', price: 'Sem custo pelos primeiros 30 dias, mantido até o lançamento oficial', priceOriginal: null,
+        name: 'Essencial', price: 'Sem custo pelos primeiros 30 dias', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
         badge: 'Acesso Fundador',
@@ -417,7 +417,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Comece a decidir com dados reais', badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Sem custo pelos primeiros 30 dias, mantido até o lançamento oficial',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Acesso Fundador', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Sem custo pelos primeiros 30 dias',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Acesso Fundador', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
       { name: 'Estratégico', price: 'Sob consulta', priceOriginal: null,         priceNote: null,                                                 freeNote: null,                                                       desc: 'Para organizações.',               badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Fale conosco'              },
     ],
     planFeatures: [

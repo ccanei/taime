@@ -19,6 +19,7 @@ import CountUp from '@/components/home/CountUp'
 import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
 import TrendRadar from '@/components/home/TrendRadar'
+import TrendBars from '@/components/home/TrendBars'
 import DecisionCheckCard from '@/components/home/DecisionCheckCard'
 import AdvisorPreviewCard from '@/components/home/AdvisorPreviewCard'
 import TrendTicker from '@/components/home/TrendTicker'
@@ -175,8 +176,11 @@ async function getRecentTrendRows(): Promise<RecentTrendRow[]> {
     const fields = 'title_pt_br,title_en,taime_score,category,theme_slug,report_id,' +
       'then_now_next_pt_br,then_now_next_en,taime_framework_pt_br,taime_framework_en,reports!inner(period)'
     const res = await fetch(
+      // Desempate deterministico (mesmo criterio do Decision Check): score desc, depois
+      // period desc (a mais recente vence empates), e id como chave estavel final. Sem
+      // isto, empates de score deixavam a selecao dos 6 cards nao deterministica.
       `${c.url}/rest/v1/report_trends?reports.status=eq.published&reports.period=in.(${inList})` +
-        `&order=taime_score.desc&limit=40&select=${fields}`,
+        `&order=taime_score.desc,reports(period).desc,id.desc&limit=40&select=${fields}`,
       { headers: h, next: { revalidate: REPORTS_REVALIDATE_SECONDS, tags: [REPORTS_TAG] } },
     )
     if (!res.ok) return []
@@ -1062,8 +1066,21 @@ export default async function LandingPage() {
           <p className="section-label mb-3">{h.trendCards.label}</p>
           <h2 className="text-3xl font-bold text-zinc-900 mb-10">{h.trendCards.title}</h2>
 
-          {trendCardRows.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
+          {trendCardRows.length > 0 && (() => {
+            // Tipos de grafico por RANK DE SCORE (nao por posicao no grid): o de maior
+            // score ganha o radar; o segundo maior, as barras verticais; os demais 4,
+            // texto. Referencia por objeto (linhas unicas por theme_slug).
+            const byScore = [...trendCardRows].sort((a, b) => b.taime_score - a.taime_score)
+            const radarRow = byScore[0]
+            const barsRow  = byScore[1]
+            const dimsOf = (r: RecentTrendRow): number[] => {
+              const fw = isEn ? r.taime_framework_en : r.taime_framework_pt_br
+              return fw?.score_dimensions ? DIM_ORDER.map(k => fw.score_dimensions![k]?.score ?? r.taime_score) : []
+            }
+            return (
+            // Grid uniforme 3x2: todos os cards do MESMO tamanho (sem span-2). 2 deles
+            // trazem grafico (radar + barras), os outros 4, texto.
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12 items-stretch">
               {trendCardRows.map((r, i) => {
                 const score = r.taime_score
                 const fw    = isEn ? r.taime_framework_en : r.taime_framework_pt_br
@@ -1071,50 +1088,9 @@ export default async function LandingPage() {
                 const move  = moveFromScore(score)
                 const title = isEn ? r.title_en : r.title_pt_br
                 const href  = isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'
-
-                // ── Card em DESTAQUE (o de maior score, primeiro): 2 colunas, fundo
-                //    escuro premium, radar real das 5 dimensoes (reusa TrendRadar). ──
-                if (i === 0) {
-                  const line = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 40)
-                  const dims = fw?.score_dimensions
-                    ? DIM_ORDER.map(k => fw.score_dimensions![k]?.score ?? score)
-                    : []
-                  return (
-                    <Link
-                      key={i}
-                      href={href}
-                      className="group sm:col-span-2 rounded-2xl bg-taime-900 border border-white/10 ring-1 ring-white/5
-                                 shadow-2xl p-6 sm:p-7 flex flex-col sm:flex-row gap-5 transition-all hover:ring-white/15"
-                    >
-                      <div className="min-w-0 flex-1 flex flex-col">
-                        <span className="text-[10px] font-bold tracking-widest text-taime-300 uppercase mb-2">{r.category ?? ''}</span>
-                        <h3 className="text-xl sm:text-2xl font-bold text-white leading-snug mb-3 line-clamp-2">{title}</h3>
-                        <div className="flex items-center gap-3 mb-3">
-                          <span className="inline-flex items-baseline gap-1">
-                            <span className="text-3xl font-black tabular-nums text-white leading-none">{score}</span>
-                            <span className="text-sm font-bold text-white/30">/100</span>
-                          </span>
-                          <span className={`inline-flex items-center rounded-lg px-3 py-1 ring-1 text-sm font-black tracking-wide
-                                            ${MOVE_STYLE[move].ring} ${MOVE_STYLE[move].bg} ${MOVE_STYLE[move].text}`}>
-                            {MOVE_LABEL[move][locale]}
-                          </span>
-                        </div>
-                        <p className="text-sm text-white/65 leading-relaxed line-clamp-3 flex-1">{line}</p>
-                        <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-taime-300 group-hover:text-taime-200 group-hover:gap-2 transition-all">
-                          {h.trendCards.cta}
-                        </span>
-                      </div>
-                      {dims.length > 0 && (
-                        <div className="shrink-0 w-full sm:w-64 flex items-center justify-center">
-                          <TrendRadar values={dims} move={move} lang={locale} className="w-full h-auto max-w-[16rem]" />
-                        </div>
-                      )}
-                    </Link>
-                  )
-                }
-
-                // ── Demais cards: layout padrao, chip de score/MOVE MAIS destacado. ──
-                const line = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 26)
+                const line  = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 22)
+                const isRadar = r === radarRow && dimsOf(r).length > 0
+                const isBars  = !isRadar && r === barsRow && dimsOf(r).length > 0
                 const scoreTone = score >= 80
                   ? 'text-white bg-emerald-600'
                   : score >= 60 ? 'text-white bg-taime-600'
@@ -1126,7 +1102,7 @@ export default async function LandingPage() {
                       <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-2">
                         {r.category ?? ''}
                       </span>
-                      {/* Score em chip maior e mais saturado (fundo solido, nao mais tenue) */}
+                      {/* Score em chip maior e saturado (fundo solido) */}
                       <span className={`shrink-0 flex flex-col items-center justify-center w-14 h-14 rounded-2xl
                                         shadow-sm tabular-nums ${scoreTone}`}>
                         <span className="text-2xl font-black leading-none">{score}</span>
@@ -1138,7 +1114,18 @@ export default async function LandingPage() {
                                       font-black tracking-wide uppercase ring-1 ${MOVE_LIGHT[move]}`}>
                       {MOVE_LABEL[move][locale]}
                     </span>
-                    <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
+                    {/* Corpo: radar (maior score), barras (2o maior) ou resumo em texto */}
+                    {isRadar ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <TrendRadar values={dimsOf(r)} move={move} lang={locale} tone="light" className="w-full h-auto max-w-[13rem]" />
+                      </div>
+                    ) : isBars ? (
+                      <div className="flex-1 flex flex-col justify-center">
+                        <TrendBars values={dimsOf(r)} lang={locale} tone="light" />
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
+                    )}
                     <Link
                       href={href}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-taime-700
@@ -1150,7 +1137,8 @@ export default async function LandingPage() {
                 )
               })}
             </div>
-          )}
+            )
+          })()}
 
           <HomeSearch trends={topTrends} isLoggedIn={isLoggedIn} locale={locale} trendsCta={h.trendsCta} trendsEmpty={h.trendsEmpty} />
         </div>

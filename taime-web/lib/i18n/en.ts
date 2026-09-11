@@ -272,7 +272,7 @@ export const en: Translations = {
         cta: 'Create free account →', href: '/login', highlight: false,
       },
       {
-        name: 'Essential', price: 'No cost for the first 30 days, maintained until official launch', priceOriginal: null,
+        name: 'Essential', price: 'No cost for the first 30 days', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
         badge: 'Founding Access',
@@ -419,7 +419,7 @@ export const en: Translations = {
     subtitle: 'Pick a plan and start now. Instant activation, no waiting.',
     planCards: [
       { name: 'Free',       price: 'Free',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'Start deciding with real data',   badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Create account →'    },
-      { name: 'Essential',  price: 'No cost for the first 30 days, maintained until official launch',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Founding Access', highlight: true,  trustNote: 'Instant activation at signup.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
+      { name: 'Essential',  price: 'No cost for the first 30 days',       priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For the executive who decides.',   badge: 'Founding Access', highlight: true,  trustNote: 'Instant activation at signup.', finePrint: 'Reference price after launch: from US$ 97/month', cta: 'Start with Essential →' },
       { name: 'Strategic',  price: 'Custom',     priceOriginal: null,        priceNote: null,                                        freeNote: null,                                                desc: 'For organizations.',              badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Contact us'          },
     ],
     planFeatures: [

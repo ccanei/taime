@@ -22,17 +22,27 @@ function anchor(cx: number): 'start' | 'middle' | 'end' {
   return 'middle'
 }
 
+// tone 'dark' (padrao): aneis/eixos/labels claros para fundo escuro (hero, DC card).
+// tone 'light': aneis/eixos/labels escuros para fundo branco (cards de tendencia).
+type Tone = 'dark' | 'light'
+const TONE: Record<Tone, { ring: (f: number) => string; axis: string; value: string; name: string }> = {
+  dark:  { ring: f => `rgba(255,255,255,${f === 1 ? 0.20 : 0.09})`, axis: 'rgba(255,255,255,0.08)', value: '#ffffff', name: 'rgba(255,255,255,0.55)' },
+  light: { ring: f => `rgba(24,24,27,${f === 1 ? 0.18 : 0.08})`,    axis: 'rgba(24,24,27,0.08)',    value: '#18181b', name: 'rgba(24,24,27,0.50)' },
+}
+
 export default function TrendRadar({
-  values, move, lang, className,
+  values, move, lang, className, tone = 'dark',
 }: {
   values: number[]
   move: Move
   lang: Lang
   className?: string
+  tone?: Tone
 }) {
   const m = MOVE_HEX[move]
   const names = SHORT_LABELS[lang]
   const dataPts = radarDataPoints(CX, CY, R, values)
+  const c = TONE[tone]
 
   return (
     <svg viewBox="0 0 350 300" className={className} role="img"
@@ -40,13 +50,13 @@ export default function TrendRadar({
       {/* Aneis concentricos (25/50/75/100%) */}
       {[0.25, 0.5, 0.75, 1].map(f => (
         <polygon key={f} points={radarPolygonPoints(CX, CY, R * f)} fill="none"
-                 stroke={`rgba(255,255,255,${f === 1 ? 0.20 : 0.09})`} strokeWidth={1} />
+                 stroke={c.ring(f)} strokeWidth={1} />
       ))}
       {/* Eixos */}
       {[0, 1, 2, 3, 4].map(i => {
         const [x, y] = radarPoint(CX, CY, R, i)
         return <line key={i} x1={CX} y1={CY} x2={x.toFixed(1)} y2={y.toFixed(1)}
-                     stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+                     stroke={c.axis} strokeWidth={1} />
       })}
       {/* Poligono de dados (cor do MOVE) */}
       <polygon points={dataPts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}
@@ -54,16 +64,16 @@ export default function TrendRadar({
       {dataPts.map(([x, y], i) => (
         <circle key={i} cx={x.toFixed(1)} cy={y.toFixed(1)} r={3.5} fill={m.color} />
       ))}
-      {/* Rotulos: valor (bold, branco) + nome (menor, tenue) */}
+      {/* Rotulos: valor (bold) + nome (menor, tenue) */}
       {names.map((name, i) => {
         const [lx, ly] = radarPoint(CX, CY, LABEL_R, i)
         const a = anchor(lx)
         return (
           <g key={i}>
             <text x={lx.toFixed(1)} y={(ly - 1).toFixed(1)} textAnchor={a}
-                  fontSize={15} fontWeight={700} fill="#ffffff">{Math.round(values[i])}</text>
+                  fontSize={15} fontWeight={700} fill={c.value}>{Math.round(values[i])}</text>
             <text x={lx.toFixed(1)} y={(ly + 12).toFixed(1)} textAnchor={a}
-                  fontSize={10} fontWeight={600} fill="rgba(255,255,255,0.55)">{name}</text>
+                  fontSize={10} fontWeight={600} fill={c.name}>{name}</text>
           </g>
         )
       })}

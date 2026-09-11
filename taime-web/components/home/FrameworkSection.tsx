@@ -1,6 +1,7 @@
 'use client'
 
 import FrameworkFlow from '@/components/home/FrameworkFlow'
+import TrendBars from '@/components/home/TrendBars'
 
 // "O framework TAIME" como ferramenta proprietaria nomeada: bloco editorial
 // escuro cujo grafico proprio e o FLUXO TYPE->ACT->IMPACT->MOVE->EXIT (distinto da
@@ -77,12 +78,7 @@ export default function FrameworkSection({
               <p className="text-sm font-bold text-white">{copy.scoreTitle}</p>
               <span className="text-3xl font-bold tabular-nums text-taime-300">83</span>
             </div>
-            <div className="flex items-end gap-1.5 h-16 mb-4">
-              {SCORE_DIMS.map((v, i) => (
-                <div key={i} className="flex-1 rounded-t bg-gradient-to-t from-taime-600/40 to-taime-400"
-                     style={{ height: `${v}%` }} />
-              ))}
-            </div>
+            <TrendBars values={SCORE_DIMS} tone="dark" showLabels={false} className="mb-4" />
             <p className="text-xs text-white/50 leading-relaxed">{copy.scoreDesc}</p>
           </div>
         </div>
