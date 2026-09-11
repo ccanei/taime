@@ -14,7 +14,7 @@ import type { TaimeFramework, ThenNowNext } from '@/lib/types'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import HomeSearch from '@/components/HomeSearch'
-import AdvisorDemo from '@/components/AdvisorDemo'
+import OrgMemorySection from '@/components/home/OrgMemorySection'
 import CountUp from '@/components/home/CountUp'
 import ScoreBars from '@/components/home/ScoreBars'
 import ThemeTrajectory from '@/components/home/ThemeTrajectory'
@@ -322,7 +322,7 @@ export default async function LandingPage() {
     /agent|ag[eê]ntic/i.test(`${r.theme_slug ?? ''} ${r.title_en} ${r.title_pt_br}`)
   const divKey = (r: RecentTrendRow): string => (isAgentic(r) ? 'AGENTIC' : (r.category ?? '?'))
 
-  const CARD_COUNT = 9
+  const CARD_COUNT = 6
   const trendCardRows: typeof dedupedRows = []
   const keyCount = new Map<string, number>()
   const takeUnderCap = (cap: number) => {
@@ -1051,18 +1051,10 @@ export default async function LandingPage() {
         moments={h.trajectory.moments}
       />
 
-      {/* ── SEÇÃO 4c: EXECUTIVE ADVISOR (conversa animada) ─────────────── */}
-      <AdvisorDemo
-        label={h.advisor.label}
-        title={h.advisor.title}
-        subtitle={h.advisor.subtitle}
-        memoryLine={h.advisor.memoryLine}
-        messages={h.advisor.messages}
-        ctaTitle={h.advisor.ctaTitle}
-        ctaBody={h.advisor.ctaBody}
-        cta={h.advisor.cta}
-        ctaHref="/ask"
-      />
+      {/* ── SEÇÃO 4c: MEMÓRIA DA EMPRESA (org_memory) ─────────────────── */}
+      {/* Substitui a demo antiga do chat: o conceito de parceiro que conhece o
+          contexto ja vive no card do Advisor (dois-cards); aqui reforcamos a memoria. */}
+      <OrgMemorySection isEn={isEn} />
 
       {/* ── SEÇÃO 5: TENDÊNCIAS RECENTES (cards dinâmicos) + BUSCA ─────── */}
       <section className="bg-zinc-50 border-t border-zinc-100 py-28">
@@ -1076,37 +1068,79 @@ export default async function LandingPage() {
                 const score = r.taime_score
                 const fw    = isEn ? r.taime_framework_en : r.taime_framework_pt_br
                 const tnn   = isEn ? r.then_now_next_en   : r.then_now_next_pt_br
-                // Resumo de 1-2 linhas: prioriza o NOW do THEN/NOW/NEXT (o estado atual),
-                // com fallback no executive_snapshot quando o NOW nao existir.
-                const line  = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 26)
                 const move  = moveFromScore(score)
                 const title = isEn ? r.title_en : r.title_pt_br
+                const href  = isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'
+
+                // ── Card em DESTAQUE (o de maior score, primeiro): 2 colunas, fundo
+                //    escuro premium, radar real das 5 dimensoes (reusa TrendRadar). ──
+                if (i === 0) {
+                  const line = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 40)
+                  const dims = fw?.score_dimensions
+                    ? DIM_ORDER.map(k => fw.score_dimensions![k]?.score ?? score)
+                    : []
+                  return (
+                    <Link
+                      key={i}
+                      href={href}
+                      className="group sm:col-span-2 rounded-2xl bg-taime-900 border border-white/10 ring-1 ring-white/5
+                                 shadow-2xl p-6 sm:p-7 flex flex-col sm:flex-row gap-5 transition-all hover:ring-white/15"
+                    >
+                      <div className="min-w-0 flex-1 flex flex-col">
+                        <span className="text-[10px] font-bold tracking-widest text-taime-300 uppercase mb-2">{r.category ?? ''}</span>
+                        <h3 className="text-xl sm:text-2xl font-bold text-white leading-snug mb-3 line-clamp-2">{title}</h3>
+                        <div className="flex items-center gap-3 mb-3">
+                          <span className="inline-flex items-baseline gap-1">
+                            <span className="text-3xl font-black tabular-nums text-white leading-none">{score}</span>
+                            <span className="text-sm font-bold text-white/30">/100</span>
+                          </span>
+                          <span className={`inline-flex items-center rounded-lg px-3 py-1 ring-1 text-sm font-black tracking-wide
+                                            ${MOVE_STYLE[move].ring} ${MOVE_STYLE[move].bg} ${MOVE_STYLE[move].text}`}>
+                            {MOVE_LABEL[move][locale]}
+                          </span>
+                        </div>
+                        <p className="text-sm text-white/65 leading-relaxed line-clamp-3 flex-1">{line}</p>
+                        <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-taime-300 group-hover:text-taime-200 group-hover:gap-2 transition-all">
+                          {h.trendCards.cta}
+                        </span>
+                      </div>
+                      {dims.length > 0 && (
+                        <div className="shrink-0 w-full sm:w-64 flex items-center justify-center">
+                          <TrendRadar values={dims} move={move} lang={locale} className="w-full h-auto max-w-[16rem]" />
+                        </div>
+                      )}
+                    </Link>
+                  )
+                }
+
+                // ── Demais cards: layout padrao, chip de score/MOVE MAIS destacado. ──
+                const line = firstWords(tnn?.now ?? fw?.executive_snapshot ?? '', 26)
                 const scoreTone = score >= 80
-                  ? 'text-emerald-700 bg-emerald-50 ring-emerald-100'
-                  : score >= 60 ? 'text-amber-700 bg-amber-50 ring-amber-100'
-                  : 'text-orange-700 bg-orange-50 ring-orange-100'
+                  ? 'text-white bg-emerald-600'
+                  : score >= 60 ? 'text-white bg-taime-600'
+                  : 'text-white bg-amber-500'
                 return (
                   <div key={i} className="group rounded-2xl border border-zinc-200 bg-white p-6 flex flex-col gap-3
                                           transition-all hover:border-taime-200 hover:shadow-lg hover:shadow-zinc-200/60 hover:-translate-y-0.5">
                     <div className="flex items-start justify-between gap-3">
-                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-1.5">
+                      <span className="text-[10px] font-bold tracking-widest text-taime-600 uppercase mt-2">
                         {r.category ?? ''}
                       </span>
-                      {/* Score como elemento visual destacado (chip com anel) */}
-                      <span className={`shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl
-                                        ring-1 tabular-nums ${scoreTone}`}>
-                        <span className="text-lg font-bold leading-none">{score}</span>
-                        <span className="text-[7px] font-bold tracking-widest opacity-70">SCORE</span>
+                      {/* Score em chip maior e mais saturado (fundo solido, nao mais tenue) */}
+                      <span className={`shrink-0 flex flex-col items-center justify-center w-14 h-14 rounded-2xl
+                                        shadow-sm tabular-nums ${scoreTone}`}>
+                        <span className="text-2xl font-black leading-none">{score}</span>
+                        <span className="text-[7px] font-bold tracking-widest opacity-80">SCORE</span>
                       </span>
                     </div>
                     <h3 className="text-lg font-bold text-zinc-900 leading-snug line-clamp-2">{title}</h3>
-                    <span className={`self-start inline-flex items-center rounded-md px-2 py-0.5 text-[10px]
-                                      font-bold tracking-wide uppercase ring-1 ${MOVE_LIGHT[move]}`}>
+                    <span className={`self-start inline-flex items-center rounded-md px-2.5 py-1 text-[11px]
+                                      font-black tracking-wide uppercase ring-1 ${MOVE_LIGHT[move]}`}>
                       {MOVE_LABEL[move][locale]}
                     </span>
                     <p className="text-sm text-zinc-500 leading-snug line-clamp-3 flex-1">{line}</p>
                     <Link
-                      href={isLoggedIn ? `/reports/${r.report_id}` : '/login?from=report'}
+                      href={href}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-taime-700
                                  group-hover:text-taime-800 group-hover:gap-2 transition-all"
                     >

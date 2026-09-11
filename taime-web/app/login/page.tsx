@@ -34,13 +34,19 @@ function LoginPageInner() {
 
   // ?plan=free|essential|strategic. Fora da whitelist cai em 'free'.
   const planParam = searchParams.get('plan') as Plan | null
-  const initialPlan: Plan = planParam && ALLOWED_PLANS.includes(planParam) ? planParam : 'free'
+  const hasPlanParam = !!(planParam && ALLOWED_PLANS.includes(planParam))
+  const initialPlan: Plan = hasPlanParam ? planParam! : 'free'
 
   // Free e Essential: self-signup direto (magic link com shouldCreateUser=true) e
   // ativacao imediata da subscription no /auth/callback. Strategic: continua
   // waitlist manual (nao esta a venda agora). O cadastro nunca ativa strategic.
   const signupPlan: 'free' | 'essential' = initialPlan === 'essential' ? 'essential' : 'free'
-  const [mode, setMode]     = useState<Mode>(initialPlan === 'strategic' ? 'waitlist' : 'free-signup')
+  // Padrao = ENTRADA (magic-link): a maioria que chega em /login ja tem acesso. So
+  // abrimos direto no cadastro/waitlist quando o usuario veio de um CTA de plano
+  // (?plan=...): essential/free -> cadastro; strategic -> waitlist.
+  const [mode, setMode]     = useState<Mode>(
+    !hasPlanParam ? 'magic-link' : initialPlan === 'strategic' ? 'waitlist' : 'free-signup',
+  )
   const [status, setStatus] = useState<Status>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -676,9 +682,9 @@ function LoginPageInner() {
                 <div className="mt-6 flex items-center justify-between text-sm">
                   <button
                     onClick={() => switchMode('free-signup')}
-                    className="text-zinc-400 hover:text-zinc-600 hover:underline"
+                    className="text-taime-600 hover:underline"
                   >
-                    {t.login.switchToWaitlist}
+                    {t.login.switchToSignup}
                   </button>
                   <span className="text-xs text-zinc-400">{t.login.linkExpiry}</span>
                 </div>

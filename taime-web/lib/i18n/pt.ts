@@ -270,7 +270,7 @@ export const pt = {
         cta: 'Criar conta gratuita →', href: '/login', highlight: false,
       },
       {
-        name: 'Essencial', price: 'Sem custo no período de fundador', priceOriginal: null,
+        name: 'Essencial', price: 'Sem custo pelos primeiros 30 dias, mantido até o lançamento oficial', priceOriginal: null,
         priceNote: null,
         freeNote:  null,
         badge: 'Acesso Fundador',
@@ -370,12 +370,13 @@ export const pt = {
     sentBody:      (email: string) => `Verifique o email de ${email}. O link expira em 1 hora.`,
     linkExpiry:    'Link expira em 1h',
     switchToWaitlist: '← Solicitar acesso',
+    switchToSignup: 'Ainda não tem conta? Criar conta',
     errDuplicate:  'Este email já está na lista de espera.',
     errGeneric:    'Erro ao registrar. Tente novamente.',
     errCaptcha:    'Não foi possível validar que você não é um robô. Recarregue a página e tente de novo.',
     errRate:       'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente de novo.',
-    // Self-signup gratuito (plano free): fluxo de magic link com criação automática de conta.
-    freeTitle:     'Criar conta gratuita',
+    // Self-signup (plano free): fluxo de magic link com criação automática de conta.
+    freeTitle:     'Criar conta',
     freeBody:      'Acesso imediato ao preview público. Informe seu email e enviaremos um link de acesso.',
     freeSubmit:    'Enviar link de acesso',
     freeSubmitting: 'Enviando...',
@@ -416,7 +417,7 @@ export const pt = {
     subtitle: 'Escolha o plano e comece agora. Ativação imediata, sem espera.',
     planCards: [
       { name: 'Gratuito',    price: 'Grátis',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Comece a decidir com dados reais', badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Criar conta →'              },
-      { name: 'Essencial',   price: 'Sem custo no período de fundador',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Acesso Fundador', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
+      { name: 'Essencial',   price: 'Sem custo pelos primeiros 30 dias, mantido até o lançamento oficial',      priceOriginal: null,          priceNote: null,                                                 freeNote: null,                                                       desc: 'Para o executivo que decide.',     badge: 'Acesso Fundador', highlight: true,  trustNote: 'Ativação imediata no cadastro.', finePrint: 'Valor de referência após o lançamento: a partir de R$ 497/mês', cta: 'Começar com o Essential →' },
       { name: 'Estratégico', price: 'Sob consulta', priceOriginal: null,         priceNote: null,                                                 freeNote: null,                                                       desc: 'Para organizações.',               badge: null, highlight: false, trustNote: null, finePrint: null, cta: 'Fale conosco'              },
     ],
     planFeatures: [
