@@ -3,7 +3,7 @@
 //   node lib/advisor-export-detect.test.ts
 // Sai != 0 se qualquer caso falhar.
 import assert from 'node:assert'
-import { detectRoi, detectChecklist, extractRoi, extractChecklist, detectCsv, extractCsv } from './advisor-export-detect.ts'
+import { detectRoi, detectChecklist, extractRoi, extractChecklist, detectCsv, extractCsv, detectMarkdownTable, extractMarkdownTable } from './advisor-export-detect.ts'
 
 let pass = 0
 const fails: string[] = []
@@ -101,6 +101,61 @@ check('so cabecalho 3 cols + 1 linha NAO e CSV (cabecalho fraco)', () => assert.
 check('prosa em 2 linhas com virgulas NAO e CSV', () => assert.strictEqual(detectCsv(
   'Primeiro, avaliamos o custo, o prazo e o risco de cada opcao.\nDepois, decidimos com base no impacto, na urgencia e no orcamento.'), false))
 check('markdown table NAO vira CSV', () => assert.strictEqual(detectCsv('| a | b | c |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |'), false))
+
+// ── Tabela markdown estruturada (inventario) DEVE detectar checklist ──────────
+const INV_TABLE = `Aqui esta o inventario de sistemas:
+
+| Sistema | Tipo de dado | Onde vive | Formato | Quem acessa | Frequência | Criticidade |
+| --- | --- | --- | --- | --- | --- | --- |
+| ERP | Financeiro | On-premise | SQL | Financas | Diaria | Alta |
+| CRM | Clientes | Cloud | SaaS | Comercial | Diaria | Alta |
+| BI | Analitico | Cloud | Parquet | Diretoria | Semanal | Media |`
+check('tabela de inventario detectada', () => assert.strictEqual(detectMarkdownTable(INV_TABLE), true))
+check('tabela de inventario extrai 7 cols x 3 rows', () => {
+  const x = extractMarkdownTable(INV_TABLE)
+  assert.strictEqual(x?.header.length, 7)
+  assert.strictEqual(x?.rows.length, 3)
+  assert.strictEqual(x?.header[0], 'Sistema')
+  assert.strictEqual(x?.rows[0][2], 'On-premise')
+})
+
+// Inventario com UMA linha de dados + cabecalho forte (>=4 cols) DEVE detectar.
+const INV_1ROW = `| Sistema | Tipo de dado | Onde vive | Quem acessa | Criticidade |
+| --- | --- | --- | --- | --- |
+| ERP | Financeiro | On-premise | Financas | Alta |`
+check('inventario 1 linha + cabecalho forte detectado', () => assert.strictEqual(detectMarkdownTable(INV_1ROW), true))
+
+// ── Tabela de ROADMAP: NAO dispara checklist (so plan_offer) ──────────────────
+const ROADMAP_TABLE = `Roadmap dimensionado:
+
+| Fase | Decidir / Iniciar | Não fazer ainda | Esforço | Duração | Investimento |
+| --- | --- | --- | --- | --- | --- |
+| 1. Mapear | Documentar etapas | Automatizar | ~12h | 2 semanas | baixo |
+| 2. Piloto | Rodar teste | Escalar | ~20h | 1 mes | medio |`
+check('tabela de roadmap NAO dispara checklist', () => assert.strictEqual(detectMarkdownTable(ROADMAP_TABLE), false))
+
+// ── Tabela de ROI: NAO dispara checklist (so ROI) ─────────────────────────────
+const ROI_TABLE = `Com seus numeros, R$6.400/mes. Dois cenarios:
+
+| Cenário | % captura | Mensal | Anual |
+| --- | --- | --- | --- |
+| Conservador | 40% | R$2.560 | R$30.720 |
+| Otimista | 70% | R$4.480 | R$53.760 |`
+check('tabela de ROI NAO dispara checklist', () => assert.strictEqual(detectMarkdownTable(ROI_TABLE), false))
+
+// ── Falso positivo: comparacao 3 cols + 1 linha de dados NAO detecta ──────────
+const CMP_TABLE = `| Ferramenta | Prós | Contras |
+| --- | --- | --- |
+| A | rápido | caro |`
+check('comparacao 3 cols + 1 linha NAO detecta', () => assert.strictEqual(detectMarkdownTable(CMP_TABLE), false))
+
+// ── Falso positivo: tabela de 2 colunas NAO detecta (minimo 3) ────────────────
+const TWO_COL = `| Chave | Valor |
+| --- | --- |
+| a | 1 |
+| b | 2 |
+| c | 3 |`
+check('tabela de 2 colunas NAO detecta', () => assert.strictEqual(detectMarkdownTable(TWO_COL), false))
 
 console.log(`\n${pass} passed, ${fails.length} failed`)
 if (fails.length) { console.error('\nFAILURES:\n' + fails.join('\n')); process.exit(1) }

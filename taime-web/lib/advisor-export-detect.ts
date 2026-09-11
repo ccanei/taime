@@ -280,3 +280,79 @@ export function detectCsv(md: string): boolean {
   if (!md) return false
   return extractCsv(md) !== null
 }
+
+// ── Tabela markdown estruturada (inventarios / checklists com separador |) ──────
+// Reconhece cabecalho | + separadora (---|---) + linhas de dados, >=3 colunas. NAO
+// dispara quando a tabela e um ROADMAP (fase/horizonte + decidir/iniciar/nao-fazer/
+// criterio: essa vai para "Salvar como meu plano") nem quando a resposta e de ROI
+// (cenario/percentual/valor: vai para "Exportar ROI"). Prioridade: roadmap > ROI >
+// checklist (uma tabela dispara UM botao, o mais especifico).
+
+// Colunas que caracterizam uma tabela de ROADMAP (espelham lib/advisor-plan-extract).
+const TBL_HORIZON = /horizonte|horizon|prazo|timeframe|time frame|per[ií]odo|quando|\bwhen\b|\bfase\b|\bphase\b/i
+const TBL_ROADMAP_COL = /decid|decis|iniciar|a[çc][aã]o|a[çc][õo]es|\baction\b|n[aã]o fazer|ainda n[aã]o|evit|avoid|not yet|crit[eé]rio|sa[ií]da|\bexit\b|esfor[çc]o|\beffort\b|dura[çc][aã]o|\bduration\b|investiment|\binvestment\b/i
+// Colunas que caracterizam uma tabela de ROI/cenarios.
+const TBL_ROI_COL = /cen[aá]rio|scenario|captura|capture|%|percentual|mensal|anual|monthly|annual/i
+
+function isTableSeparator(line: string): boolean {
+  return /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes('-') && line.includes('|')
+}
+function splitRow(line: string): string[] {
+  let s = line.trim()
+  if (s.startsWith('|')) s = s.slice(1)
+  if (s.endsWith('|')) s = s.slice(0, -1)
+  return s.split('|').map(c => c.replace(/\*\*/g, '').replace(/`/g, '').trim())
+}
+
+// Uma tabela e de ROADMAP quando o cabecalho tem coluna de fase/horizonte + >=2 colunas
+// de roadmap (decidir/iniciar/nao-fazer/criterio/esforco/duracao/investimento).
+function headerIsRoadmap(header: string[]): boolean {
+  const joined = header.join(' ')
+  if (!TBL_HORIZON.test(joined)) return false
+  const roadmapCols = header.filter(c => TBL_ROADMAP_COL.test(c)).length
+  return roadmapCols >= 2
+}
+// Uma tabela e de ROI quando >=2 colunas de cenario/percentual/valor.
+function headerIsRoi(header: string[]): boolean {
+  return header.filter(c => TBL_ROI_COL.test(c)).length >= 2
+}
+
+export function extractMarkdownTable(md: string): CsvData | null {
+  if (!md) return null
+  const lines = md.split('\n')
+  for (let i = 0; i < lines.length - 1; i++) {
+    const header = lines[i]
+    if (!header.includes('|') || !isTableSeparator(lines[i + 1])) continue
+    const cols = splitRow(header)
+    if (cols.length < 3 || cols.some(c => c === '')) { continue }
+    // corpo: linhas com | ate a primeira linha em branco ou nao-tabela
+    const rows: string[][] = []
+    let r = i + 2
+    for (; r < lines.length; r++) {
+      const row = lines[r]
+      if (row.trim() === '' || !row.includes('|')) break
+      if (isTableSeparator(row)) continue
+      const rc = splitRow(row)
+      // normaliza a largura ao numero de colunas do cabecalho
+      while (rc.length < cols.length) rc.push('')
+      rows.push(rc.slice(0, cols.length))
+    }
+    if (rows.length === 0) continue
+    // Exclusoes de prioridade: roadmap e ROI tem botoes dedicados.
+    if (headerIsRoadmap(cols) || headerIsRoi(cols)) { i = r - 1; continue }
+    // Limiar conservador: >=2 linhas de dados; 1 linha so quando o cabecalho e forte
+    // (inventario/checklist: >=4 colunas, campos curtos tipo identificador).
+    if (rows.length === 1 && !looksLikeStrongHeader(cols)) { i = r - 1; continue }
+    return { header: cols, rows }
+  }
+  return null
+}
+
+// Dispara o botao de checklist para uma tabela markdown SO quando ela nao e ROI (a
+// deteccao ja exclui roadmap e ROI no header; a checagem de ROI global evita que uma
+// resposta de ROI com tabela auxiliar tambem ofereca checklist).
+export function detectMarkdownTable(md: string): boolean {
+  if (!md) return false
+  if (detectRoi(md)) return false
+  return extractMarkdownTable(md) !== null
+}

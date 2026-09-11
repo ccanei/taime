@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { FileSpreadsheet, FileText, Table, Loader2 } from 'lucide-react'
-import { detectRoi, detectChecklist, detectCsv } from '@/lib/advisor-export-detect'
+import { detectRoi, detectChecklist, detectCsv, detectMarkdownTable } from '@/lib/advisor-export-detect'
 import {
   exportRoiPDF, exportRoiXLSX, exportChecklistPDF, exportChecklistXLSX,
-  exportCsvXLSX, exportCsvRaw,
+  exportCsvXLSX, exportCsvRaw, exportMarkdownTableXLSX, exportMarkdownTablePDF,
 } from '@/lib/advisor-export'
 
 // Botoes de exportacao que aparecem SO quando a resposta contem conteudo exportavel
@@ -63,26 +63,34 @@ export default function AdvisorExportButtons({
   const hasRoi       = detectRoi(answer)
   const hasChecklist = detectChecklist(answer)
   const hasCsv       = detectCsv(answer)
+  // Tabela markdown estruturada (inventario/checklist com |). detectMarkdownTable ja
+  // exclui roadmap e ROI (prioridade roadmap > ROI > checklist).
+  const hasTable     = detectMarkdownTable(answer)
 
   // Log de diagnostico da deteccao por resposta (visivel no console do browser). Ajuda
   // a investigar futuros casos onde um botao esperado nao aparece. Uma vez por resposta.
   useEffect(() => {
-    console.debug('[advisor-export] detect', { roi: hasRoi, checklist: hasChecklist, csv: hasCsv, len: answer.length })
-  }, [answer, hasRoi, hasChecklist, hasCsv])
+    console.debug('[advisor-export] detect', { roi: hasRoi, checklist: hasChecklist, csv: hasCsv, table: hasTable, len: answer.length })
+  }, [answer, hasRoi, hasChecklist, hasCsv, hasTable])
 
-  if (!hasRoi && !hasChecklist && !hasCsv) return null
+  if (!hasRoi && !hasChecklist && !hasCsv && !hasTable) return null
 
-  // Grupo checklist: XLSX sempre. PDF quando ha checklist markdown (lista/tabela). CSV
-  // quando ha CSV inline. Se so ha CSV, o XLSX vem do grid do CSV; senao, das colunas
-  // do checklist (Responsavel/Prazo/Status).
+  // Grupo checklist: uma so origem por vez, na ordem lista markdown > CSV inline >
+  // tabela markdown. XLSX sempre; PDF para lista e para tabela; CSV bruto para CSV inline.
   const checklistActions: ExportAction[] = []
-  if (hasChecklist || hasCsv) {
+  if (hasChecklist || hasCsv || hasTable) {
     checklistActions.push({
       key: 'chk-xlsx', label: 'XLSX', icon: 'xlsx',
-      run: () => (hasCsv ? exportCsvXLSX(answer, theme, isPt) : exportChecklistXLSX(answer, theme, isPt)),
+      run: () => (hasChecklist
+        ? exportChecklistXLSX(answer, theme, isPt)
+        : hasCsv
+          ? exportCsvXLSX(answer, theme, isPt)
+          : exportMarkdownTableXLSX(answer, theme, isPt)),
     })
     if (hasChecklist) {
       checklistActions.push({ key: 'chk-pdf', label: 'PDF', icon: 'pdf', run: () => exportChecklistPDF(answer, theme, isPt) })
+    } else if (hasTable) {
+      checklistActions.push({ key: 'chk-pdf', label: 'PDF', icon: 'pdf', run: () => exportMarkdownTablePDF(answer, theme, isPt) })
     }
     if (hasCsv) {
       checklistActions.push({ key: 'chk-csv', label: 'CSV', icon: 'csv', run: () => exportCsvRaw(answer, theme, isPt) })

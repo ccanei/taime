@@ -404,6 +404,72 @@ export function csvToString(csv: CsvData): string {
   return [csv.header, ...csv.rows].map(row => row.map(esc).join(',')).join('\r\n')
 }
 
+// PDF de uma tabela estruturada (inventario/checklist vindo de tabela markdown). Grade
+// legivel com cabecalho na cor da marca, larguras proporcionais ao conteudo, quebra de
+// linha por celula e paginacao. Mesma identidade das demais exportacoes.
+export function buildTablePdf(JsPDF: JsPDFCtor, table: CsvData, meta: RoiExportMeta): JsPDFType {
+  const isPt = meta.isPt
+  const now  = meta.now ?? new Date()
+  const doc = new JsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' })
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const M = 40
+  const contentW = pageW - 2 * M
+  const footerH = 40
+  let y = M
+  const fill = (c: RGB) => doc.setFillColor(c[0], c[1], c[2])
+  const ink  = (c: RGB) => doc.setTextColor(c[0], c[1], c[2])
+  const draw = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2])
+
+  // Cabecalho do documento
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); ink(BRAND)
+  doc.text('TAIME', M, y + 14)
+  const wMark = doc.getTextWidth('TAIME')
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); ink(FAINT)
+  doc.text('Executive Advisor', M + wMark + 8, y + 14)
+  y += 28
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); ink(INK)
+  const title = (meta.theme || (isPt ? 'Checklist' : 'Checklist')).replace(/\s+/g, ' ').trim().replace(/[?.!:]+$/, '').slice(0, 90)
+  for (const ln of doc.splitTextToSize(title || 'Checklist', contentW)) { doc.text(ln, M, y + 10); y += 18 }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); ink(FAINT)
+  doc.text(`Checklist · ${dateLabel(isPt, now)}`, M, y + 8); y += 18
+  draw(BRAND); doc.setLineWidth(1); doc.line(M, y, pageW - M, y); y += 12
+
+  // Larguras de coluna proporcionais ao maior conteudo (limitadas).
+  const cols = table.header.length
+  const rawW = table.header.map((h, i) => {
+    const maxLen = Math.max(h.length, ...table.rows.map(r => (r[i] ?? '').length))
+    return Math.max(6, Math.min(40, maxLen))
+  })
+  const totalRaw = rawW.reduce((s, w) => s + w, 0) || 1
+  const colW = rawW.map(w => (w / totalRaw) * contentW)
+
+  const cellPad = 4
+  const lineH = 11
+  const drawRow = (cells: string[], isHeader: boolean) => {
+    doc.setFont('helvetica', isHeader ? 'bold' : 'normal'); doc.setFontSize(isHeader ? 8.5 : 8.5)
+    const wrapped = cells.map((c, i) => doc.splitTextToSize(c || '', colW[i] - 2 * cellPad))
+    const rowH = Math.max(lineH + 2, ...wrapped.map(w => w.length * lineH + 4))
+    if (y + rowH > pageH - footerH) { doc.addPage(); y = M }
+    let x = M
+    if (isHeader) { fill(BRAND); doc.rect(M, y, contentW, rowH, 'F'); ink([255, 255, 255]) }
+    else { ink(INK2) }
+    for (let i = 0; i < cells.length; i++) {
+      if (!isHeader) { draw(LINE); doc.setLineWidth(0.5); doc.rect(x, y, colW[i], rowH, 'S') }
+      const w = wrapped[i]
+      for (let l = 0; l < w.length; l++) doc.text(w[l], x + cellPad, y + cellPad + (l + 1) * lineH - 3)
+      x += colW[i]
+    }
+    y += rowH
+  }
+  void cols
+  drawRow(table.header, true)
+  for (const row of table.rows) drawRow(row, false)
+
+  footer(doc, isPt, M, pageW, pageH, footerH, draw, ink)
+  return doc
+}
+
 // ── util ──────────────────────────────────────────────────────────────────────
 function capitalize(s: string): string { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s }
 

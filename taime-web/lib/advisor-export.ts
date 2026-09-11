@@ -1,9 +1,9 @@
 'use client'
 
-import { extractRoi, extractChecklist, extractCsv } from '@/lib/advisor-export-detect'
+import { extractRoi, extractChecklist, extractCsv, extractMarkdownTable } from '@/lib/advisor-export-detect'
 import {
   buildRoiPdf, buildRoiWorkbook, buildChecklistPdf, buildChecklistWorkbook,
-  buildCsvWorkbook, csvToString, exportFileName, type RoiExportMeta,
+  buildCsvWorkbook, csvToString, buildTablePdf, exportFileName, type RoiExportMeta,
 } from '@/lib/advisor-export-core'
 
 // Wrapper client: import DINAMICO de jspdf/exceljs (so no clique, fora do bundle) e
@@ -72,4 +72,22 @@ export async function exportCsvRaw(answer: string, theme: string, isPt: boolean)
   // BOM (﻿) para o Excel abrir UTF-8 com acentos corretos.
   const blob = new Blob(['﻿' + csvToString(csv)], { type: 'text/csv;charset=utf-8' })
   triggerDownload(blob, `${exportFileName('checklist', theme, isPt, new Date())}.csv`)
+}
+
+// Tabela markdown estruturada (inventario/checklist): XLSX (grade) e PDF (tabela).
+export async function exportMarkdownTableXLSX(answer: string, theme: string, isPt: boolean): Promise<void> {
+  const table = extractMarkdownTable(answer)
+  if (!table) return
+  const ExcelJS = (await import('exceljs')).default
+  const wb = buildCsvWorkbook(ExcelJS, table, { theme, isPt })
+  const buf = await wb.xlsx.writeBuffer()
+  triggerDownload(new Blob([buf], { type: XLSX_MIME }), `${exportFileName('checklist', theme, isPt, new Date())}.xlsx`)
+}
+
+export async function exportMarkdownTablePDF(answer: string, theme: string, isPt: boolean): Promise<void> {
+  const table = extractMarkdownTable(answer)
+  if (!table) return
+  const { jsPDF } = await import('jspdf')
+  const doc = buildTablePdf(jsPDF, table, { theme, isPt })
+  doc.save(`${exportFileName('checklist', theme, isPt, new Date())}.pdf`)
 }
