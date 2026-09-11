@@ -256,13 +256,13 @@ export default async function DashboardPage() {
   // ── Card do diagnóstico (Assessment A). Dormente (available=false) nada aparece;
   //    sem respostas ainda, convite discreto; com respostas, o retrato compacto ──
   const assessmentCardNode = (advisorUnlocked && assessment.available) ? (
-    <Link href="/dashboard/advisor/assessment"
+    <Link href="/dashboard/empresa"
       className="group block rounded-xl border border-zinc-200 bg-white p-4 hover:shadow-md transition-all">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-taime-600 mb-1">{isEn ? 'Maturity assessment' : 'Diagnóstico de maturidade'}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-taime-600 mb-1">{isEn ? 'Maturity' : 'Maturidade'}</p>
       {assessment.answered === 0 ? (
         <>
           <p className="text-xs text-zinc-500 leading-snug">{isEn ? 'Map your stage by domain to sharpen the Advisor.' : 'Mapeie seu estágio por domínio para afinar o Advisor.'}</p>
-          <span className="mt-1.5 inline-block text-xs font-semibold text-taime-700 group-hover:text-taime-800">{isEn ? 'Start the assessment →' : 'Começar o diagnóstico →'}</span>
+          <span className="mt-1.5 inline-block text-xs font-semibold text-taime-700 group-hover:text-taime-800">{isEn ? 'Map maturity →' : 'Mapear maturidade →'}</span>
         </>
       ) : (
         <>

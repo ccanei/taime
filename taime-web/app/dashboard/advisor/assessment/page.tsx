@@ -5,9 +5,8 @@ import { createSupabaseServer } from '@/lib/supabase-server'
 import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import LogoutButton from '@/components/LogoutButton'
 import AssessmentView from '@/components/AssessmentView'
-import CompanyFactsSection from '@/components/CompanyFactsSection'
 
-export const metadata = { title: 'Diagnóstico de maturidade · Executive Advisor · TAIME' }
+export const metadata = { title: 'Maturidade · Executive Advisor · TAIME' }
 
 export default async function AssessmentPage() {
   const supabase = await createSupabaseServer()
@@ -36,22 +35,12 @@ export default async function AssessmentPage() {
 
       <main className="max-w-3xl mx-auto px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-zinc-900 mb-1">{isPt ? 'Diagnóstico de maturidade' : 'Maturity assessment'}</h1>
+          <h1 className="text-2xl font-bold text-zinc-900 mb-1">{isPt ? 'Maturidade' : 'Maturity'}</h1>
           <p className="text-sm text-zinc-500">{isPt
             ? 'Um retrato do seu estágio por domínio. Você reconhece a sua situação em cada opção, nada é autoavaliação. O que já surgiu nas conversas vem pré-preenchido e editável.'
             : 'A portrait of your stage by domain. You recognize your situation in each option, nothing is self-rating. What already came up in conversations is pre-filled and editable.'}</p>
         </div>
         <AssessmentView />
-
-        {/* Fatos da empresa (memoria livre): exibicao e edicao junto do perfil formal.
-            Capturados das conversas + adicionados manualmente pelo cliente. */}
-        <div className="mt-10">
-          <h2 className="text-lg font-bold text-zinc-900 mb-1">{isPt ? 'Fatos da sua empresa' : 'Facts about your company'}</h2>
-          <p className="text-sm text-zinc-500 mb-4">{isPt
-            ? 'Fatos concretos que o Advisor aprendeu nas conversas (tecnologias, sistemas, projetos, decisões). Desative o que estiver incorreto ou adicione manualmente.'
-            : 'Concrete facts the Advisor learned in conversations (technologies, systems, projects, decisions). Deactivate anything incorrect or add your own.'}</p>
-          <CompanyFactsSection isPt={isPt} variant="full" />
-        </div>
       </main>
     </div>
   )

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { scoreColor, scoreRing } from '@/lib/types'
 import { type PlanRecord } from '@/lib/advisor-plan'
 import ActivePlansPanel from '@/components/ActivePlansPanel'
-import CompanyFactsSection from '@/components/CompanyFactsSection'
+import CompanyFactsSummary from '@/components/CompanyFactsSummary'
 import { DOMAINS, TOTAL_QUESTIONS, type DomainScore } from '@/lib/assessment-model'
 
 export interface AssessmentSummary { available: boolean; answered: number; domains: DomainScore[] }
@@ -76,18 +76,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-// Bloco "Diagnóstico" (TAREFA 4): progresso do assessment + link. Sem assessment
-// iniciado, convite discreto; dormente (available=false) nao aparece.
+// Bloco "Maturidade": progresso do assessment + link para a aba unificada. Sem
+// assessment iniciado, convite discreto; dormente (available=false) nao aparece.
 function AssessmentBlock({ a, isPt }: { a: AssessmentSummary; isPt: boolean }) {
   if (!a.available) return null
   const completed = a.domains.filter(d => d.complete).map(d => DOMAINS.find(x => x.id === d.domain)?.short[isPt ? 'pt' : 'en'] ?? d.domain)
   return (
-    <Section title={isPt ? 'Diagnóstico' : 'Assessment'}>
+    <Section title={isPt ? 'Maturidade' : 'Maturity'}>
       {a.answered === 0 ? (
         <>
           <p className="text-[11px] text-zinc-500 leading-snug mb-1.5">{isPt ? 'Mapeie seu estágio por domínio.' : 'Map your stage by domain.'}</p>
-          <Link href="/dashboard/advisor/assessment" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">
-            {isPt ? 'Começar o diagnóstico →' : 'Start the assessment →'}
+          <Link href="/dashboard/empresa" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+            {isPt ? 'Mapear maturidade →' : 'Map maturity →'}
           </Link>
         </>
       ) : (
@@ -96,8 +96,8 @@ function AssessmentBlock({ a, isPt }: { a: AssessmentSummary; isPt: boolean }) {
             {a.answered} {isPt ? `de ${TOTAL_QUESTIONS} respondidas` : `of ${TOTAL_QUESTIONS} answered`}
             {completed.length > 0 && <> · {completed.join(', ')} {isPt ? (completed.length === 1 ? 'completo' : 'completos') : 'complete'}</>}
           </p>
-          <Link href="/dashboard/advisor/assessment" className="mt-1.5 inline-block text-[11px] font-semibold text-taime-600 hover:text-taime-800">
-            {isPt ? 'Ver o diagnóstico →' : 'Open the assessment →'}
+          <Link href="/dashboard/empresa" className="mt-1.5 inline-block text-[11px] font-semibold text-taime-600 hover:text-taime-800">
+            {isPt ? 'Ver maturidade →' : 'View maturity →'}
           </Link>
         </>
       )}
@@ -206,31 +206,42 @@ export default function AdvisorContextPanel({
       </Section>
 
       {/* ── FIXA: Sua empresa ────────────────────────────────────────── */}
-      {hasCompanyBlock ? (
-        <Section title={isPt ? 'Sua empresa' : 'Your company'}>
-          {companyName && <p className="text-sm font-bold text-zinc-900 mb-2.5 leading-snug">{companyName}</p>}
-          {profileEntries.length > 0 && (
-            <dl className="flex flex-col gap-2">
-              {profileEntries.map(k => (
-                <div key={k} className="flex flex-col gap-0.5">
-                  <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{isPt ? PROFILE_LABELS[k].pt : PROFILE_LABELS[k].en}</dt>
-                  <dd className="text-[13px] text-zinc-800 leading-relaxed">{fixed!.profile[k]}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </Section>
-      ) : fixed && onOpenProfile ? (
-        <Section title={isPt ? 'Sua empresa' : 'Your company'}>
-          <button onClick={onOpenProfile} className="text-xs font-medium text-taime-600 hover:text-taime-800 text-left">
-            {isPt ? 'Completar meu perfil →' : 'Complete my profile →'}
-          </button>
-        </Section>
-      ) : null}
+      {/* Perfil "preenchido" = empresa + setor + porte (mesmos campos da saudacao
+          personalizada). Governa o texto: Editar vs Completar perfil. */}
+      {(() => {
+        const p = fixed?.profile ?? {}
+        const profileFilled = !!(p.company_name && p.sector && p.company_size)
+        const cta = profileFilled
+          ? (isPt ? 'Editar perfil →' : 'Edit profile →')
+          : (isPt ? 'Completar perfil →' : 'Complete profile →')
+        if (hasCompanyBlock) {
+          return (
+            <Section title={isPt ? 'Sua empresa' : 'Your company'}>
+              {companyName && <p className="text-sm font-bold text-zinc-900 mb-2.5 leading-snug">{companyName}</p>}
+              {profileEntries.length > 0 && (
+                <dl className="flex flex-col gap-2 mb-3">
+                  {profileEntries.map(k => (
+                    <div key={k} className="flex flex-col gap-0.5">
+                      <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{isPt ? PROFILE_LABELS[k].pt : PROFILE_LABELS[k].en}</dt>
+                      <dd className="text-[13px] text-zinc-800 leading-relaxed">{fixed!.profile[k]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              <Link href="/dashboard/empresa" className="text-[11px] font-semibold text-taime-600 hover:text-taime-800">{cta}</Link>
+            </Section>
+          )
+        }
+        return fixed ? (
+          <Section title={isPt ? 'Sua empresa' : 'Your company'}>
+            <Link href="/dashboard/empresa" className="text-xs font-medium text-taime-600 hover:text-taime-800">{cta}</Link>
+          </Section>
+        ) : null
+      })()}
 
-      {/* ── Fatos da empresa (memoria livre, capturados da conversa + manuais) ──
-             Auto-suficiente: some quando nao ha fatos (sem placeholder). ─────── */}
-      <CompanyFactsSection isPt={isPt} variant="panel" />
+      {/* ── Fatos da empresa: RESUMO (linha + 2 recentes), lista completa na aba
+             unificada /dashboard/empresa. Some quando nao ha fatos. ─────────── */}
+      <CompanyFactsSummary isPt={isPt} />
 
       {/* ── FIXA: Temas que voce acompanha ───────────────────────────── */}
       {themes.length > 0 && (
@@ -256,13 +267,13 @@ export default function AdvisorContextPanel({
         </Section>
       )}
 
-      {/* Acesso permanente aos planos salvos (mesmo sem plano ativo): garante que a
-          pagina de planos nunca fica inacessivel. No mobile, o painel abre pelo botao
+      {/* Acesso permanente a aba unificada (mesmo sem plano ativo): garante que os
+          planos nunca ficam inacessiveis. No mobile, o painel abre pelo botao
           "Contexto" do header. */}
       {activePlans.length === 0 && (
-        <Link href="/dashboard/advisor/plans"
+        <Link href="/dashboard/empresa"
           className="px-1 text-[11px] font-semibold text-taime-600 hover:text-taime-800">
-          {isPt ? 'Meus planos →' : 'My plans →'}
+          {isPt ? 'Minha Empresa →' : 'My Company →'}
         </Link>
       )}
     </div>

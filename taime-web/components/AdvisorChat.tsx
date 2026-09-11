@@ -1181,19 +1181,12 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 {counterText}
               </span>
             )}
-            {onOpenProfile && (
-              <button
-                onClick={onOpenProfile}
-                className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap hidden sm:block">
-                {isPt ? 'Completar meu perfil' : 'Complete my profile'}
-              </button>
-            )}
-            {/* Acesso permanente aos planos salvos, independente de haver plano ativo
-                (evita beco sem saida ao arquivar o ultimo plano). */}
+            {/* Ponto de entrada UNICO para perfil, maturidade, fatos e planos (aba
+                unificada). Substitui os links antes espalhados (perfil, planos). */}
             <a
-              href="/dashboard/advisor/plans"
+              href="/dashboard/empresa"
               className="text-xs font-medium text-zinc-400 hover:text-taime-700 transition-colors whitespace-nowrap hidden sm:block">
-              {isPt ? 'Meus planos' : 'My plans'}
+              {isPt ? 'Minha Empresa' : 'My Company'}
             </a>
             {/* Valvula discreta: falar com a equipe. O Advisor segue como via principal. */}
             <button

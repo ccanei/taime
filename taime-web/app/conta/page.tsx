@@ -121,6 +121,9 @@ export default async function AccountPage() {
         upgrade:     'Manage plan',
         usageLabel:  `${freeUsedCount} of ${FREE_LIMIT} complete reports used`,
         usageHint:   'Renews on a rolling 30-day window',
+        companyTitle: 'My Company',
+        companyDesc:  'Profile, maturity, company facts and action plans in one place.',
+        companyCta:   'Open My Company',
       }
     : {
         title:       'Minha Conta',
@@ -132,6 +135,9 @@ export default async function AccountPage() {
         upgrade:     'Gerenciar plano',
         usageLabel:  `${freeUsedCount} de ${FREE_LIMIT} relatórios completos usados`,
         usageHint:   'Renova em janela móvel de 30 dias',
+        companyTitle: 'Minha Empresa',
+        companyDesc:  'Perfil, maturidade, fatos da empresa e planos de ação em um só lugar.',
+        companyCta:   'Abrir Minha Empresa',
       }
 
   return (
@@ -171,6 +177,20 @@ export default async function AccountPage() {
             preferred_language: preferredLanguage,
           }}
         />
+
+        {/* Minha Empresa: entrada para a aba unificada (perfil, maturidade, fatos, planos) */}
+        <Link href="/dashboard/empresa"
+          className="group block rounded-2xl border border-zinc-200 bg-white px-6 py-5 hover:shadow-md hover:border-taime-200 transition-all">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900">{t.companyTitle}</h2>
+              <p className="mt-1 text-sm text-zinc-500 leading-snug">{t.companyDesc}</p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold text-taime-600 group-hover:text-taime-700 whitespace-nowrap">
+              {t.companyCta} →
+            </span>
+          </div>
+        </Link>
 
         {/* Plan card */}
         <section className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
