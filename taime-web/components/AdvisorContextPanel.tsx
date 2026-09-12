@@ -177,8 +177,9 @@ export default function AdvisorContextPanel({
                 <span> · {turn.yearFrom === turn.yearTo ? turn.yearFrom : `${turn.yearFrom} ${isPt ? 'a' : 'to'} ${turn.yearTo}`}</span>
               )}
             </p>
-            {/* Linhas (sem borda propria) para nao aninhar card dentro de card. */}
-            <div className="divide-y divide-zinc-100">
+            {/* Mini-cards (score + periodo + categoria), clicaveis, com entrada em
+                stagger (advisor-panel-item). Score colorido pela regua do produto. */}
+            <div className="flex flex-col gap-2">
               {turn.trends.map((c, i) => (
                 <a
                   key={`${c.reportId}-${c.rank}-${i}`}
@@ -187,19 +188,19 @@ export default function AdvisorContextPanel({
                   rel="noopener noreferrer"
                   title={c.title || undefined}
                   style={{ animationDelay: `${i * 100}ms` }}
-                  className="advisor-panel-item group flex items-start gap-2.5 py-2 -mx-1.5 px-1.5 rounded-lg hover:bg-zinc-50 transition-colors"
+                  className="advisor-panel-item group flex items-start gap-2.5 rounded-lg border border-zinc-200 bg-white p-2.5 hover:border-taime-200 hover:shadow-sm transition-all"
                 >
                   {c.score !== null && (
-                    <span className={`shrink-0 w-8 h-8 rounded-md ring-1 ${scoreRing(c.score)} flex items-center justify-center`}>
-                      <span className={`text-[11px] font-bold tabular-nums ${scoreColor(c.score)}`}>{c.score}</span>
+                    <span className={`shrink-0 w-9 h-9 rounded-lg ring-1 ${scoreRing(c.score)} flex items-center justify-center`}>
+                      <span className={`text-xs font-bold tabular-nums ${scoreColor(c.score)}`}>{c.score}</span>
                     </span>
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block text-xs font-semibold text-zinc-800 group-hover:text-taime-700 transition-colors line-clamp-2 leading-snug">
                       {c.title || (isPt ? 'Tendência' : 'Trend')}
                     </span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-zinc-400 tabular-nums">
-                      <span>{shortPeriod(c.period, isPt)}</span>
+                    <span className="mt-1 flex items-center gap-1.5 text-[10px] text-zinc-400 tabular-nums">
+                      <span className="font-medium">{shortPeriod(c.period, isPt)}</span>
                       {c.category && <span className="text-zinc-300">·</span>}
                       {c.category && <span className="truncate">{c.category}</span>}
                     </span>

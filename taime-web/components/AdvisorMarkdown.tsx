@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -118,6 +118,87 @@ function makeAnchor(citations?: Record<string, string>): Components['a'] {
   }
 }
 
+// ── Badges de Prioridade + Horizonte por fase (TAREFA 1) ─────────────────────
+// Deteccao client-side no markdown: para cada cabecalho de fase, procura "Prioridade: X"
+// e "Horizonte: Y" no proprio cabecalho E nas linhas seguintes (ate o proximo cabecalho).
+// Sem padrao claro -> sem badge (nunca inventa). O texto na prosa permanece; os badges
+// apenas complementam ao lado do titulo.
+type Prio = 'high' | 'medium' | 'low'
+interface PhaseBadge { level?: Prio; priorityText?: string; horizonText?: string }
+
+const PRIO_RE    = /(?:prioridade|priority)\s*[:\-]?\s*\*{0,2}\s*(alta|m[eé]dia|baixa|high|medium|low)/i
+const HORIZON_RE = /(?:horizonte|horizon|prazo|timeframe|time frame)\s*[:\-]?\s*\*{0,2}\s*([^\n*.;)]{2,40})/i
+
+function prioLevel(raw: string): Prio {
+  const s = raw.toLowerCase()
+  if (/alta|high/.test(s)) return 'high'
+  if (/baixa|low/.test(s)) return 'low'
+  return 'medium'
+}
+function normHeading(s: string): string {
+  return s.toLowerCase().replace(/[*#`]/g, '').replace(/\s+/g, ' ').trim()
+}
+function nodeText(node: ReactNode): string {
+  if (node == null || node === false || node === true) return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join('')
+  if (typeof node === 'object' && 'props' in (node as { props?: { children?: ReactNode } }))
+    return nodeText((node as { props?: { children?: ReactNode } }).props?.children)
+  return ''
+}
+
+// Mapa: cabecalho normalizado -> badges detectados. Varre o conteudo cru inteiro.
+function parsePhaseBadges(content: string): Map<string, PhaseBadge> {
+  const map = new Map<string, PhaseBadge>()
+  const lines = content.replace(/\r\n/g, '\n').split('\n')
+  let currentKey: string | null = null
+  for (const line of lines) {
+    const h = line.match(/^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$/)
+    if (h) {
+      currentKey = normHeading(h[1])
+      const cur: PhaseBadge = {}
+      const pm = h[1].match(PRIO_RE); if (pm) { cur.level = prioLevel(pm[1]); cur.priorityText = pm[1].trim() }
+      const hm = h[1].match(HORIZON_RE); if (hm) cur.horizonText = hm[1].replace(/\*+/g, '').trim()
+      if (cur.priorityText || cur.horizonText) map.set(currentKey, cur)
+      continue
+    }
+    if (!currentKey) continue
+    const existing = map.get(currentKey) ?? {}
+    if (!existing.priorityText) { const pm = line.match(PRIO_RE); if (pm) { existing.level = prioLevel(pm[1]); existing.priorityText = pm[1].trim() } }
+    if (!existing.horizonText)  { const hm = line.match(HORIZON_RE); if (hm) existing.horizonText = hm[1].replace(/\*+/g, '').trim() }
+    if (existing.priorityText || existing.horizonText) map.set(currentKey, existing)
+  }
+  return map
+}
+
+const PRIO_CLS: Record<Prio, string> = {
+  high:   'bg-amber-50 text-amber-700 ring-amber-200',
+  medium: 'bg-taime-50 text-taime-700 ring-taime-200',
+  low:    'bg-zinc-100 text-zinc-600 ring-zinc-200',
+}
+
+function PhaseBadges({ badge }: { badge: PhaseBadge | undefined }) {
+  if (!badge || (!badge.priorityText && !badge.horizonText)) return null
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  return (
+    <span className="inline-flex items-center gap-1.5 ml-2 align-middle">
+      {badge.priorityText && (
+        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ${PRIO_CLS[badge.level ?? 'medium']}`}>
+          {cap(badge.priorityText)}
+        </span>
+      )}
+      {badge.horizonText && (
+        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 bg-zinc-100 text-zinc-600 ring-zinc-200">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+          </svg>
+          {badge.horizonText}
+        </span>
+      )}
+    </span>
+  )
+}
+
 const COMPONENTS: Components = {
   h1: ({ children }) => <h3 className="text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5">{children}</h3>,
   h2: ({ children }) => <h3 className="text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5">{children}</h3>,
@@ -168,7 +249,21 @@ function splitBlocks(md: string): string[] {
 
 export default function AdvisorMarkdown({ content, citations }: { content: string; citations?: Record<string, string> }) {
   const blocks = splitBlocks(content)
-  const components = useMemo<Components>(() => ({ ...COMPONENTS, a: makeAnchor(citations) }), [citations])
+  const badges = useMemo(() => parsePhaseBadges(content), [content])
+  const components = useMemo<Components>(() => {
+    // Cabecalhos com badge de fase (Prioridade/Horizonte) quando o texto casa o mapa.
+    const headed = (Tag: 'h3' | 'h4', cls: string) => ({ children }: { children?: ReactNode }) => {
+      const badge = badges.get(normHeading(nodeText(children)))
+      return <Tag className={cls}>{children}<PhaseBadges badge={badge} /></Tag>
+    }
+    return {
+      ...COMPONENTS,
+      a:  makeAnchor(citations),
+      h1: headed('h3', 'text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5'),
+      h2: headed('h3', 'text-sm font-bold text-zinc-900 mt-3 first:mt-0 mb-1.5'),
+      h3: headed('h4', 'text-sm font-semibold text-zinc-900 mt-3 first:mt-0 mb-1'),
+    }
+  }, [citations, badges])
 
   return (
     <div className="text-sm leading-[1.65] text-zinc-800 break-words max-w-[70ch]">

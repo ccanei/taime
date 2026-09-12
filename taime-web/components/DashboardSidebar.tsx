@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Radar, TrendingUp, FileText, MessageSquare, SquareCheck, Building2, MessageCircle, Menu, X } from 'lucide-react'
+import { MessageCircle, Menu, X } from 'lucide-react'
+import { DASHBOARD_NAV as NAV } from '@/lib/dashboard-nav'
 
 // Abre o mesmo painel de feedback do botao flutuante (FeedbackWidget escuta o evento).
 function openFeedback() {
@@ -13,18 +14,7 @@ function openFeedback() {
 // Sidebar de navegacao do dashboard logado. Desktop: fixa a esquerda (w-60). Mobile:
 // drawer deslizante aberto por um botao hamburguer. Client component (estado do drawer
 // + rota ativa via usePathname). Nao altera dados nem logica: so navegacao/layout.
-
-interface NavItem { key: string; labelPt: string; labelEn: string; href: string; icon: typeof Home }
-
-const NAV: NavItem[] = [
-  { key: 'inicio',    labelPt: 'Início',            labelEn: 'Home',              href: '/dashboard',             icon: Home },
-  { key: 'radar',     labelPt: 'Radar',             labelEn: 'Radar',             href: '/radar',                 icon: Radar },
-  { key: 'tendencias', labelPt: 'Tendências',       labelEn: 'Trends',            href: '/dashboard#tendencias',  icon: TrendingUp },
-  { key: 'relatorios', labelPt: 'Relatórios',       labelEn: 'Reports',           href: '/dashboard#arquivo',     icon: FileText },
-  { key: 'advisor',   labelPt: 'Executive Advisor', labelEn: 'Executive Advisor', href: '/dashboard/advisor',     icon: MessageSquare },
-  { key: 'decision',  labelPt: 'Decision Check',    labelEn: 'Decision Check',    href: '/decision-check',        icon: SquareCheck },
-  { key: 'empresa',   labelPt: 'Minha Organização', labelEn: 'My Organization',   href: '/dashboard/empresa',     icon: Building2 },
-]
+// Os itens vem de lib/dashboard-nav (fonte unica, reusada pelo menu do Advisor).
 
 function isActive(pathname: string, href: string): boolean {
   const base = href.split('#')[0]

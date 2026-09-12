@@ -7,6 +7,7 @@ import { isNetworkInterruption } from '@/lib/net'
 import AdvisorMarkdown from '@/components/AdvisorMarkdown'
 import AdvisorFeedback from '@/components/AdvisorFeedback'
 import AdvisorExportButtons from '@/components/AdvisorExportButtons'
+import AdvisorNavMenu from '@/components/AdvisorNavMenu'
 import AdvisorContactModal from '@/components/AdvisorContactModal'
 import AdvisorContextPanel, { type PanelTurn, type FixedContext, type AssessmentSummary } from '@/components/AdvisorContextPanel'
 import AdvisorArrival, { type ArrivalCard } from '@/components/AdvisorArrival'
@@ -29,6 +30,9 @@ interface Message {
   created_at: string
   citations?: Record<string, string>  // "reportId#trend-rank" -> titulo, p/ tooltip dos chips
   planOffer?: PlanOfferData | null     // roadmap salvavel detectado nesta resposta (Fase 2.1)
+  // Intervalo de anos das fontes deste turno (do context_panel ja enviado). So exibido
+  // quando ha span multi-ano (resposta estrategica); tatica simples nao tem span.
+  sources?:   { from: string; to: string } | null
 }
 
 // Botao discreto de copiar (por resposta do Advisor). Copia o markdown limpo e da
@@ -892,7 +896,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
 
       // Aplica a meta ao balao ja transmitido (citacoes + oferta de plano).
       setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: meta!.reply ?? content, citations: meta!.citations, planOffer: meta!.plan_offer ?? undefined }
+        ? { ...m, content: meta!.reply ?? content, citations: meta!.citations, planOffer: meta!.plan_offer ?? undefined,
+            sources: (meta!.context_panel?.yearFrom && meta!.context_panel?.yearTo)
+              ? { from: meta!.context_panel.yearFrom, to: meta!.context_panel.yearTo } : undefined }
         : m))
       if (meta.context_panel) setLatestPanel(meta.context_panel)
       if (meta.history_saved === false) setHistoryWarn(true)
@@ -1185,6 +1191,8 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
               </svg>
             </button>
+            {/* Menu colapsavel de navegacao do TAIME (caminho adicional). */}
+            <AdvisorNavMenu isPt={isPt} />
             <div className="min-w-0">
               <h2 className="text-sm font-bold text-zinc-900 truncate">TAIME Executive Advisor</h2>
               {profile?.company_name && (
@@ -1329,6 +1337,16 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
                   : (
                     <>
                       <CopyButton text={msg.content} isPt={isPt} />
+                      {/* Fontes analisadas: intervalo de anos das trends do turno. So quando
+                          ha span multi-ano (resposta estrategica); tatica simples nao tem. */}
+                      {msg.sources && msg.sources.from && msg.sources.to && msg.sources.from !== msg.sources.to && (
+                        <p className="mb-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" />
+                          </svg>
+                          {isPt ? 'Fontes analisadas' : 'Sources analyzed'}: {msg.sources.from}{'-'}{msg.sources.to}
+                        </p>
+                      )}
                       <AdvisorMarkdown content={msg.content} citations={msg.citations} />
                       {msg.id === streamingId ? (
                         // Cursor de geracao: sinaliza claramente que a resposta esta saindo.
