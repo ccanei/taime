@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
 import { formatPeriod, scoreColor, scoreRing } from '@/lib/types'
-import type { EditionSummary, ReportLookupEntry, ArchiveStats } from '@/lib/dashboard'
+import type { EditionSummary, ReportLookupEntry, ArchiveStats, TrendingTheme } from '@/lib/dashboard'
 
 type Locale = 'pt' | 'en'
 
@@ -66,6 +66,9 @@ const UI = {
     trLabel:     'tendências',
     spanLabel:   'cobertura',
     sparkCaption:'Score médio por período (últimos 24)',
+    growthYoy:   'vs ano anterior',
+    trendingTitle: 'Tendências em destaque',
+    trendingSub:   'Evolução do TAIME Score por período.',
   },
   en: {
     trajLabel:   'Follow the trajectory',
@@ -105,6 +108,9 @@ const UI = {
     trLabel:     'trends',
     spanLabel:   'coverage',
     sparkCaption:'Avg score per period (last 24)',
+    growthYoy:   'vs last year',
+    trendingTitle: 'Trends in focus',
+    trendingSub:   'TAIME Score evolution per period.',
   },
 }
 
@@ -176,6 +182,7 @@ export default function DashboardLibrary({
   themes,
   newSincePeriods,
   stats,
+  trending = [],
   heroNode,
   advisorNode,
   continueNode,
@@ -187,6 +194,7 @@ export default function DashboardLibrary({
   themes:          TrajectoryTheme[]
   newSincePeriods: string[]   // periods considerados "novos desde a ultima visita"
   stats:           ArchiveStats
+  trending?:       TrendingTheme[]
   heroNode?:       ReactNode
   advisorNode?:    ReactNode
   continueNode?:   ReactNode
@@ -381,6 +389,13 @@ export default function DashboardLibrary({
         <div>
           <div className="text-2xl font-bold tabular-nums text-zinc-900 leading-none">{stats.totalTrends}</div>
           <div className="mt-1 text-[11px] text-zinc-400">{t.trLabel}</div>
+          {stats.growthPct !== null && (
+            <div className={`mt-1 inline-flex items-center gap-1 text-[11px] font-semibold tabular-nums
+              ${stats.growthPct >= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+              <span aria-hidden>{stats.growthPct >= 0 ? '▲' : '▼'}</span>
+              {stats.growthPct >= 0 ? '+' : ''}{stats.growthPct}% <span className="font-normal text-zinc-400">{t.growthYoy}</span>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-4">
@@ -397,6 +412,37 @@ export default function DashboardLibrary({
       )}
     </div>
   )
+
+  // ── Tendencias em destaque: cards com sparkline do TAIME Score por periodo ──
+  //   Sparkline so quando ha >= 3 pontos de historico; senao o card degrada (sem grafico).
+  const trendingBlock = trending.length > 0 ? (
+    <section id="tendencias" className="scroll-mt-24">
+      <div className="mb-3">
+        <h2 className="text-lg font-bold text-zinc-900">{t.trendingTitle}</h2>
+        <p className="text-xs text-zinc-400">{t.trendingSub}</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {trending.map(th => (
+          <Link
+            key={th.slug}
+            href={`/reports/${th.reportId}#trend-${th.rank}`}
+            className="group rounded-xl border border-zinc-200 bg-white p-4 hover:border-taime-200 hover:shadow-sm transition-all flex flex-col gap-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                {th.category && <p className="text-[10px] font-bold uppercase tracking-wide text-taime-600 mb-1">{th.category}</p>}
+                <h3 className="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2 group-hover:text-taime-600 transition-colors">{th.title}</h3>
+              </div>
+              <span className={`shrink-0 text-lg font-bold tabular-nums ${scoreColor(th.score)}`}>{th.score}</span>
+            </div>
+            {th.history.length >= 3
+              ? <div className="text-taime-500 mt-auto"><Sparkline values={th.history} /></div>
+              : <div className="mt-auto h-11" aria-hidden />}
+          </Link>
+        ))}
+      </div>
+    </section>
+  ) : null
 
   // ── Conteudo dinamico da coluna principal: trajetoria | busca | arquivo ──
   const mainContent = trajTheme !== null ? (
@@ -502,7 +548,7 @@ export default function DashboardLibrary({
       )}
     </section>
   ) : (
-    <section>
+    <section id="arquivo" className="scroll-mt-24">
       <div className="flex items-center justify-between gap-4 mb-4">
         <h2 className="text-lg font-bold text-zinc-900">{t.archive}</h2>
         <span className="text-xs text-zinc-400">{t.editionsCount(filtered.length)}</span>
@@ -584,6 +630,9 @@ export default function DashboardLibrary({
 
         {heroNode}
         {continueNode}
+
+        {/* Tendencias em destaque (cards + sparkline). Ancora #tendencias (sidebar). */}
+        {trendingBlock}
 
         {/* Trajetorias: chips horizontais apenas no mobile. */}
         <div className="lg:hidden">{trajChips}</div>

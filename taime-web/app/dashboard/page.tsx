@@ -8,19 +8,20 @@ import { computeScores, TOTAL_QUESTIONS, type Answers, type DomainScore } from '
 import AssessmentPortrait from '@/components/AssessmentPortrait'
 import { getTranslations } from '@/lib/i18n'
 import { scoreColor, scoreRing, type Report } from '@/lib/types'
-import { buildEditions, CURATED_THEME_SLUGS, type ArchiveStats } from '@/lib/dashboard'
+import { buildEditions, buildTrendingThemes, computeAnnualGrowth, CURATED_THEME_SLUGS, type ArchiveStats } from '@/lib/dashboard'
 import { stripMarkdown, truncateWords } from '@/lib/strip-markdown'
 import LogoutButton from '@/components/LogoutButton'
 import LanguageSelector from '@/components/LanguageSelector'
 import ContinueReadingCard from '@/components/ContinueReadingCard'
 import DashboardLibrary, { type TrajectoryTheme } from '@/components/DashboardLibrary'
+import DashboardSidebar from '@/components/DashboardSidebar'
 import FeedbackWidget from '@/components/FeedbackWidget'
 
 async function getReports(): Promise<Report[]> {
   const supabase = createSupabaseService()
   const { data } = await supabase
     .from('reports')
-    .select('id, period, period_label, report_number, published_at, title_pt_br, title_en, executive_summary_pt_br, executive_summary_en, report_trends(taime_score, rank, category, theme_slug)')
+    .select('id, period, period_label, report_number, published_at, title_pt_br, title_en, executive_summary_pt_br, executive_summary_en, report_trends(taime_score, rank, category, theme_slug, title_pt_br, title_en)')
     .eq('status', 'published')
     .order('period', { ascending: false })
   return (data as unknown as Report[]) ?? []
@@ -149,12 +150,18 @@ export default async function DashboardPage() {
     : null
 
   // "O arquivo em numeros" (rail): derivado da agregacao ja existente, sem fetch novo.
+  // growthPct: crescimento anual real (trends dos ultimos 12m vs 12m anteriores).
   const stats: ArchiveStats = {
     totalEditions: editions.length,
     totalTrends:   editions.reduce((s, e) => s + e.totalTrends, 0),
     spanStartYear: editions.length ? editions[editions.length - 1].period.slice(0, 4) : '',
     spark:         editions.slice(0, 24).reverse().map(e => e.avgScore),
+    growthPct:     computeAnnualGrowth(reports),
   }
+
+  // Tendencias em destaque (cards com sparkline do score por periodo). Dado real, do
+  // arquivo ja carregado; sparkline omitido no card sem historico suficiente (< 3 pts).
+  const trending = buildTrendingThemes(reports, locale, 4)
 
   // ── Herói editorial (coluna principal) ──────────────────────────────
   const heroNode = hero && (
@@ -286,43 +293,47 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      {/* Header */}
-      <header className="bg-white border-b border-zinc-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/" className="font-bold text-xl tracking-tight text-zinc-900">TAIME</Link>
-          <div className="flex items-center gap-4">
+      {/* Conteudo a direita da sidebar (lg:pl-60 abre espaco para a sidebar fixa). */}
+      <div className="lg:pl-60">
+        {/* Header slim: hamburguer (mobile) + controles do usuario. O DashboardSidebar
+            (montado UMA vez aqui) renderiza a sidebar fixa do desktop (position:fixed,
+            independe do DOM), o hamburguer inline no mobile e o drawer. */}
+        <header className="bg-white border-b border-zinc-200 px-4 sm:px-6 h-16 flex items-center sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <DashboardSidebar isEn={isEn} />
+            <span className="lg:hidden font-bold text-lg tracking-tight text-zinc-900">TAIME</span>
+          </div>
+          <div className="flex items-center gap-4 ml-auto">
             <span className="text-sm text-zinc-400 hidden sm:block">{user.email}</span>
-            <Link href="/conta" className="text-sm font-medium text-zinc-500 hover:text-taime-700 transition-colors">
-              {isEn ? 'My Account' : 'Minha Conta'}
-            </Link>
             <LanguageSelector />
             <LogoutButton />
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        {editions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
-            <p className="text-zinc-400">{isEn ? 'No published analyses yet.' : 'Nenhuma análise publicada ainda.'}</p>
-          </div>
-        ) : (
-          <DashboardLibrary
-            editions={archive}
-            reportLookup={reportLookup}
-            categories={categories}
-            themes={trajectory}
-            newSincePeriods={newSincePeriods}
-            locale={locale}
-            stats={stats}
-            heroNode={heroNode}
-            advisorNode={(planCardNode || assessmentCardNode)
-              ? <div className="flex flex-col gap-3">{advisorNode}{planCardNode}{assessmentCardNode}</div>
-              : advisorNode}
-            continueNode={continueNode}
-          />
-        )}
-      </main>
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+          {editions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
+              <p className="text-zinc-400">{isEn ? 'No published analyses yet.' : 'Nenhuma análise publicada ainda.'}</p>
+            </div>
+          ) : (
+            <DashboardLibrary
+              editions={archive}
+              reportLookup={reportLookup}
+              categories={categories}
+              themes={trajectory}
+              newSincePeriods={newSincePeriods}
+              locale={locale}
+              stats={stats}
+              trending={trending}
+              heroNode={heroNode}
+              advisorNode={(planCardNode || assessmentCardNode)
+                ? <div className="flex flex-col gap-3">{advisorNode}{planCardNode}{assessmentCardNode}</div>
+                : advisorNode}
+              continueNode={continueNode}
+            />
+          )}
+        </main>
+      </div>
 
       <FeedbackWidget />
     </div>
