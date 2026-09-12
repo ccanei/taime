@@ -421,7 +421,7 @@ export default function DashboardLibrary({
         <h2 className="text-lg font-bold text-zinc-900">{t.trendingTitle}</h2>
         <p className="text-xs text-zinc-400">{t.trendingSub}</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {trending.map(th => (
           <Link
             key={th.slug}

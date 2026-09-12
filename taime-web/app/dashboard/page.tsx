@@ -6,6 +6,8 @@ import { getUserPlan, hasAdvisorAccess } from '@/lib/plan'
 import { computeProgress, type PlanRecord } from '@/lib/advisor-plan'
 import { computeScores, TOTAL_QUESTIONS, type Answers, type DomainScore } from '@/lib/assessment-model'
 import AssessmentPortrait from '@/components/AssessmentPortrait'
+import ProgressDonut from '@/components/ProgressDonut'
+import AdvisorQuickCard from '@/components/AdvisorQuickCard'
 import { getTranslations } from '@/lib/i18n'
 import { scoreColor, scoreRing, type Report } from '@/lib/types'
 import { buildEditions, buildTrendingThemes, computeAnnualGrowth, CURATED_THEME_SLUGS, type ArchiveStats } from '@/lib/dashboard'
@@ -161,7 +163,7 @@ export default async function DashboardPage() {
 
   // Tendencias em destaque (cards com sparkline do score por periodo). Dado real, do
   // arquivo ja carregado; sparkline omitido no card sem historico suficiente (< 3 pts).
-  const trending = buildTrendingThemes(reports, locale, 4)
+  const trending = buildTrendingThemes(reports, locale, 6)
 
   // ── Herói editorial (coluna principal) ──────────────────────────────
   const heroNode = hero && (
@@ -202,40 +204,15 @@ export default async function DashboardPage() {
     </section>
   )
 
-  // ── Advisor compacto (rail no desktop, topo no mobile) ──────────────
+  // ── Advisor ATIVO (input direto + status + preview de continuacao) ──────
   const advisorNode = (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-8 h-8 rounded-lg bg-taime-50 ring-1 ring-taime-100 flex items-center justify-center shrink-0">
-          <span className="text-sm">🧠</span>
-        </div>
-        <h2 className="text-sm font-bold text-zinc-900">Executive Advisor</h2>
-        {advisorUnlocked && showNewBadge && (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-taime-600 text-white tracking-wide">{isEn ? 'NEW' : 'NOVO'}</span>
-        )}
-        {!advisorUnlocked && (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-zinc-100 text-zinc-500 tracking-wide">{isEn ? 'SOON' : 'EM BREVE'}</span>
-        )}
-      </div>
-      <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3 mb-3">
-        {advisorUnlocked && advisorStatus.hasProfile
-          ? (advisorSnippet ?? (isEn ? 'Advisor configured. Start a conversation.' : 'Advisor configurado. Inicie uma conversa.'))
-          : (isEn
-              ? 'Strategic advisor with strategic memory across the TAIME archive and personalized context for your company.'
-              : 'Consultor estratégico com memória estratégica do arquivo TAIME e contexto personalizado para a sua empresa.')}
-      </p>
-      {advisorUnlocked ? (
-        <Link href="/dashboard/advisor" className="btn-primary text-xs w-full justify-center inline-flex px-3 py-2">
-          {advisorStatus.hasProfile
-            ? (isEn ? 'Continue conversation →' : 'Continuar conversa →')
-            : (isEn ? 'Set up your Advisor →' : 'Configurar seu Advisor →')}
-        </Link>
-      ) : (
-        <Link href="/planos" className="text-xs font-medium text-taime-600 hover:text-taime-800 inline-flex">
-          {isEn ? 'Essential and Strategic plans →' : 'Planos Essential e Strategic →'}
-        </Link>
-      )}
-    </div>
+    <AdvisorQuickCard
+      isEn={isEn}
+      unlocked={advisorUnlocked}
+      hasProfile={advisorStatus.hasProfile}
+      snippet={advisorSnippet}
+      newBadge={showNewBadge}
+    />
   )
 
   // ── Card do plano ativo (Fase 2.2). Sem plano ativo, nada aparece ──────
@@ -273,7 +250,16 @@ export default async function DashboardPage() {
         </>
       ) : (
         <>
-          <p className="text-[11px] text-zinc-500 tabular-nums mb-2.5">{assessment.answered} {isEn ? `of ${TOTAL_QUESTIONS} answered` : `de ${TOTAL_QUESTIONS} respondidas`}</p>
+          {/* Donut do progresso geral (respondidas/total) com o numero no centro. */}
+          <div className="flex justify-center mb-3">
+            <ProgressDonut
+              value={assessment.answered}
+              total={TOTAL_QUESTIONS}
+              centerTop={String(assessment.answered)}
+              centerSub={isEn ? `of ${TOTAL_QUESTIONS} answered` : `de ${TOTAL_QUESTIONS} respondidas`}
+            />
+          </div>
+          {/* Os 5 dominios com suas barras individuais permanecem abaixo. */}
           <AssessmentPortrait domains={assessment.domains} isPt={!isEn} compact />
         </>
       )}
@@ -310,7 +296,7 @@ export default async function DashboardPage() {
           </div>
         </header>
 
-        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+        <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
           {editions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-zinc-200 p-16 text-center">
               <p className="text-zinc-400">{isEn ? 'No published analyses yet.' : 'Nenhuma análise publicada ainda.'}</p>

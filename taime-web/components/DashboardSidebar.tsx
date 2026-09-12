@@ -3,7 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Radar, TrendingUp, FileText, MessageSquare, SquareCheck, Building2, Menu, X } from 'lucide-react'
+import { Home, Radar, TrendingUp, FileText, MessageSquare, SquareCheck, Building2, MessageCircle, Menu, X } from 'lucide-react'
+
+// Abre o mesmo painel de feedback do botao flutuante (FeedbackWidget escuta o evento).
+function openFeedback() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('taime:open-feedback'))
+}
 
 // Sidebar de navegacao do dashboard logado. Desktop: fixa a esquerda (w-60). Mobile:
 // drawer deslizante aberto por um botao hamburguer. Client component (estado do drawer
@@ -64,9 +69,13 @@ export default function DashboardSidebar({ isEn }: { isEn: boolean }) {
         <div className="flex-1 overflow-y-auto p-3">
           <NavList />
         </div>
-        <div className="p-3 border-t border-zinc-100">
+        <div className="p-3 border-t border-zinc-100 flex flex-col gap-0.5">
+          <button onClick={openFeedback}
+            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">
+            <MessageCircle size={18} className="text-zinc-400" /> Feedback
+          </button>
           <Link href="/conta" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">
-            {isEn ? 'My Account' : 'Minha Conta'}
+            <span className="w-[18px]" aria-hidden />{isEn ? 'My Account' : 'Minha Conta'}
           </Link>
         </div>
       </aside>
@@ -94,9 +103,13 @@ export default function DashboardSidebar({ isEn }: { isEn: boolean }) {
             <div className="flex-1 overflow-y-auto p-3">
               <NavList onNavigate={() => setOpen(false)} />
             </div>
-            <div className="p-3 border-t border-zinc-100">
+            <div className="p-3 border-t border-zinc-100 flex flex-col gap-0.5">
+              <button onClick={() => { setOpen(false); openFeedback() }}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
+                <MessageCircle size={18} className="text-zinc-400" /> Feedback
+              </button>
               <Link href="/conta" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
-                {isEn ? 'My Account' : 'Minha Conta'}
+                <span className="w-[18px]" aria-hidden />{isEn ? 'My Account' : 'Minha Conta'}
               </Link>
             </div>
           </div>

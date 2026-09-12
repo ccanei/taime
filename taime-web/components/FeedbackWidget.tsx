@@ -25,6 +25,14 @@ export default function FeedbackWidget() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  // Abre por evento global (item "Feedback" da sidebar do dashboard). O botao flutuante
+  // continua funcionando normalmente; este e so um segundo gatilho, mais descobrivel.
+  useEffect(() => {
+    function onOpen() { setOpen(true) }
+    window.addEventListener('taime:open-feedback', onOpen)
+    return () => window.removeEventListener('taime:open-feedback', onOpen)
+  }, [])
+
   const labels = isPt
     ? {
         button:   'Feedback',

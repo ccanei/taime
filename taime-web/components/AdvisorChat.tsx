@@ -345,6 +345,9 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
 
   const [messages,   setMessages]   = useState<Message[]>([])
   const [input,      setInput]      = useState('')
+  // Pergunta a ENVIAR automaticamente (deep-link ?ask=..&send=1 do input do dashboard).
+  const [autoSend,   setAutoSend]   = useState<string | null>(null)
+  const autoSentRef  = useRef(false)
   const [loading,    setLoading]    = useState(false)
   // Streaming (SSE): id da mensagem do assistant que esta sendo transmitida agora.
   // Enquanto setado, a bolha de "consultando" some e a mensagem cresce com cursor.
@@ -525,10 +528,14 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
       // o composer com a pergunta sugerida e abre a conversa. NAO envia sozinho (nao
       // consome cota sem intencao); o usuario revisa e envia.
       const askParam = new URLSearchParams(window.location.search).get('ask')
+      const sendParam = new URLSearchParams(window.location.search).get('send')
       if (askParam && askParam.trim()) {
-        setInput(askParam.trim().slice(0, 500))
+        const q = askParam.trim().slice(0, 500)
         setView('chat')
-        setTimeout(() => inputRef.current?.focus(), 0)
+        // send=1 (vindo do input do dashboard): inicia a conversa AUTOMATICAMENTE com a
+        // pergunta. Sem send: apenas pre-preenche o composer (nao consome cota sozinho).
+        if (sendParam === '1') setAutoSend(q)
+        else { setInput(q); setTimeout(() => inputRef.current?.focus(), 0) }
       }
 
       // Deep-link ?session=<uuid> (vindo da pagina de planos, "Ver a conversa"):
@@ -565,6 +572,17 @@ export default function AdvisorChat({ userId, userName, userEmail, profile, onOp
     }
     bootstrap()
   }, [userId, loadHistoryFor, loadSessions])
+
+  // Auto envio da pergunta pre-carregada (?ask=..&send=1): dispara UMA vez, quando ja
+  // ha sessionId e nada carregando. handleSend abre uma sessao nova com a pergunta.
+  useEffect(() => {
+    if (!autoSend || autoSentRef.current || !sessionId || loading) return
+    autoSentRef.current = true
+    const q = autoSend
+    setAutoSend(null)
+    void handleSend(q)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSend, sessionId, loading])
 
   // ── Abertura proativa: busca a sugestão de partida ancorada no arquivo ──────
 
